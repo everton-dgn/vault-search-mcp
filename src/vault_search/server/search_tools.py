@@ -1,5 +1,5 @@
 """
-Ferramentas MCP de busca e indexação.
+MCP tools for search and indexing.
 """
 
 import logging
@@ -42,15 +42,15 @@ from vault_search.utils.security import (
 
 logger = logging.getLogger("vault-search-mcp")
 
-# Guardrail: Limite máximo de termos para excluir (previne DoS)
+# Bound excluded terms to limit query construction work.
 MAX_EXCLUDE_TERMS = 20
 
-# Timestamp de início do servidor para uptime
+# Server start timestamp for uptime reporting.
 _SERVER_START_TIME = time.time()
 
 
 class BacklinkResult(TypedDict):
-    """Backlink deduplicado retornado ao cliente."""
+    """Deduplicated backlink returned to the client."""
 
     path: str
     title: str
@@ -60,7 +60,7 @@ class BacklinkResult(TypedDict):
 
 
 class BrokenNoteCount(TypedDict):
-    """Contagem intermediária de links quebrados por nota."""
+    """Intermediate broken-link count for one note."""
 
     path: str
     title: str
@@ -68,7 +68,7 @@ class BrokenNoteCount(TypedDict):
 
 
 class BrokenLinkDetail(TypedDict):
-    """Detalhe público de um link quebrado."""
+    """Public details for one broken link."""
 
     target: str
     type: str
@@ -76,7 +76,7 @@ class BrokenLinkDetail(TypedDict):
 
 
 class OrphanNote(TypedDict):
-    """Nota órfã mantida durante a paginação global."""
+    """Orphan note retained during global pagination."""
 
     path: str
     title: str
@@ -85,21 +85,21 @@ class OrphanNote(TypedDict):
 
 
 class BacklinkRank(TypedDict):
-    """Item do ranking de backlinks."""
+    """One backlink ranking item."""
 
     path: str
     backlinks: int
 
 
 class OutlinkRank(TypedDict):
-    """Item do ranking de outlinks."""
+    """One outlink ranking item."""
 
     path: str
     outlinks: int
 
 
 class RecentNote(TypedDict):
-    """Nota recente com idade calculada."""
+    """Recent note with a calculated age."""
 
     path: str
     title: str
@@ -109,7 +109,7 @@ class RecentNote(TypedDict):
 
 
 class TaggedNote(TypedDict):
-    """Nota agrupada por tags."""
+    """Note grouped by tags."""
 
     path: str
     title: str
@@ -122,19 +122,19 @@ type FolderTree = dict[str, int | FolderTree]
 
 
 def _iter_query_rows(query: Any, batch_size: int = 1000) -> Iterator[dict[str, Any]]:
-    """Percorre uma consulta LanceDB em lotes, sem truncar o conjunto."""
+    """Iterate a LanceDB query in batches without truncating the result set."""
     for batch in query.limit(None).to_batches(batch_size=batch_size):
         yield from batch.to_pylist()
 
 
 def register_search_tools(mcp, indexer, searcher):
     """
-    Registra ferramentas de busca no servidor MCP.
+    Register search tools on the MCP server.
 
-    Parâmetros:
-        mcp: instância do FastMCP
-        indexer: instância do VaultIndexer
-        searcher: instância do VaultSearcher
+    Parameters:
+        mcp: FastMCP instance
+        indexer: VaultIndexer instance
+        searcher: VaultSearcher instance
     """
 
     @mcp.tool()
@@ -144,17 +144,16 @@ def register_search_tools(mcp, indexer, searcher):
         ctx: Context | None = None,
     ) -> list[dict[str, object]] | str:
         """
-        Busca semântica nas notas do vault com reranking para máxima precisão.
+        Search vault notes semantically with cross-encoder reranking.
 
-        Fluxo: embedding da query → busca vetorial → reranking com cross-encoder.
-        Funciona em qualquer idioma (cross-lingual).
+        Flow: query embedding, vector retrieval, then cross-encoder reranking.
 
-        Parâmetros:
-            query: texto de busca (qualquer idioma)
-            top_k: quantidade de resultados (padrão: 10, máximo: 100)
+        Parameters:
+            query: search text
+            top_k: number of results
 
-        Retorna:
-            Lista de resultados com nota, seção, texto e score de relevância.
+        Returns:
+            Results with note, section, text, and relevance score.
         """
         if ctx:
             await ctx.info(f"search_vault: '{log_query(query)}' top_k={top_k}")
@@ -167,17 +166,17 @@ def register_search_tools(mcp, indexer, searcher):
         ctx: Context | None = None,
     ) -> list[dict[str, object]] | str:
         """
-        Busca híbrida: combina busca semântica com busca por palavras-chave.
+        Combine semantic and keyword search.
 
-        Melhor para queries com termos técnicos, nomes próprios ou siglas
-        que a busca vetorial pura pode perder.
+        This can recover exact technical terms, names, and acronyms alongside
+        semantically related content.
 
-        Parâmetros:
-            query: texto de busca
-            top_k: quantidade de resultados (padrão: 10, máximo: 100)
+        Parameters:
+            query: search text
+            top_k: number of results
 
-        Retorna:
-            Lista de resultados com nota, seção, texto e score.
+        Returns:
+            Results with note, section, text, and score.
         """
         if ctx:
             await ctx.info(f"search_vault_hybrid: '{log_query(query)}' top_k={top_k}")
@@ -190,20 +189,20 @@ def register_search_tools(mcp, indexer, searcher):
         top_k: int = 10,
     ) -> list[dict[str, object]] | str:
         """
-        Busca semântica filtrada por pasta do vault.
+        Search semantically within one vault folder.
 
-        Útil para restringir a busca a uma área específica do vault.
+        Descendant folders are included by the search backend.
 
-        Parâmetros:
-            query: texto de busca
-            folder: pasta para filtrar (ex: 'projetos', 'estudos/python')
-            top_k: quantidade de resultados (padrão: 10, máximo: 100)
+        Parameters:
+            query: search text
+            folder: folder filter, such as 'projects' or 'research/python'
+            top_k: number of results
 
-        Retorna:
-            Lista de resultados apenas da pasta especificada.
+        Returns:
+            Results from the selected folder.
         """
         if not folder or not folder.strip():
-            return "Erro: folder não pode ser vazio."
+            return "Error: folder cannot be empty."
         return execute_search(
             "search_by_folder",
             query,
@@ -215,10 +214,10 @@ def register_search_tools(mcp, indexer, searcher):
     @mcp.tool()
     async def vault_stats(ctx: Context | None = None) -> dict[str, object]:
         """
-        Retorna estatísticas do índice de busca.
+        Return search-index statistics.
 
-        Retorna:
-            Dict com total de chunks, notas únicas e data da última modificação.
+        Returns:
+            Totals for chunks and notes, plus the last modification time.
         """
         if ctx:
             await ctx.info("vault_stats")
@@ -231,25 +230,24 @@ def register_search_tools(mcp, indexer, searcher):
         ctx: Context | None = None,
     ) -> dict[str, object] | str:
         """
-        Reindexar todo o vault do zero.
+        Rebuild the complete vault index.
 
-        Útil após grandes reorganizações ou para reconstruir o índice.
-        Pode demorar alguns minutos dependendo do tamanho do vault.
+        Use this after broad reorganizations or when the rebuildable index must
+        be recreated.
 
-        Parâmetros:
-            dry_run: se True, retorna preview sem executar (default: False)
-            require_daemon: se True, falha se daemon não disponível (default: False)
-                           Também via env VAULT_SEARCH_REQUIRE_DAEMON=1
+        Parameters:
+            dry_run: return a preview without changing the index
+            require_daemon: fail if the daemon is unavailable; the
+                VAULT_SEARCH_REQUIRE_DAEMON environment variable also enables this
 
-        Retorna:
-            Estatísticas: total de notas, chunks gerados e duração.
-            Se dry_run=True, retorna contagens observadas sem modificar o índice.
+        Returns:
+            Reindex statistics, or observed counts during a dry run.
         """
         import os
 
         from vault_search.core.models import ModelManager
 
-        # Verificar se daemon é obrigatório (flag ou env)
+        # Apply the explicit argument or environment policy.
         must_use_daemon = require_daemon or os.environ.get("VAULT_SEARCH_REQUIRE_DAEMON") == "1"
 
         if must_use_daemon and not dry_run:
@@ -262,10 +260,10 @@ def register_search_tools(mcp, indexer, searcher):
                     "reindex_vault_daemon",
                     e,
                     code="daemon_unavailable",
-                    message="O daemon obrigatório está indisponível.",
+                    message="The required daemon is unavailable.",
                 )
 
-        msg = f"reindex_vault: {'dry_run' if dry_run else 'iniciando reindexação completa'}"
+        msg = f"reindex_vault: {'dry_run' if dry_run else 'starting_full_reindex'}"
         if ctx:
             await ctx.info(msg)
         else:
@@ -281,16 +279,16 @@ def register_search_tools(mcp, indexer, searcher):
     @mcp.tool()
     def reindex_note(path: str) -> dict[str, object] | str:
         """
-        Reindexar uma nota específica (atualização incremental).
+        Reindex one note incrementally.
 
-        Parâmetros:
-            path: caminho relativo da nota no vault (ex: 'pasta/minha-nota.md')
+        Parameters:
+            path: vault-relative note path, such as 'folder/my-note.md'
 
-        Retorna:
-            Status da operação e quantidade de chunks indexados.
+        Returns:
+            Operation status and indexed chunk count.
         """
         if not path or not path.strip():
-            return "Erro: path não pode ser vazio."
+            return "Error: path cannot be empty."
         path = path.strip()
         logger.info("reindex_note requested")
         try:
@@ -303,19 +301,16 @@ def register_search_tools(mcp, indexer, searcher):
     @mcp.tool()
     def system_stats(reset: bool = False) -> dict[str, object]:
         """
-        Retorna métricas de performance e estatísticas do sistema.
+        Return measured operation and subsystem statistics.
 
-        Inclui:
-        - Latências p50/p95 das operações (list_notes, read_note, get_note_metadata)
-        - Estatísticas do cache de metadados (tamanho, hit rate)
-        - Estatísticas do catálogo SQLite (total de notas, por extensão)
-        - Estatísticas do índice vetorial
+        Includes observed p50/p95 latency, cache counters, catalog totals, and
+        vector-index statistics.
 
-        Parâmetros:
-            reset: se True, reseta as métricas após retornar (default: False)
+        Parameters:
+            reset: reset operation metrics after taking the snapshot
 
-        Retorna:
-            Dict com métricas de performance e estatísticas do sistema.
+        Returns:
+            Measured metrics and subsystem statistics.
         """
         logger.info(f"system_stats (reset={reset})")
 
@@ -323,43 +318,43 @@ def register_search_tools(mcp, indexer, searcher):
         cache_stats = get_metadata_cache().stats()
         index_stats = indexer.get_stats()
 
-        # Catálogo SQLite (pode não estar inicializado)
+        # The SQLite catalog may not be initialized yet.
         catalog_stats: object
         try:
             catalog_stats = get_catalog().stats()
         except Exception:
-            catalog_stats = {"status": "não inicializado"}
+            catalog_stats = {"status": "not_initialized"}
 
-        # Cache de embeddings de query
+        # Query-embedding cache.
         embedding_cache_stats = searcher.get_embedding_cache_stats()
 
-        # Prewarm status
+        # Index prewarm status.
         prewarm_status = searcher.get_prewarm_status()
 
         result = {
             "performance": {
                 "operations": metrics,
-                "description": "Latências p50/p95 em milissegundos",
+                "description": "Observed p50 and p95 latency in milliseconds",
             },
             "cache": {
                 "metadata_cache": cache_stats,
                 "embedding_cache": embedding_cache_stats,
-                "description": "Caches LRU (metadados de notas + embeddings de query)",
+                "description": "LRU caches for note metadata and query embeddings",
             },
             "catalog": {
                 "notes_catalog": catalog_stats,
-                "description": "Catálogo SQLite para list_notes() rápido",
+                "description": "SQLite catalog used by list_notes",
             },
             "index": index_stats,
             "prewarm": {
                 "status": prewarm_status,
-                "description": "Índices carregados na RAM para baixa latência",
+                "description": "Search-index prewarm state",
             },
         }
 
         if reset:
             reset_metrics()
-            logger.info("Métricas resetadas")
+            logger.info("system_metrics reset=true")
 
         return result
 
@@ -369,29 +364,25 @@ def register_search_tools(mcp, indexer, searcher):
         require_daemon: bool = False,
     ) -> dict[str, object]:
         """
-        Sincroniza arquivos do vault com o índice.
+        Synchronize vault files with the index.
 
-        Detecta e sincroniza:
-        - Arquivos novos (no vault mas não no índice)
-        - Arquivos modificados (alterados desde última indexação)
-        - Arquivos deletados (no índice mas não mais no vault)
+        Detects new, modified, and deleted files.
 
-        Útil quando arquivos foram adicionados/modificados com o servidor parado.
+        Use this after files changed while the server was stopped.
 
-        Parâmetros:
-            dry_run: se True, apenas retorna o que seria sincronizado sem executar
-            require_daemon: se True, falha se daemon não disponível (default: False)
-                           Também via env VAULT_SEARCH_REQUIRE_DAEMON=1
+        Parameters:
+            dry_run: report changes without updating the index
+            require_daemon: fail if the daemon is unavailable; the
+                VAULT_SEARCH_REQUIRE_DAEMON environment variable also enables this
 
-        Retorna:
-            Dict com vault_files, indexed_files, new_files, modified_files,
-            deleted_files e synced counts.
+        Returns:
+            Counts for vault, indexed, new, modified, deleted, and synchronized files.
         """
         import os
 
         from vault_search.core.models import ModelManager
 
-        # Verificar se daemon é obrigatório (flag ou env)
+        # Apply the explicit argument or environment policy.
         must_use_daemon = require_daemon or os.environ.get("VAULT_SEARCH_REQUIRE_DAEMON") == "1"
 
         if must_use_daemon and not dry_run:
@@ -404,7 +395,7 @@ def register_search_tools(mcp, indexer, searcher):
                     "sync_vault_daemon",
                     e,
                     code="daemon_unavailable",
-                    message="O daemon obrigatório está indisponível.",
+                    message="The required daemon is unavailable.",
                 )
 
         logger.info(f"sync_vault (dry_run={dry_run})")
@@ -418,15 +409,15 @@ def register_search_tools(mcp, indexer, searcher):
     @mcp.tool()
     def compact_index() -> dict[str, object] | str:
         """
-        Compacta o índice LanceDB para reduzir fragmentação.
+        Compact the LanceDB index.
 
-        Útil após muitas operações incrementais (edições, criações, deleções).
-        Merge arquivos pequenos e remove versões antigas.
+        This merges small fragments and removes obsolete versions after
+        incremental mutations.
 
-        Retorna:
-            Estatísticas da compactação (arquivos compactados, versões limpas).
+        Returns:
+            Compaction statistics.
         """
-        logger.info("compact_index: iniciando compactação")
+        logger.info("compact_index started")
         try:
             stats = indexer.compact()
             return stats
@@ -436,17 +427,16 @@ def register_search_tools(mcp, indexer, searcher):
     @mcp.tool()
     def health_check() -> dict[str, object]:
         """
-        Verifica a saúde do sistema para monitoramento.
+        Return a health snapshot for monitoring.
 
-        Útil para load balancers, health probes, e monitoramento externo.
-        Verifica: índice, catálogo, modelos carregados, alertas de latência.
+        Checks the index, catalog, model state, and measured latency alerts.
 
-        Retorna:
-            Dict com status geral e detalhes de cada componente.
+        Returns:
+            Overall status and component details.
         """
         logger.info("health_check")
 
-        # Status dos componentes
+        # Component status.
         index_ready = False
         try:
             stats = indexer.get_stats()
@@ -465,7 +455,7 @@ def register_search_tools(mcp, indexer, searcher):
         models_status = models.is_loaded()
         daemon_required = models_status.get("daemon_required", False)
 
-        # Alertas de latência e cache
+        # Latency and cache alerts.
         latency_alerts = check_latency_health()
         cache_alerts = check_cache_health()
         all_alerts = latency_alerts + cache_alerts
@@ -475,11 +465,11 @@ def register_search_tools(mcp, indexer, searcher):
                 {
                     "type": "daemon_required_unavailable",
                     "severity": "critical",
-                    "message": "Daemon obrigatório indisponível; fallback local desabilitado.",
+                    "message": "Required daemon is unavailable; local fallback is disabled.",
                 }
             )
 
-        # Determinar status geral
+        # Determine overall status.
         status = "healthy"
         if not index_ready:
             status = "degraded"
@@ -512,26 +502,25 @@ def register_search_tools(mcp, indexer, searcher):
         top_k: int = 5,
     ) -> list[dict[str, object]] | str:
         """
-        Encontra notas similares a uma nota específica.
+        Find notes similar to one specific note.
 
-        Calcula o embedding médio de todos os chunks da nota
-        e busca outras notas com conteúdo semanticamente similar.
-        Útil para descobrir notas relacionadas ou duplicadas.
+        Averages the note's chunk embeddings and searches for semantically
+        similar content.
 
-        Parâmetros:
-            path: caminho relativo da nota no vault (ex: 'projetos/meu-projeto.md')
-            top_k: quantidade de notas similares (padrão: 5, máximo: 20)
+        Parameters:
+            path: vault-relative path, such as 'projects/my-project.md'
+            top_k: number of similar notes
 
-        Retorna:
-            Lista de notas similares com score de similaridade.
+        Returns:
+            Similar notes with similarity scores.
         """
-        # Guardrail: operação de leitura computacionalmente cara
+        # Bound a computationally expensive read.
 
         if not path or not path.strip():
-            return "Erro: path não pode ser vazio."
+            return "Error: path cannot be empty."
 
         path = path.strip()
-        top_k = max(1, min(top_k, 20))  # Limitar entre 1 e 20
+        top_k = max(1, min(top_k, 20))
 
         logger.info("find_similar_notes top_k=%d", top_k)
 
@@ -543,7 +532,7 @@ def register_search_tools(mcp, indexer, searcher):
                 "find_similar_notes",
                 e,
                 code="invalid_request",
-                message="A nota não existe ou o path é inválido.",
+                message="The note does not exist or the path is invalid.",
             )
         except Exception as e:
             return public_error(logger, "find_similar_notes", e)
@@ -555,35 +544,25 @@ def register_search_tools(mcp, indexer, searcher):
         folder: str | None = None,
     ) -> list[dict[str, object]] | str:
         """
-        Encontra grupos de notas duplicadas ou muito similares no vault.
+        Find groups of duplicate or highly similar notes.
 
-        Varre o vault comparando embeddings semânticos das notas e agrupa
-        aquelas que excedem o threshold de similaridade. Útil para:
-        - Identificar conteúdo duplicado
-        - Encontrar notas que podem ser mescladas
-        - Limpeza e organização do vault
+        Compares note embeddings and groups notes above the similarity threshold.
 
-        Parâmetros:
-            threshold: similaridade mínima (0.0-1.0, padrão: 0.90)
-                      0.90 = 90% similar (captura duplicatas óbvias)
-                      0.80 = mais permissivo, mais resultados
-                      0.95 = apenas duplicatas quase idênticas
-            max_notes: máximo de notas a processar (padrão: 500)
-            folder: opcional, restringir a uma pasta específica
+        Parameters:
+            threshold: minimum similarity from 0.5 to 0.99
+            max_notes: maximum notes to process
+            folder: optional folder scope
 
-        Retorna:
-            Lista de grupos de duplicatas, cada grupo contendo:
-            - notes: lista de notas no grupo (path, title, folder)
-            - count: número de notas no grupo
-            - avg_similarity: similaridade média do grupo
+        Returns:
+            Duplicate groups with notes, count, and average similarity.
 
-        Observação:
-            Operação computacionalmente cara. Para vaults grandes,
-            considere restringir por folder ou aumentar threshold.
+        Note:
+            This operation is computationally expensive. Scope large vaults by
+            folder or use a higher threshold.
         """
-        # Validação
-        threshold = max(0.5, min(threshold, 0.99))  # Entre 0.5 e 0.99
-        max_notes = max(10, min(max_notes, 1000))  # Entre 10 e 1000
+        # Apply bounded inputs.
+        threshold = max(0.5, min(threshold, 0.99))
+        max_notes = max(10, min(max_notes, 1000))
 
         if folder:
             folder = folder.strip()
@@ -622,46 +601,45 @@ def register_search_tools(mcp, indexer, searcher):
         highlight: bool = False,
     ) -> list[dict[str, object]] | str:
         """
-        Busca semântica avançada com filtros (faceted search).
+        Run semantic search with structured filters.
 
-        Combina busca vetorial com filtros estruturados para resultados precisos.
-        Todos os filtros são opcionais e combinados com AND.
+        Every optional filter is combined with AND.
 
-        Parâmetros:
-            query: texto de busca semântica
-            top_k: quantidade de resultados (padrão: 10, máximo: 100)
-            tags: lista de tags para filtrar (OR entre tags)
-            folder: pasta para filtrar (inclui subpastas)
-            extension: extensão de arquivo (ex: 'md', 'canvas', 'pdf')
-            date_range: período predefinido - 'today', 'week', 'month', 'year'
-            date_from: data início ISO (ex: '2024-01-01') - ignorado se date_range
-            date_to: data fim ISO (ex: '2024-12-31') - ignorado se date_range
-            status: status da nota (draft, review, published, archived)
-            note_type: tipo da nota (daily, weekly, monthly, yearly, meeting, idea, task)
-            category: categoria (work, personal, reference, project)
-            project: nome do projeto associado
-            exclude: lista de termos para EXCLUIR dos resultados
-            highlight: se True, destaca termos da query no texto com **marcadores**
+        Parameters:
+            query: semantic search text
+            top_k: number of results
+            tags: tag filter, with OR between tags
+            folder: folder filter including descendants
+            extension: file extension such as md, canvas, or pdf
+            date_range: today, week, month, or year
+            date_from: ISO start date, ignored when date_range is set
+            date_to: ISO end date, ignored when date_range is set
+            status: note status
+            note_type: note type
+            category: category
+            project: associated project name
+            exclude: terms to exclude from results
+            highlight: highlight query terms in result text
 
-        Retorna:
-            Lista de resultados com nota, seção, texto, score e metadata.
+        Returns:
+            Results with note, section, text, score, and metadata.
 
-        Exemplos:
+        Examples:
             search_advanced("python", exclude=["django", "flask"])
             search_advanced("API REST", highlight=True)
-            search_advanced("reunião", note_type="meeting", highlight=True)
+            search_advanced("meeting", note_type="meeting", highlight=True)
         """
-        # Guardrail: operação de leitura
+        # Bounded read operation.
 
-        # Validar query
+        # Validate the query.
         if not query or not query.strip():
-            return "Erro: query não pode ser vazia."
+            return "Error: query cannot be empty."
 
-        # Guardrail: Truncar query para evitar DoS com strings enormes
+        # Truncate oversized queries.
         query = truncate_query(query.strip())
         top_k = clamp_top_k(top_k)
 
-        # Construir date_range dict se datas customizadas
+        # Build a custom date range when explicit dates are supplied.
         effective_date_range: str | dict[str, str] | None = None
         if date_range:
             effective_date_range = date_range.strip().lower()
@@ -672,7 +650,7 @@ def register_search_tools(mcp, indexer, searcher):
             if date_to:
                 effective_date_range["to"] = date_to.strip()
 
-        # Normalizar parâmetros
+        # Normalize parameters.
         normalized_tags = None
         if tags:
             normalized_tags = [t.strip() for t in tags if t and t.strip()]
@@ -681,7 +659,7 @@ def register_search_tools(mcp, indexer, searcher):
 
         normalized_folder = folder.strip() if folder and folder.strip() else None
 
-        # Validação: Validar extensão contra whitelist
+        # Validate the extension allowlist.
         normalized_extension = None
         if extension and extension.strip():
             ext = extension.strip().lower()
@@ -689,7 +667,7 @@ def register_search_tools(mcp, indexer, searcher):
                 ext = f".{ext}"
             if ext not in INDEXABLE_EXTENSIONS:
                 valid_exts = ", ".join(sorted(INDEXABLE_EXTENSIONS))
-                return f"Erro: extensão '{ext}' inválida. Válidas: {valid_exts}"
+                return f"Error: invalid extension '{ext}'. Valid values: {valid_exts}"
             normalized_extension = ext
 
         normalized_status = status.strip().lower() if status and status.strip() else None
@@ -699,16 +677,18 @@ def register_search_tools(mcp, indexer, searcher):
         normalized_category = category.strip().lower() if category and category.strip() else None
         normalized_project = project.strip() if project and project.strip() else None
 
-        # Normalizar exclude com limite operacional
+        # Normalize excluded terms under the operational limit.
         normalized_exclude = None
         if exclude:
             normalized_exclude = [t.strip() for t in exclude if t and t.strip()]
             if not normalized_exclude:
                 normalized_exclude = None
             elif len(normalized_exclude) > MAX_EXCLUDE_TERMS:
-                # Validação: Limitar tamanho da lista exclude (previne DoS)
+                # Truncate the excluded-term list.
                 logger.warning(
-                    f"Lista exclude truncada de {len(normalized_exclude)} para {MAX_EXCLUDE_TERMS} termos"
+                    "exclude_terms_truncated original_count=%d maximum_count=%d",
+                    len(normalized_exclude),
+                    MAX_EXCLUDE_TERMS,
                 )
                 normalized_exclude = normalized_exclude[:MAX_EXCLUDE_TERMS]
 
@@ -758,17 +738,16 @@ def register_search_tools(mcp, indexer, searcher):
         iterations: int = 10,
     ) -> dict[str, int | float | str] | str:
         """
-        Executa benchmark de busca para medir latência local.
+        Measure local search latency.
 
-        Útil para comparar performance antes/depois de otimizações
-        ou validar hardware.
+        Results describe only this process, data set, configuration, and runtime.
 
-        Parâmetros:
-            query: texto de busca para benchmark (padrão: "test")
-            iterations: número de iterações (padrão: 10, máximo: 100)
+        Parameters:
+            query: benchmark search text
+            iterations: bounded iteration count
 
-        Retorna:
-            Estatísticas de latência: mean, min, max, p50, p95 (em ms).
+        Returns:
+            Observed mean, min, max, p50, and p95 latency in milliseconds.
         """
         iterations = max(1, min(iterations, 100))
 
@@ -783,14 +762,14 @@ def register_search_tools(mcp, indexer, searcher):
             elapsed_ms = (time.perf_counter() - start) * 1000
             times_ms.append(elapsed_ms)
 
-        # Evitar benchmark "falso" quando todas as execuções falham
+        # Do not report latency as successful when every search failed.
         if error_types and len(error_types) == iterations:
             return {
                 "query_length": len(query),
                 "iterations": iterations,
                 "errors": len(error_types),
                 "sample_error_type": error_types[0],
-                "hint": "Verifique se o daemon está rodando (ou permita fallback local).",
+                "hint": "Check daemon readiness or allow the configured local fallback.",
             }
 
         times_ms.sort()
@@ -813,18 +792,13 @@ def register_search_tools(mcp, indexer, searcher):
     @mcp.tool()
     def vector_index_status() -> dict[str, object]:
         """
-        Retorna status do índice vetorial ANN (Approximate Nearest Neighbor).
+        Return ANN vector-index status.
 
-        O índice vetorial acelera buscas em vaults grandes (>5k notas).
-        É criado automaticamente quando o vault atinge o threshold configurado.
+        The index is created when the configured chunk threshold is reached.
 
-        Retorna:
-            Dict com:
-            - exists: se o índice existe
-            - threshold: número mínimo de chunks para criar índice
-            - total_chunks: chunks atuais no índice
-            - would_create: se o índice seria criado agora (threshold atingido, não existe)
-            - auto_create_enabled: se criação automática está habilitada
+        Returns:
+            Current existence, threshold, chunk count, eligibility, and
+            auto-creation setting.
         """
         logger.info("vector_index_status")
         return indexer.get_vector_index_status()
@@ -835,44 +809,38 @@ def register_search_tools(mcp, indexer, searcher):
         include_context: bool = True,
     ) -> list[BacklinkResult] | str:
         """
-        Encontra notas que linkam para uma nota específica (backlinks).
+        Find notes that link to one target note.
 
-        Usa índice de links para busca O(1) ao invés de ler arquivos.
-        Recurso essencial para navegação em knowledge bases tipo Obsidian.
+        Uses the rebuildable link index instead of rereading vault files.
 
-        Parâmetros:
-            path: caminho relativo da nota alvo (ex: 'projetos/meu-projeto.md')
-            include_context: incluir trecho onde o link aparece (padrão: True)
+        Parameters:
+            path: vault-relative target path, such as 'projects/my-project.md'
+            include_context: include text around the link
 
-        Retorna:
-            Lista de notas que linkam para a nota alvo, com:
-            - path: caminho da nota que contém o link
-            - title: título da nota
-            - link_type: tipo do link ('wikilink' ou 'markdown')
-            - link_target: target original do link
-            - context: trecho do texto onde o link aparece (se include_context=True)
+        Returns:
+            Deduplicated backlinks with path, title, link type, original target,
+            and optional context.
         """
         if not path or not path.strip():
-            return "Erro: path não pode ser vazio."
+            return "Error: path cannot be empty."
 
         path = path.strip()
         logger.info("get_backlinks include_context=%s", include_context)
 
         try:
-            # Normalizar path alvo para matching
+            # Normalize target variants for matching.
             target_normalized = normalize_link_target(path)
             target_stem = normalize_link_target(Path(path).stem)
 
-            # Query no índice de links
+            # Query the link index.
             links_table = indexer._ensure_links_table()
 
-            # Escapar valores para SQL
+            # Escape values before building the filter.
             path_escaped = escape_sql_string(path)
             target_norm_escaped = escape_sql_string(target_normalized)
             target_stem_escaped = escape_sql_string(target_stem)
 
-            # Buscar links que apontam para esta nota
-            # Considerar: to_note_path resolvido OU link_target_normalized match
+            # Match the resolved path or a normalized target variant.
             results = (
                 links_table.search()
                 .where(
@@ -893,13 +861,13 @@ def register_search_tools(mcp, indexer, searcher):
                 .to_list()
             )
 
-            # Deduplicar por nota (uma nota pode ter vários links para o mesmo alvo)
+            # Deduplicate source notes that link to the target more than once.
             seen_notes = set()
             backlinks: list[BacklinkResult] = []
 
             for row in results:
                 note_path = row["from_note_path"]
-                # Não incluir a própria nota e evitar duplicatas
+                # Exclude self-links and duplicates.
                 if note_path in seen_notes or note_path == path:
                     continue
                 seen_notes.add(note_path)
@@ -922,7 +890,7 @@ def register_search_tools(mcp, indexer, searcher):
             return public_error(logger, "get_backlinks", e)
 
     def _extract_link_context(content: str, link_marker: str, context_chars: int = 100) -> str:
-        """Extrai contexto ao redor de um link no texto."""
+        """Extract bounded context around a link marker."""
         idx = content.find(link_marker)
         if idx == -1:
             return ""
@@ -930,7 +898,7 @@ def register_search_tools(mcp, indexer, searcher):
         start = max(0, idx - context_chars)
         end = min(len(content), idx + len(link_marker) + context_chars)
 
-        # Ajustar para não cortar palavras
+        # Prefer word boundaries.
         if start > 0:
             space_idx = content.find(" ", start)
             if space_idx != -1 and space_idx < idx:
@@ -947,31 +915,25 @@ def register_search_tools(mcp, indexer, searcher):
         if end < len(content):
             context = context + "..."
 
-        # Remover quebras de linha para contexto mais limpo
+        # Flatten line breaks in the context snippet.
         return " ".join(context.split())
 
     @mcp.tool()
     def get_outlinks(path: str) -> dict[str, object] | str:
         """
-        Lista todos os links saindo de uma nota específica (outlinks).
+        List every indexed link from one note.
 
-        Usa índice de links para consistência com dados indexados.
-        Complemento do get_backlinks para navegação bidirecional.
+        Uses the same rebuildable link index as get_backlinks.
 
-        Parâmetros:
-            path: caminho relativo da nota (ex: 'projetos/meu-projeto.md')
+        Parameters:
+            path: vault-relative note path, such as 'projects/my-project.md'
 
-        Retorna:
-            Dict com:
-            - wikilinks: lista de wikilinks com target, resolved, resolved_path
-            - markdown_links: lista de markdown links
-            - embeds: lista de embeds
-            - external: lista de URLs externas
-            - total: total de links
-            - broken_count: quantidade de links quebrados
+        Returns:
+            Links grouped as wikilinks, Markdown links, embeds, and external
+            URLs, plus total and broken counts.
         """
         if not path or not path.strip():
-            return "Erro: path não pode ser vazio."
+            return "Error: path cannot be empty."
 
         path = path.strip()
         logger.info("get_outlinks requested")
@@ -979,7 +941,7 @@ def register_search_tools(mcp, indexer, searcher):
         try:
             links_table = indexer._ensure_links_table()
 
-            # Query todos os links desta nota
+            # Query every indexed link from this note.
             escaped_path = escape_sql_string(path)
             results = (
                 links_table.search()
@@ -999,7 +961,7 @@ def register_search_tools(mcp, indexer, searcher):
                 .to_list()
             )
 
-            # Agrupar por tipo
+            # Group links by type.
             wikilinks = []
             markdown_links = []
             embeds = []
@@ -1028,7 +990,7 @@ def register_search_tools(mcp, indexer, searcher):
                 elif row["link_type"] == "external":
                     external.append({"url": row["link_target"]})
 
-            # Contar links quebrados (não resolvidos, exceto externos e embeds de imagens)
+            # Count unresolved wiki and Markdown links.
             broken_count = sum(1 for w in wikilinks if not w["resolved"])
             broken_count += sum(1 for m in markdown_links if not m["resolved"])
 
@@ -1051,20 +1013,16 @@ def register_search_tools(mcp, indexer, searcher):
         limit: int = 100,
     ) -> dict[str, object] | str:
         """
-        Encontra links que apontam para notas inexistentes.
+        Find links that point to missing notes.
 
-        Útil para manutenção e limpeza do vault.
-        Links quebrados são aqueles onde is_resolved=false no índice.
+        Broken links have is_resolved=false in the rebuildable link index.
 
-        Parâmetros:
-            folder: filtrar por pasta (opcional)
-            limit: máximo de notas retornadas (padrão: 100, máximo: 500)
+        Parameters:
+            folder: optional folder filter
+            limit: maximum returned notes
 
-        Retorna:
-            Dict com:
-            - total_broken_links: total de links quebrados
-            - notes_with_broken_links: quantidade de notas afetadas
-            - notes: lista de notas com seus links quebrados
+        Returns:
+            Broken-link total, affected-note count, and bounded note details.
         """
         limit = max(1, min(limit, 500))
         logger.info("find_broken_links folder_filter=%s limit=%d", bool(folder), limit)
@@ -1072,10 +1030,10 @@ def register_search_tools(mcp, indexer, searcher):
         try:
             normalized_folder = folder.strip() if folder else None
             if normalized_folder and not validate_relative_path(normalized_folder):
-                raise ValueError("Folder inválido ou fora do vault")
+                raise ValueError("Folder is invalid or outside the vault")
             links_table = indexer._ensure_links_table()
 
-            # Buscar links não resolvidos (exceto externos)
+            # Find unresolved non-external links.
             where_clause = "is_resolved = false AND link_type != 'external'"
             if normalized_folder:
                 escaped_folder = escape_sql_string(escape_like_pattern(normalized_folder))
@@ -1152,21 +1110,16 @@ def register_search_tools(mcp, indexer, searcher):
         limit: int = 100,
     ) -> dict[str, object] | str:
         """
-        Encontra notas sem nenhum backlink (isoladas no grafo).
+        Find notes with no backlinks.
 
-        Útil para identificar conteúdo desconectado que pode
-        precisar de mais links ou ser arquivado.
+        These notes are isolated from incoming graph edges.
 
-        Parâmetros:
-            folder: filtrar por pasta (opcional)
-            limit: máximo de notas retornadas (padrão: 100, máximo: 500)
+        Parameters:
+            folder: optional folder filter
+            limit: maximum returned notes
 
-        Retorna:
-            Dict com:
-            - total_notes: total de notas no vault/pasta
-            - total_orphans: quantidade de notas órfãs
-            - orphan_percentage: percentual de órfãs
-            - notes: lista de notas órfãs
+        Returns:
+            Total notes, orphan count and percentage, plus bounded note details.
         """
         limit = max(1, min(limit, 500))
         logger.info("find_orphan_notes folder_filter=%s limit=%d", bool(folder), limit)
@@ -1174,15 +1127,15 @@ def register_search_tools(mcp, indexer, searcher):
         try:
             normalized_folder = folder.strip() if folder else None
             if normalized_folder and not validate_relative_path(normalized_folder):
-                raise ValueError("Folder inválido ou fora do vault")
+                raise ValueError("Folder is invalid or outside the vault")
             catalog = get_catalog()
             if not catalog.is_available():
-                return "Erro: catálogo não disponível. Execute reindex_vault primeiro."
+                return "Error: catalog is unavailable. Run reindex_vault first."
 
-            # Obter notas que SÃO linkadas (têm backlinks)
+            # Read notes that have incoming links.
             links_table = indexer._ensure_links_table()
 
-            # Set de paths linkados
+            # Collect linked paths and normalized targets.
             linked_paths: set[str] = set()
             linked_normalized: set[str] = set()
             linked_query = links_table.search().select(["to_note_path", "link_target_normalized"])
@@ -1192,8 +1145,8 @@ def register_search_tools(mcp, indexer, searcher):
                 if row["link_target_normalized"]:
                     linked_normalized.add(row["link_target_normalized"])
 
-            # O catálogo entrega notas da mais nova para a mais antiga. O deque
-            # retém só as ``limit`` órfãs mais antigas enquanto o total é contado.
+            # The catalog yields newest first. Retain only the oldest requested
+            # orphan notes while still counting the complete result set.
             oldest_orphans: deque[OrphanNote] = deque(maxlen=limit)
             orphan_count = 0
             total = 0
@@ -1247,23 +1200,16 @@ def register_search_tools(mcp, indexer, searcher):
     @mcp.tool()
     def link_stats(limit: int = 50) -> dict[str, object] | str:
         """
-        Estatísticas de links do vault.
+        Return vault link statistics.
 
-        Mostra totais, notas mais referenciadas (hub notes) e
-        notas com mais links saindo.
+        Includes totals, most-referenced notes, and notes with most outlinks.
 
-        Parâmetros:
-            limit: máximo de notas em cada ranking (padrão: 50, máximo: 200)
+        Parameters:
+            limit: maximum notes in each ranking
 
-        Retorna:
-            Dict com:
-            - total_links: total de links indexados
-            - total_resolved: links resolvidos
-            - total_broken: links quebrados
-            - total_external: URLs externas
-            - resolution_rate: taxa de resolução (%)
-            - most_referenced: notas com mais backlinks
-            - most_outlinks: notas com mais links saindo
+        Returns:
+            Link totals, resolution rate, most-referenced notes, and notes with
+            the most outlinks.
         """
         limit = max(1, min(limit, 200))
         logger.info(f"link_stats: limit={limit}")
@@ -1271,7 +1217,7 @@ def register_search_tools(mcp, indexer, searcher):
         try:
             links_table = indexer._ensure_links_table()
 
-            # Contar total de links
+            # Count indexed links.
             all_links = (
                 links_table.search()
                 .select(
@@ -1295,7 +1241,7 @@ def register_search_tools(mcp, indexer, searcher):
             )
             total_external = sum(1 for link in all_links if link["link_type"] == "external")
 
-            # Contar backlinks por nota (mais referenciadas)
+            # Count backlinks by target note.
             backlink_count: dict[str, int] = {}
             for link in all_links:
                 target = link["to_note_path"]
@@ -1311,7 +1257,7 @@ def register_search_tools(mcp, indexer, searcher):
                 reverse=True,
             )[:limit]
 
-            # Contar outlinks por nota
+            # Count outlinks by source note.
             outlink_count: dict[str, int] = {}
             for link in all_links:
                 source = link["from_note_path"]
@@ -1326,7 +1272,7 @@ def register_search_tools(mcp, indexer, searcher):
                 reverse=True,
             )[:limit]
 
-            # Taxa de resolução (excluindo externos)
+            # Calculate the non-external resolution rate.
             non_external = total_links - total_external
             resolution_rate = round(total_resolved / max(non_external, 1) * 100, 1)
 
@@ -1352,24 +1298,23 @@ def register_search_tools(mcp, indexer, searcher):
         folder: str | None = None,
     ) -> list[RecentNote] | str:
         """
-        Retorna notas modificadas recentemente.
+        Return recently modified notes.
 
-        Útil para retomar trabalho ou entender contexto atual.
-        Ordenado por data de modificação (mais recente primeiro).
+        Results are ordered by modification time, newest first.
 
-        Parâmetros:
-            days: janela de tempo em dias (padrão: 7, máximo: 365)
-            limit: máximo de notas retornadas (padrão: 20, máximo: 100)
-            folder: filtrar por pasta específica (opcional)
+        Parameters:
+            days: bounded time window in days
+            limit: maximum returned notes
+            folder: optional folder filter
 
-        Retorna:
-            Lista de notas com path, title, modified_at, folder e days_ago.
+        Returns:
+            Notes with path, title, modified_at, folder, and days_ago.
         """
         from datetime import datetime, timedelta
 
-        # Guardrail: operação potencialmente cara
+        # Bound a potentially expensive read.
 
-        # Validar parâmetros
+        # Validate parameters.
         days = max(1, min(days, 365))
         limit = max(1, min(limit, 100))
 
@@ -1383,15 +1328,15 @@ def register_search_tools(mcp, indexer, searcher):
         try:
             catalog = get_catalog()
             if not catalog.is_available():
-                return "Erro: catálogo não disponível. Execute reindex_vault primeiro."
+                return "Error: catalog is unavailable. Run reindex_vault first."
 
-            # Buscar notas do catálogo
+            # Read a wider catalog page before applying the date window.
             notes, _ = catalog.list_notes(
                 folder=folder.strip() if folder else None,
-                limit=limit * 2,  # Pegar mais para filtrar por data
+                limit=limit * 2,
             )
 
-            # Filtrar por data
+            # Apply the date window.
             now = datetime.now()
             cutoff = now - timedelta(days=days)
             recent: list[RecentNote] = []
@@ -1413,13 +1358,11 @@ def register_search_tools(mcp, indexer, searcher):
                 except ValueError, KeyError:
                     continue
 
-            # Ordenar por data (mais recente primeiro) e limitar
+            # Sort newest first and apply the limit.
             recent.sort(key=lambda x: x["modified_at"], reverse=True)
             recent = recent[:limit]
 
-            logger.info(
-                f"get_recent_notes: encontradas {len(recent)} notas nos últimos {days} dias"
-            )
+            logger.info("get_recent_notes result_count=%d days=%d", len(recent), days)
             return recent
 
         except Exception as e:
@@ -1431,21 +1374,20 @@ def register_search_tools(mcp, indexer, searcher):
         folder: str | None = None,
     ) -> dict[str, object] | str:
         """
-        Retorna estatísticas de tags do vault (tag cloud).
+        Return vault tag usage statistics.
 
-        Mostra quais tags existem e quantas notas usam cada uma.
-        Útil para descobrir temas, navegar por categorias e organizar.
+        Each tag is counted once per note.
 
-        Parâmetros:
-            limit: máximo de tags retornadas (padrão: 50, máximo: 500)
-            folder: filtrar por pasta específica (opcional)
+        Parameters:
+            limit: maximum returned tags
+            folder: optional folder filter
 
-        Retorna:
-            Dict com total_tags, total_notes_with_tags e lista de tags ordenada por frequência.
+        Returns:
+            Tag total, tagged-note count, and tags ordered by frequency.
         """
         from collections import Counter
 
-        # Guardrail: operação potencialmente cara
+        # Bound a potentially expensive read.
 
         limit = max(1, min(limit, 500))
         folder_filter = folder.strip() if folder else None
@@ -1453,7 +1395,7 @@ def register_search_tools(mcp, indexer, searcher):
         logger.info("tag_stats limit=%d folder_filter=%s", limit, bool(folder_filter))
 
         try:
-            # Obter tabela LanceDB
+            # Read the LanceDB table.
             table = indexer._ensure_table()
             total_rows = table.count_rows()
 
@@ -1464,19 +1406,18 @@ def register_search_tools(mcp, indexer, searcher):
                     "tags": [],
                 }
 
-            # Query LanceDB: buscar note_path + tags únicos por nota
-            # Usar PyArrow para eficiência
+            # Select the fields needed to deduplicate tags by note.
             query = table.search().select(["note_path", "tags", "folder"])
 
             if folder_filter:
-                # Filtro de pasta (exato ou subpastas)
+                # Match the folder and descendants.
                 query = query.where(
                     f"folder = '{folder_filter}' OR folder LIKE '{folder_filter}/%'"
                 )
 
             arrow_table = query.limit(total_rows).to_arrow()
 
-            # Extrair dados únicos por nota (evitar contar mesma tag várias vezes por nota)
+            # Deduplicate tags within each note.
             note_tags: dict[str, set[str]] = {}
 
             for i in range(arrow_table.num_rows):
@@ -1487,13 +1428,13 @@ def register_search_tools(mcp, indexer, searcher):
                     note_tags[note_path] = set()
 
                 if tags_str:
-                    # Tags são comma-separated
+                    # Tags are stored as comma-separated text.
                     for tag in tags_str.split(","):
                         tag = tag.strip()
                         if tag:
                             note_tags[note_path].add(tag)
 
-            # Contar frequência de cada tag (quantas notas a usam)
+            # Count each tag once per note.
             tag_counter: Counter[str] = Counter()
             notes_with_tags = 0
 
@@ -1502,7 +1443,7 @@ def register_search_tools(mcp, indexer, searcher):
                     notes_with_tags += 1
                     tag_counter.update(tags)
 
-            # Ordenar por frequência e limitar
+            # Order by frequency and apply the limit.
             top_tags = [
                 {"tag": tag, "count": count} for tag, count in tag_counter.most_common(limit)
             ]
@@ -1514,7 +1455,9 @@ def register_search_tools(mcp, indexer, searcher):
             }
 
             logger.info(
-                f"tag_stats: {result['total_tags']} tags únicas, {notes_with_tags} notas com tags"
+                "tag_stats total_tags=%d notes_with_tags=%d",
+                result["total_tags"],
+                notes_with_tags,
             )
             return result
 
@@ -1527,21 +1470,20 @@ def register_search_tools(mcp, indexer, searcher):
         max_depth: int = FOLDER_TREE_MAX_DEPTH,
     ) -> dict[str, object] | str:
         """
-        Retorna a estrutura de pastas do vault como árvore hierárquica.
+        Return the vault folder structure as a hierarchy.
 
-        Útil para entender organização, descobrir pastas e navegar.
-        Usa o catálogo SQLite (eficiente, não escaneia filesystem).
+        Uses the SQLite catalog without scanning the filesystem.
 
-        Parâmetros:
-            include_counts: incluir contagem de notas por pasta (padrão: True)
-            max_depth: profundidade máxima da árvore, limitada pela configuração
+        Parameters:
+            include_counts: include note counts by folder
+            max_depth: hierarchy depth, bounded by configuration
 
-        Retorna:
-            Dict com total_folders, total_notes e tree hierárquico.
+        Returns:
+            Folder total, note total, and hierarchical tree.
         """
         from pathlib import PurePosixPath
 
-        # Guardrail: operação potencialmente cara
+        # Bound a potentially expensive read.
 
         max_depth = max(1, min(max_depth, FOLDER_TREE_MAX_DEPTH_LIMIT))
 
@@ -1553,7 +1495,7 @@ def register_search_tools(mcp, indexer, searcher):
             count: int,
             depth: int = 0,
         ) -> None:
-            """Insere um path na árvore recursivamente."""
+            """Insert one path into the hierarchy."""
             if not path_parts or depth >= max_depth:
                 return
 
@@ -1568,25 +1510,25 @@ def register_search_tools(mcp, indexer, searcher):
                 child = {}
                 tree[part] = child
 
-            # Acumular contagem neste nível
+            # Accumulate the count at this level.
             if include_counts:
                 if not remaining or depth + 1 >= max_depth:
-                    # Pasta folha ou truncada: adicionar contagem aqui
+                    # Count a leaf or depth-truncated folder here.
                     current_count = child.get("_count", 0)
                     child["_count"] = (
                         current_count if isinstance(current_count, int) else 0
                     ) + count
 
-            # Recursão para o próximo nível
+            # Continue to the next level.
             if remaining and depth + 1 < max_depth:
                 insert_path(child, remaining, count, depth + 1)
 
         try:
             catalog = get_catalog()
             if not catalog.is_available():
-                return "Erro: catálogo não disponível. Execute reindex_vault primeiro."
+                return "Error: catalog is unavailable. Run reindex_vault first."
 
-            # Query direta no SQLite para eficiência
+            # Aggregate folder counts in SQLite.
             with catalog._connection() as conn:
                 rows = conn.execute("""
                     SELECT folder, COUNT(*) as count
@@ -1602,7 +1544,7 @@ def register_search_tools(mcp, indexer, searcher):
                     "tree": {},
                 }
 
-            # Construir árvore recursivamente
+            # Build the hierarchy.
             tree: FolderTree = {}
             total_notes = 0
             all_folders: set[str] = set()
@@ -1613,21 +1555,21 @@ def register_search_tools(mcp, indexer, searcher):
                 total_notes += count
 
                 if not folder:
-                    # Notas na raiz
+                    # Notes in the vault root.
                     if include_counts:
                         root_count = tree.get("_count", 0)
                         tree["_count"] = (root_count if isinstance(root_count, int) else 0) + count
                     continue
 
-                # Usar PurePosixPath para parsing robusto de paths
+                # Parse stored POSIX paths.
                 path = PurePosixPath(folder)
                 parts = path.parts[:max_depth]
 
-                # Registrar todas as pastas intermediárias
+                # Record intermediate folders.
                 for i in range(1, len(parts) + 1):
                     all_folders.add("/".join(parts[:i]))
 
-                # Inserir na árvore recursivamente
+                # Insert the folder into the hierarchy.
                 insert_path(tree, parts, count)
 
             result = {
@@ -1636,7 +1578,11 @@ def register_search_tools(mcp, indexer, searcher):
                 "tree": tree,
             }
 
-            logger.info(f"folder_tree: {result['total_folders']} pastas, {total_notes} notas")
+            logger.info(
+                "folder_tree total_folders=%d total_notes=%d",
+                result["total_folders"],
+                total_notes,
+            )
             return result
 
         except Exception as e:
@@ -1649,27 +1595,25 @@ def register_search_tools(mcp, indexer, searcher):
         limit: int = 50,
     ) -> list[TaggedNote] | str:
         """
-        Busca notas por tags específicas (busca exata, sem semântica).
+        Find notes by exact tags without semantic search.
 
-        Complemento ao tag_stats: descobrir tags disponíveis, depois buscar.
-        Mais rápido que busca semântica para filtros por categoria.
+        Use tag_stats to discover available tags before filtering.
 
-        Parâmetros:
-            tags: lista de tags a buscar (ex: ["projeto", "2024"])
-            match_all: True = nota deve ter TODAS as tags (AND),
-                      False = nota deve ter QUALQUER tag (OR, padrão)
-            limit: máximo de notas retornadas (padrão: 50, máximo: 200)
+        Parameters:
+            tags: tags to find, such as ["project", "2024"]
+            match_all: require every tag when true, otherwise any tag
+            limit: maximum returned notes
 
-        Retorna:
-            Lista de notas com path, title, folder, tags e modified_at.
+        Returns:
+            Notes with path, title, folder, tags, and modified_at.
         """
-        # Guardrail: operação potencialmente cara
+        # Bound a potentially expensive read.
 
-        # Validação
+        # Validate input.
         if not tags:
-            return "Erro: lista de tags não pode ser vazia."
+            return "Error: tag list cannot be empty."
 
-        # Normalizar e limpar tags
+        # Normalize tags.
         clean_tags = []
         for tag in tags:
             if isinstance(tag, str):
@@ -1678,12 +1622,12 @@ def register_search_tools(mcp, indexer, searcher):
                     clean_tags.append(t)
 
         if not clean_tags:
-            return "Erro: nenhuma tag válida fornecida."
+            return "Error: no valid tag was provided."
 
-        # Limitar quantidade de tags para evitar queries muito complexas
+        # Bound the number of query clauses.
         if len(clean_tags) > 20:
             clean_tags = clean_tags[:20]
-            logger.warning("search_by_tags: lista truncada para 20 tags")
+            logger.warning("search_by_tags tags_truncated maximum_count=20")
 
         limit = max(1, min(limit, 200))
 
@@ -1701,20 +1645,17 @@ def register_search_tools(mcp, indexer, searcher):
             if total_rows == 0:
                 return []
 
-            # Query otimizada: buscar apenas colunas necessárias
-            # Usar filtro SQL para reduzir dados transferidos
+            # Select only fields needed by the response.
             query = table.search().select(
                 ["note_path", "note_title", "folder", "tags", "modified_at"]
             )
 
-            # Construir filtro WHERE com LIKE para cada tag
-            # Tags são armazenadas como "tag1, tag2, tag3"
+            # Build one WHERE predicate per stored comma-separated tag.
             conditions = []
             for tag in clean_tags:
-                # Escapar caracteres especiais SQL
+                # Escape SQL string delimiters.
                 escaped_tag = tag.replace("'", "''")
-                # Match: tag exata (não substring de outra tag)
-                # Casos: início ", tag", meio ", tag,", fim ", tag" ou única "tag"
+                # Match an exact tag at each possible list position.
                 conditions.append(
                     f"(tags = '{escaped_tag}' OR "
                     f"tags LIKE '{escaped_tag}, %' OR "
@@ -1722,26 +1663,26 @@ def register_search_tools(mcp, indexer, searcher):
                     f"tags LIKE '%, {escaped_tag}, %')"
                 )
 
-            # OR entre tags (filtro inicial)
+            # The initial database filter uses OR between tags.
             where_clause = " OR ".join(conditions)
             query = query.where(where_clause)
 
-            # Limitar resultados brutos (chunks)
+            # Read the filtered chunk rows.
             arrow_table = query.limit(total_rows).to_arrow()
 
-            # Agrupar por nota (evitar duplicatas de chunks)
+            # Deduplicate chunks by note.
             notes_map: dict[str, TaggedNote] = {}
 
             for i in range(arrow_table.num_rows):
                 note_path = arrow_table.column("note_path")[i].as_py()
 
                 if note_path in notes_map:
-                    continue  # Já processada
+                    continue
 
                 tags_str = arrow_table.column("tags")[i].as_py() or ""
                 note_tags = {t.strip().lower() for t in tags_str.split(",") if t.strip()}
 
-                # Para match_all, verificar se nota tem TODAS as tags
+                # Enforce all requested tags after deduplication.
                 if match_all:
                     if not all(t in note_tags for t in clean_tags):
                         continue
@@ -1754,12 +1695,12 @@ def register_search_tools(mcp, indexer, searcher):
                     "modified_at": arrow_table.column("modified_at")[i].as_py(),
                 }
 
-            # Ordenar por data (mais recente primeiro) e limitar
+            # Sort newest first and apply the limit.
             results = sorted(
                 notes_map.values(), key=lambda x: x["modified_at"] or "", reverse=True
             )[:limit]
 
-            logger.info(f"search_by_tags: encontradas {len(results)} notas")
+            logger.info("search_by_tags result_count=%d", len(results))
             return results
 
         except Exception as e:
@@ -1771,23 +1712,22 @@ def register_search_tools(mcp, indexer, searcher):
         extension: str | None = None,
     ) -> dict[str, object] | str:
         """
-        Retorna uma nota aleatória do vault.
+        Return a random vault note.
 
-        Útil para redescoberta, serendipidade e exploração.
-        Usa SQLite ORDER BY RANDOM() para eficiência.
+        Uses SQLite's random ordering over the filtered catalog.
 
-        Parâmetros:
-            folder: filtrar por pasta específica (opcional)
-            extension: filtrar por extensão (ex: ".md", ".pdf") (opcional)
+        Parameters:
+            folder: optional folder filter
+            extension: optional extension filter, such as .md or .pdf
 
-        Retorna:
-            Dict com path, title, folder, modified_at e size_bytes.
+        Returns:
+            Note path, title, folder, modification time, and size.
         """
         from vault_search.config.search import INDEXABLE_EXTENSIONS
 
-        # Guardrail: operação potencialmente cara
+        # Bound a potentially expensive read.
 
-        # Normalizar parâmetros
+        # Normalize filters.
         folder_filter = folder.strip() if folder and folder.strip() else None
         ext_filter = None
         if extension and extension.strip():
@@ -1796,7 +1736,7 @@ def register_search_tools(mcp, indexer, searcher):
                 ext = f".{ext}"
             if ext not in INDEXABLE_EXTENSIONS:
                 valid_exts = ", ".join(sorted(INDEXABLE_EXTENSIONS))
-                return f"Erro: extensão '{ext}' inválida. Válidas: {valid_exts}"
+                return f"Error: invalid extension '{ext}'. Valid values: {valid_exts}"
             ext_filter = ext
 
         logger.info(
@@ -1808,9 +1748,9 @@ def register_search_tools(mcp, indexer, searcher):
         try:
             catalog = get_catalog()
             if not catalog.is_available():
-                return "Erro: catálogo não disponível. Execute reindex_vault primeiro."
+                return "Error: catalog is unavailable. Run reindex_vault first."
 
-            # Query direta com ORDER BY RANDOM() LIMIT 1
+            # Select one random matching catalog row.
             from vault_search.utils.security import escape_like_pattern
 
             conditions = []
@@ -1842,11 +1782,11 @@ def register_search_tools(mcp, indexer, searcher):
                 ).fetchone()
 
             if not row:
-                msg = "Nenhuma nota encontrada"
+                msg = "No note found"
                 if folder_filter:
-                    msg += f" na pasta '{folder_filter}'"
+                    msg += f" in folder '{folder_filter}'"
                 if ext_filter:
-                    msg += f" com extensão '{ext_filter}'"
+                    msg += f" with extension '{ext_filter}'"
                 return msg + "."
 
             from datetime import datetime
@@ -1869,40 +1809,39 @@ def register_search_tools(mcp, indexer, searcher):
         folder: str = "daily",
     ) -> dict[str, object] | str:
         """
-        Retorna informações sobre a daily note de uma data específica.
+        Return information about the daily note for one date.
 
-        Daily notes seguem o padrão Obsidian: YYYY-MM-DD.md na pasta configurada.
-        Útil para verificar existência, obter contexto temporal ou integrar workflows.
+        Daily notes use the Obsidian YYYY-MM-DD.md convention in the selected folder.
 
-        Parâmetros:
-            date: data no formato ISO (ex: "2024-01-15"), None = hoje
-            folder: pasta das daily notes (padrão: "daily")
+        Parameters:
+            date: ISO date, such as 2024-01-15; defaults to today
+            folder: daily-note folder
 
-        Retorna:
-            Dict com exists, path e metadados se existe, ou expected_path se não.
+        Returns:
+            Existing note metadata, or the expected path when absent.
         """
         from datetime import date as date_type
         from datetime import datetime
 
-        # Guardrail: operação potencialmente cara
+        # Bound a potentially expensive read.
 
-        # Determinar data
+        # Resolve the date.
         if date:
             date = date.strip()
             try:
-                # Validar formato ISO
+                # Validate ISO format.
                 parsed_date = datetime.fromisoformat(date).date()
             except ValueError:
-                return f"Erro: formato de data inválido '{date}'. Use ISO: YYYY-MM-DD"
+                return f"Error: invalid date '{date}'. Use ISO format YYYY-MM-DD"
         else:
             parsed_date = date_type.today()
 
-        date_str = parsed_date.isoformat()  # YYYY-MM-DD
+        date_str = parsed_date.isoformat()
 
-        # Normalizar pasta
+        # Normalize the folder.
         folder = folder.strip() if folder and folder.strip() else "daily"
 
-        # Construir path esperado
+        # Build the expected path.
         expected_filename = f"{date_str}.md"
         expected_path = f"{folder}/{expected_filename}" if folder else expected_filename
 
@@ -1912,7 +1851,7 @@ def register_search_tools(mcp, indexer, searcher):
             file_path = resolve_path(expected_path)
             expected_path = file_path.relative_to(resolve_internal_path()).as_posix()
 
-            # Verificar no catálogo primeiro (mais eficiente)
+            # Check the catalog first.
             catalog = get_catalog()
 
             if catalog.is_available():
@@ -1939,7 +1878,7 @@ def register_search_tools(mcp, indexer, searcher):
                             "size_bytes": row["size"],
                         }
 
-            # Fallback: verificar filesystem diretamente
+            # Fall back to the filesystem.
             if file_path.exists():
                 stat = file_path.stat()
                 return {
@@ -1952,7 +1891,7 @@ def register_search_tools(mcp, indexer, searcher):
                     "size_bytes": stat.st_size,
                 }
 
-            # Não existe
+            # The daily note is absent.
             return {
                 "exists": False,
                 "expected_path": expected_path,

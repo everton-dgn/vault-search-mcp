@@ -1,32 +1,32 @@
-# Benchmarking reproduzível
+# Reproducible benchmarking
 
-## Princípio
+## Principle
 
-Desempenho é um resultado situado. Uma latência sem hardware, dataset, estado de
-cache e amostra não serve como baseline do projeto.
+Performance is environment-specific. A latency value without hardware, dataset,
+cache state, and sample count is not a project baseline.
 
-## Duas medições diferentes
+## Separate measurements
 
-1. `benchmark_search` mede o caminho de busca já configurado pelo servidor.
-2. A indexação inicial mede parsing, chunking, embeddings e gravação do índice.
+1. `benchmark_search` measures the configured search path in the server.
+2. Initial indexing measures scanning, parsing, chunking, embeddings, and index
+   persistence.
 
-Publique os resultados separadamente. Um ganho em cache aquecido não descreve o
-tempo de primeira execução.
+Publish them separately. Warm-cache search does not describe first-run cost.
 
-## Manifesto mínimo
+## Minimum manifest
 
 ```yaml
 project:
   version: "0.1.0"
-  commit: "<commit-testado>"
+  commit: "<tested-commit>"
 environment:
-  os: "<sistema-e-versão>"
+  os: "<system-and-version>"
   python: "3.14.x"
-  cpu: "<modelo>"
+  cpu: "<model>"
   ram_bytes: 0
   device: "cpu"
 dataset:
-  source: "fixture sintética"
+  source: "synthetic fixture"
   notes: 0
   chunks: 0
   index_bytes: 0
@@ -39,52 +39,49 @@ sample:
   runs: 0
 ```
 
-Substitua todos os valores antes de publicar. O manifesto incompleto é template,
-sem valor probatório.
+Replace every placeholder before publication. This template alone is not
+evidence.
 
-## Busca
+## Search
 
-No cliente MCP, chame `benchmark_search` com queries sintéticas que representem
-termos exatos, paráfrases, siglas e filtros. Registre cada configuração de modo
-separado:
+From an MCP client, call `benchmark_search` with synthetic queries representing
+exact terms, paraphrases, acronyms, and filters. Record each configuration
+separately:
 
-- semântica ou híbrida;
-- `top_k` e quantidade de candidatos;
-- reranker ativo;
-- daemon ou processo local;
-- cache frio ou aquecido.
+- semantic or hybrid retrieval;
+- `top_k` and candidate count;
+- reranker state;
+- daemon or in-process models;
+- cold or warm caches.
 
-Use ao menos uma rodada de aquecimento quando a pergunta for sobre estado
-aquecido. Publique mediana e p95, além da quantidade de amostras. Média isolada
-esconde caudas.
+Use a warmup when measuring warm state. Publish median, p95, and sample count.
+An average alone hides the tail.
 
-## Indexação
+## Indexing
 
-Crie um vault sintético versionável por gerador, sem copiar notas pessoais.
-Registre distribuição de tamanhos e formatos. Limpe apenas artefatos
-reconstruíveis por meio recuperável antes da rodada fria.
+Generate a versioned synthetic vault instead of copying personal notes. Record
+size and format distributions. Before a cold run, move only confirmed
+rebuildable artifacts through a recoverable mechanism.
 
 ```bash
 time uv run python -m vault_search.core.indexer
 ```
 
-O comando mede tempo de parede. Para comparar implementações, mantenha lockfile,
-modelo, device, dataset e estado de cache constantes.
+For comparisons, keep lockfile, model, device, dataset, and cache state fixed.
 
-## Relatório
+## Report contract
 
-| Campo | Obrigatório |
+| Field | Required |
 |---|---|
-| Commit, lockfile e versão Python | Sim |
-| Hardware, device e precisão | Sim |
-| Notas, chunks e tamanho do índice | Sim |
-| Warmups, amostras, mediana e p95 | Sim |
-| Comando ou payload MCP | Sim |
-| Dados brutos ou arquivo de resultado | Sim |
-| Interpretação e limitações | Sim |
+| Commit, lockfile, and Python version | yes |
+| Hardware, device, and precision | yes |
+| Note count, chunk count, and index size | yes |
+| Warmups, samples, median, and p95 | yes |
+| Exact command or MCP payload | yes |
+| Raw observations or result file | yes |
+| Interpretation and limitations | yes |
 
-## Estado da baseline pública
+## Public baseline state
 
-Ainda não existe uma baseline de release publicada com esse protocolo. Números
-antigos sem manifesto devem ser tratados como observações históricas, sem uso em
-comparação ou promessa de produto.
+No release baseline currently follows this complete protocol. Older numbers
+without a manifest are historical observations, not comparisons or promises.

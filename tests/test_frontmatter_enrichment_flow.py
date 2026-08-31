@@ -1,5 +1,5 @@
 """
-Testes de fluxo para defer/enriquecimento de frontmatter obrigatório.
+Tests for flow for defer/enrichment of frontmatter required.
 """
 
 from types import SimpleNamespace
@@ -26,7 +26,7 @@ def _make_config(enabled: bool, ai_enabled: bool, allow_defer: bool):
 
 
 def test_create_note_defer_required_missing_when_ai_enabled(tmp_path, monkeypatch):
-    """create_note deve aceitar required ausente quando defer está habilitado."""
+    """create_note must accept required missing when defer is enabled."""
     monkeypatch.setattr("vault_search.crud.validation.VAULT_PATH", tmp_path)
     monkeypatch.setattr(
         "vault_search.crud.write.get_config",
@@ -39,7 +39,7 @@ def test_create_note_defer_required_missing_when_ai_enabled(tmp_path, monkeypatc
             "errors": [
                 {
                     "field": "title",
-                    "message": "Campo obrigatório 'title' não encontrado",
+                    "message": "Required field 'title' was not found",
                     "code": "required_missing",
                     "value": None,
                 }
@@ -53,15 +53,15 @@ def test_create_note_defer_required_missing_when_ai_enabled(tmp_path, monkeypatc
 
     from vault_search.crud.write import create_note
 
-    result = create_note("nota.md", "Conteúdo")
+    result = create_note("note.md", "Content")
 
     assert result["success"] is True
-    assert (tmp_path / "nota.md").exists()
-    assert "id:" in (tmp_path / "nota.md").read_text(encoding="utf-8")
+    assert (tmp_path / "note.md").exists()
+    assert "id:" in (tmp_path / "note.md").read_text(encoding="utf-8")
 
 
 def test_create_note_blocks_required_missing_when_defer_disabled(tmp_path, monkeypatch):
-    """create_note deve falhar quando required ausente e defer não permitido."""
+    """create_note must fail when required missing and defer not allowed."""
     monkeypatch.setattr("vault_search.crud.validation.VAULT_PATH", tmp_path)
     monkeypatch.setattr(
         "vault_search.crud.write.get_config",
@@ -74,7 +74,7 @@ def test_create_note_blocks_required_missing_when_defer_disabled(tmp_path, monke
             "errors": [
                 {
                     "field": "title",
-                    "message": "Campo obrigatório 'title' não encontrado",
+                    "message": "Field required 'title' not found",
                     "code": "required_missing",
                     "value": None,
                 }
@@ -88,18 +88,18 @@ def test_create_note_blocks_required_missing_when_defer_disabled(tmp_path, monke
 
     from vault_search.crud.write import create_note
 
-    result = create_note("nota.md", "Conteúdo")
+    result = create_note("note.md", "Content")
 
     assert result["success"] is False
-    assert "Validação de frontmatter falhou" in result["message"]
-    assert not (tmp_path / "nota.md").exists()
+    assert "Frontmatter validation failed" in result["message"]
+    assert not (tmp_path / "note.md").exists()
 
 
 def test_enrich_note_marks_required_missing_when_ai_returns_empty(tmp_path, monkeypatch):
-    """enrich_note_frontmatter_required deve reportar required_missing sem dados úteis."""
+    """enrich_note_frontmatter_required reports required_missing without useful data."""
     monkeypatch.setattr("vault_search.crud.validation.VAULT_PATH", tmp_path)
-    note = tmp_path / "nota.md"
-    note.write_text("Conteúdo", encoding="utf-8")
+    note = tmp_path / "note.md"
+    note.write_text("Content", encoding="utf-8")
 
     validator = FrontmatterValidator(
         FrontmatterSchemaConfig(
@@ -122,17 +122,17 @@ def test_enrich_note_marks_required_missing_when_ai_returns_empty(tmp_path, monk
 
     from vault_search.crud.write import enrich_note_frontmatter_required
 
-    result = enrich_note_frontmatter_required("nota.md")
+    result = enrich_note_frontmatter_required("note.md")
 
     assert result["success"] is False
     assert result["error_code"] == "required_missing"
 
 
 def test_enrich_note_fills_required_field_when_value_is_empty(tmp_path, monkeypatch):
-    """Campo required vazio deve ser preenchido pela IA (não tratado como já existente)."""
+    """An empty required field must be enriched instead of treated as existing."""
     monkeypatch.setattr("vault_search.crud.validation.VAULT_PATH", tmp_path)
-    note = tmp_path / "nota.md"
-    note.write_text('---\ntitle: ""\n---\nConteúdo', encoding="utf-8")
+    note = tmp_path / "note.md"
+    note.write_text('---\ntitle: ""\n---\nContent', encoding="utf-8")
 
     validator = FrontmatterValidator(
         FrontmatterSchemaConfig(
@@ -150,7 +150,7 @@ def test_enrich_note_fills_required_field_when_value_is_empty(tmp_path, monkeypa
     )
     monkeypatch.setattr(
         "vault_search.crud.write.generate_required_fields_with_ai",
-        lambda **_: {"title": "Título gerado"},
+        lambda **_: {"title": "Generated title"},
     )
     monkeypatch.setattr(
         "vault_search.crud.write.validate_frontmatter_schema",
@@ -159,7 +159,7 @@ def test_enrich_note_fills_required_field_when_value_is_empty(tmp_path, monkeypa
 
     from vault_search.crud.write import enrich_note_frontmatter_required
 
-    result = enrich_note_frontmatter_required("nota.md")
+    result = enrich_note_frontmatter_required("note.md")
 
     assert result["success"] is True
     assert result.get("frontmatter_enriched") is True
@@ -167,14 +167,14 @@ def test_enrich_note_fills_required_field_when_value_is_empty(tmp_path, monkeypa
 
     raw = note.read_text(encoding="utf-8")
     fm, _ = parse_frontmatter(raw)
-    assert fm["title"] == "Título gerado"
+    assert fm["title"] == "Generated title"
 
 
 def test_enrich_note_persists_partial_when_strict_still_has_required_missing(tmp_path, monkeypatch):
-    """Quando IA retorna parcial, deve salvar campos gerados e não falhar."""
+    """When AI returns partial, must save fields generated and not fail."""
     monkeypatch.setattr("vault_search.crud.validation.VAULT_PATH", tmp_path)
-    note = tmp_path / "nota.md"
-    note.write_text("Conteúdo", encoding="utf-8")
+    note = tmp_path / "note.md"
+    note.write_text("Content", encoding="utf-8")
 
     validator = FrontmatterValidator(
         FrontmatterSchemaConfig(
@@ -193,13 +193,12 @@ def test_enrich_note_persists_partial_when_strict_still_has_required_missing(tmp
     )
     monkeypatch.setattr(
         "vault_search.crud.write.generate_required_fields_with_ai",
-        lambda **_: {"title": "Título parcial"},
+        lambda **_: {"title": "Partial title"},
     )
 
     def fail_with_required(_):
         raise ValueError(
-            "Validação de frontmatter falhou: description: Campo obrigatório "
-            "'description' não encontrado"
+            "Frontmatter validation failed: description: Required field 'description' was not found"
         )
 
     monkeypatch.setattr(
@@ -209,7 +208,7 @@ def test_enrich_note_persists_partial_when_strict_still_has_required_missing(tmp
 
     from vault_search.crud.write import enrich_note_frontmatter_required
 
-    result = enrich_note_frontmatter_required("nota.md")
+    result = enrich_note_frontmatter_required("note.md")
 
     assert result["success"] is True
     assert result.get("frontmatter_enriched") is True
@@ -218,13 +217,13 @@ def test_enrich_note_persists_partial_when_strict_still_has_required_missing(tmp
     assert result["_validation_warnings"][0]["code"] == "required_missing_partial"
 
     fm, _ = parse_frontmatter(note.read_text(encoding="utf-8"))
-    assert fm["title"] == "Título parcial"
+    assert fm["title"] == "Partial title"
 
 
 def test_reindex_note_does_not_call_frontmatter_enrichment(tmp_path, monkeypatch):
-    """reindex_note não deve mais chamar enriquecimento de frontmatter."""
-    note = tmp_path / "nota.md"
-    note.write_text("---\ntitle: Test\n---\nConteúdo", encoding="utf-8")
+    """reindex_note must not more call enrichment of frontmatter."""
+    note = tmp_path / "note.md"
+    note.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
     monkeypatch.setattr("vault_search.core.indexer.VAULT_PATH", tmp_path)
     monkeypatch.setattr("vault_search.core.indexer.validate_relative_path", lambda _: True)
@@ -244,19 +243,19 @@ def test_reindex_note_does_not_call_frontmatter_enrichment(tmp_path, monkeypatch
     indexer._models = MagicMock()
     indexer._models.embed_corpus.return_value = [[0.1] * 1024]
 
-    result = indexer.reindex_note("nota.md")
+    result = indexer.reindex_note("note.md")
 
-    # Nota é indexada sem tentar enriquecimento automático.
+    # The note is indexed without attempting automatic enrichment.
     assert result["status"] in ("updated", "empty")
     assert result.get("frontmatter_enriched", False) is False
 
 
-def test_reindex_note_no_longer_logs_enrichment_warning(tmp_path, monkeypatch, caplog):
-    """reindex_note não deve emitir warning de enriquecimento automático."""
+def test_reindex_note_in_longer_logs_enrichment_warning(tmp_path, monkeypatch, caplog):
+    """reindex_note must not emit warning of enrichment automatic."""
     import logging
 
-    note = tmp_path / "nota.md"
-    note.write_text("---\ntitle: Test\n---\nConteúdo", encoding="utf-8")
+    note = tmp_path / "note.md"
+    note.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
     monkeypatch.setattr("vault_search.core.indexer.VAULT_PATH", tmp_path)
     monkeypatch.setattr("vault_search.core.indexer.validate_relative_path", lambda _: True)
@@ -277,6 +276,6 @@ def test_reindex_note_no_longer_logs_enrichment_warning(tmp_path, monkeypatch, c
     indexer._models.embed_corpus.return_value = [[0.1] * 1024]
 
     with caplog.at_level(logging.WARNING):
-        indexer.reindex_note("nota.md")
+        indexer.reindex_note("note.md")
 
     assert "frontmatter_enrichment_failed_continuing" not in caplog.text

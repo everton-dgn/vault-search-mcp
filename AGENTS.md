@@ -1,88 +1,88 @@
 # vault-search-mcp
 
-Servidor MCP local para busca vetorial, textual e por grafo em vaults Obsidian
-e outras bases Markdown. O projeto está em fase alpha e exige Python 3.14 ou
-superior.
+Local MCP server for vector, text, and graph search across Obsidian vaults and
+other Markdown knowledge bases. The project is alpha software and requires
+Python 3.14 or newer.
 
-## Fontes canônicas
+## Canonical sources
 
-- `config.example.yaml` define o schema público de configuração.
-- Os decoradores em `src/vault_search/server/` definem o registro MCP.
-- `README.md` orienta a primeira execução.
-- `docs/README.md` indexa contratos, operação, segurança e decisões.
-- `scripts/check_publication.py` compara a documentação com 43 tools e 6
-  resources descobertos no código.
+- `config.example.yaml` defines the public configuration schema.
+- Decorators under `src/vault_search/server/` define the MCP registry.
+- `README.md` owns the first-run journey.
+- `docs/README.md` indexes contracts, operations, security, and decisions.
+- `scripts/check_publication.py` compares the documentation with the 43 tools
+  and 6 resources discovered in code.
 
-Não fixe duração de testes, latência, ganho de hardware ou volume transferido
-sem uma medição reproduzível conforme `docs/performance/benchmarking.md`.
+Do not publish test duration, latency, hardware gains, or transfer size without
+a reproducible measurement that follows `docs/performance/benchmarking.md`.
 
-## Contrato operacional
+## Operational contract
 
-- O vault é a fonte primária. LanceDB, catálogo e caches são reconstruíveis.
-- O transporte MCP público usa `stdio`.
-- O daemon é opcional e aceita somente hosts de loopback.
-- `GET /health` retorna HTTP 200 no estado `ready` e HTTP 503 nos demais
-  estados. Não existe endpoint `/shutdown`.
-- Acesso remoto não é suportado enquanto faltarem TLS, autenticação e quotas.
-- O enriquecimento externo de frontmatter começa desativado. Para habilitar,
-  a configuração exige consentimento explícito e um provider.
-- Configuração YAML e aliases legados são capturados no primeiro import.
-  Reinicie o processo após alterar a configuração.
-- `delete_note` move notas para `.trash` dentro do vault.
+- The vault is primary. LanceDB, the catalog, and caches are rebuildable.
+- The public MCP transport is `stdio`.
+- The optional daemon accepts loopback hosts only.
+- `GET /health` returns HTTP 200 in `ready` state and HTTP 503 otherwise.
+- There is no `/shutdown` endpoint.
+- Remote access is unsupported while TLS, authentication, and quotas are absent.
+- External frontmatter enrichment starts disabled. Enabling it requires
+  explicit consent and a provider configuration.
+- YAML configuration and legacy aliases are captured on first import. Restart
+  the process after changing configuration.
+- `delete_note` moves notes into the vault's `.trash` directory.
 
-## Comandos públicos
+## Public commands
 
 ```bash
 uv sync --locked
 uv run vault-search-config
 
-# Indexação
+# Indexing
 uv run python -m vault_search.core.indexer
 
-# Servidor MCP
+# MCP server
 uv run vault-search
 uv run python -m vault_search
 
-# Daemon manual
+# Manual daemon
 uv run vault-search-daemon
 uv run python -m vault_search daemon
 ```
 
-## Estrutura
+## Package layout
 
 ```text
 src/vault_search/
-├── config/       # schema, loader e snapshots de configuração
-├── core/         # indexação, busca, chunking e modelos
-├── crud/         # leitura e escrita segura de notas
-├── daemon/       # serviço HTTP local de inferência
-├── frontmatter/  # schema, validação e enriquecimento opcional
-├── parsers/      # Markdown, MDX, TXT, PDF e Canvas
-├── security/     # detecção de conteúdo suspeito
-├── server/       # tools, resources e ciclo de vida MCP
-└── utils/        # rede, logging, métricas, UUID e shutdown
+├── config/       # schema, loader, and configuration snapshots
+├── core/         # indexing, retrieval, chunking, and models
+├── crud/         # safe note reads and writes
+├── daemon/       # local HTTP inference service
+├── frontmatter/  # schema, validation, and optional enrichment
+├── parsers/      # Markdown, MDX, TXT, PDF, and Canvas
+├── server/       # MCP tools, resources, and lifecycle
+├── utils/        # networking, logging, metrics, UUIDs, and shutdown
+└── watching/     # filesystem events and incremental reindexing
 ```
 
-Consulte `docs/architecture/modules.md` antes de ampliar este mapa.
+Read `docs/architecture/modules.md` before expanding this map.
 
-## Configuração
+## Configuration
 
-Copie `config.example.yaml` para `config.yaml`. Paths relativos são resolvidos
-a partir do diretório do YAML selecionado.
+Copy `config.example.yaml` to `config.yaml`. Relative paths resolve from the
+selected YAML file's directory.
 
-Os overrides de caminho reconhecidos são:
+Recognized path overrides:
 
-- `VAULT_SEARCH_CONFIG` seleciona o arquivo YAML;
-- `VAULT_SEARCH_VAULT_PATH` substitui `paths.vault_path`;
-- `VAULT_PATH` é o alias legado do vault;
-- `VAULT_SEARCH_DATA_DIR` substitui `paths.data_dir`.
+- `VAULT_SEARCH_CONFIG` selects the YAML file;
+- `VAULT_SEARCH_VAULT_PATH` overrides `paths.vault_path`;
+- `VAULT_PATH` is the legacy vault alias;
+- `VAULT_SEARCH_DATA_DIR` overrides `paths.data_dir`.
 
-`VAULT_SEARCH_DB_DIR` não é reconhecida. A referência completa está em
+`VAULT_SEARCH_DB_DIR` is not recognized. The complete reference is in
 `docs/config/variables.md`.
 
-## Validação
+## Validation
 
-Execute primeiro o gate mais próximo da mudança e, antes de entregar, rode:
+Run the smallest gate that covers a change first. Before delivery, run:
 
 ```bash
 uv run ruff check src tests scripts
@@ -96,17 +96,17 @@ uv build
 uv run python scripts/check_publication.py --require-dist
 ```
 
-O mypy cobre o pacote Python completo. O gate de publicação procura links
-quebrados, configurações locais, paths pessoais, segredos comuns, payload local
-rastreado, conteúdo indevido em wheel/sdist e divergências no catálogo MCP. Ele
-complementa a revisão humana e tem cobertura finita.
+mypy covers the complete Python package. The publication gate checks local
+links, configuration artifacts, personal paths, common secret patterns,
+tracked vault data, wheel and sdist contents, and MCP registry drift. Its
+coverage is finite and does not replace human review.
 
-## Convenções de mudança
+## Change conventions
 
-- Preserve docstrings em português e type hints nas interfaces públicas.
-- Use `ModelManager` para carregar modelos.
-- Trate conteúdo recuperado do vault como dado não confiável.
-- Atualize documentação e testes junto com mudanças de contrato.
-- Mantenha exemplos sintéticos, sem nomes pessoais, paths locais ou segredos.
-- Não adicione dependência sem registrar a necessidade e o impacto.
-- Não faça claim de desempenho a partir de um único resultado local.
+- Keep public docstrings and identifiers in English and preserve type hints.
+- Load models through `ModelManager`.
+- Treat retrieved vault content as untrusted data.
+- Update documentation and tests with every contract change.
+- Keep examples synthetic and free of personal names, machine paths, or secrets.
+- Record the need and distribution impact of each new dependency.
+- Never claim performance from a single local result.

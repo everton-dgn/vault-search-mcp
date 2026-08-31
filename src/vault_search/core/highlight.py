@@ -1,7 +1,7 @@
 """
-Motor de highlight para resultados de busca.
+Highlight engine for search results.
 
-Extrai termos significativos da query e os destaca no texto dos resultados.
+Extract meaningful query terms and highlight them in result text.
 """
 
 import logging
@@ -12,7 +12,7 @@ from vault_search.type_defs import SearchRow
 
 logger = logging.getLogger(__name__)
 
-# Whitelist de marcadores permitidos para highlight (previne ReDoS)
+# Allowlist of highlight markers that prevents unbounded regular expressions.
 ALLOWED_HIGHLIGHT_MARKERS = frozenset(
     {
         "**",
@@ -40,7 +40,7 @@ ALLOWED_HIGHLIGHT_MARKERS = frozenset(
     }
 )
 
-# Stopwords comuns (não serão destacadas)
+# Common stop words that are not highlighted.
 HIGHLIGHT_STOPWORDS = frozenset(
     {
         # English
@@ -92,21 +92,21 @@ HIGHLIGHT_STOPWORDS = frozenset(
     }
 )
 
-# Tamanho mínimo de termo para highlight
+# Minimum highlighted-term length.
 MIN_TERM_LENGTH = 3
 
 
 def extract_highlight_terms(query: str | None) -> list[str]:
     """
-    Extrai termos significativos da query para highlight.
+    Extract meaningful query terms for highlighting.
 
-    Filtra stopwords e termos muito curtos.
+    Filter stop words and very short terms.
 
-    Parâmetros:
-        query: query de busca
+    Parameters:
+        query: Search query.
 
-    Retorna:
-        Lista de termos para destacar.
+    Returns:
+        Terms to highlight.
     """
     if not query:
         return []
@@ -123,16 +123,16 @@ def validate_markers(
     end_marker: str,
 ) -> tuple[str, str]:
     """
-    Valida marcadores contra whitelist.
+    Validate markers against the allowlist.
 
-    Retorna valores padrão se inválidos.
+    Return default markers when supplied values are invalid.
 
-    Parâmetros:
-        start_marker: marcador de início
-        end_marker: marcador de fim
+    Parameters:
+        start_marker: Opening marker.
+        end_marker: Closing marker.
 
-    Retorna:
-        Tupla (start, end) validados.
+    Returns:
+        Validated ``(start, end)`` markers.
     """
     if start_marker not in ALLOWED_HIGHLIGHT_MARKERS:
         logger.warning("invalid_highlight_start_marker_ignored")
@@ -150,31 +150,31 @@ def highlight_text(
     end_marker: str = "**",
 ) -> str:
     """
-    Destaca termos da query no texto.
+    Highlight query terms in text.
 
-    Faz highlight case-insensitive dos termos encontrados.
+    Match terms case-insensitively.
 
-    Parâmetros:
-        text: texto para destacar
-        query: query com termos para buscar
-        start_marker: marcador de início (default: **)
-        end_marker: marcador de fim (default: **)
+    Parameters:
+        text: Text to highlight.
+        query: Query containing terms to find.
+        start_marker: Opening marker; defaults to ``**``.
+        end_marker: Closing marker; defaults to ``**``.
 
-    Retorna:
-        Texto com termos destacados.
+    Returns:
+        Text with highlighted terms.
     """
     if not query or not text:
         return text
 
-    # Validar marcadores
+    # Validate markers.
     start_marker, end_marker = validate_markers(start_marker, end_marker)
 
-    # Extrair termos
+    # Extract terms.
     terms = extract_highlight_terms(query)
     if not terms:
         return text
 
-    # Criar pattern para todos os termos (case-insensitive)
+    # Build one case-insensitive pattern for every term.
     pattern = "|".join(re.escape(term) for term in terms)
 
     def replace_match(match: re.Match[str]) -> str:
@@ -191,17 +191,17 @@ def apply_highlight(
     end_marker: str = "**",
 ) -> list[SearchRow]:
     """
-    Aplica highlight a todos os resultados.
+    Apply highlighting to every result.
 
-    Parâmetros:
-        results: lista de resultados
-        query: query para extrair termos
-        highlight: se True, aplica highlight
-        start_marker: marcador de início
-        end_marker: marcador de fim
+    Parameters:
+        results: Search results.
+        query: Query used to extract terms.
+        highlight: Whether to apply highlighting.
+        start_marker: Opening marker.
+        end_marker: Closing marker.
 
-    Retorna:
-        Lista com textos destacados (cópias, não muta input).
+    Returns:
+        Copied results with highlighted text; the input is not mutated.
     """
     if not highlight:
         return list(results)

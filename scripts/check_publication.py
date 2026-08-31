@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verifica a superfície pública sem abrir arquivos sensíveis ou dados locais."""
+"""Validate the public surface without opening sensitive files or local data."""
 
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ CONTENT_PATTERNS = {
         r"(?:/(?:Users|home|root)/|/var/folders/|/Volumes/)[^/\s`\"']+|[A-Za-z]:\\Users\\[^\\\s]+",  # publication-check: synthetic-fixture
     ),
     "PLACEHOLDER_URL": re.compile(
-        r"github\.com/(?:user|seu-usuario|your-username)(?:/|\b)|your-username|seu-usuario",  # publication-check: synthetic-fixture
+        r"github\.com/(?:user|example-user|your-username)(?:/|\b)|your-username|example-user",  # publication-check: synthetic-fixture
         re.IGNORECASE,
     ),
     "PRIVATE_KEY": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -131,7 +131,7 @@ DESTRUCTIVE_COMMAND = re.compile(
 
 
 def is_sensitive_path(path: Path) -> bool:
-    """Identifica nomes proibidos sem ler o arquivo."""
+    """Identify prohibited names without reading the file."""
     lowered = path.name.lower()
     return (
         lowered in SENSITIVE_NAMES
@@ -143,7 +143,7 @@ def is_sensitive_path(path: Path) -> bool:
 
 
 def walk_public_files(root: Path) -> tuple[list[Path], list[Finding]]:
-    """Lista textos públicos e relata artefatos locais, sem segui-los nem abri-los."""
+    """List public text files and report local artifacts without opening them."""
     text_files: list[Path] = []
     findings: list[Finding] = []
 
@@ -157,7 +157,7 @@ def walk_public_files(root: Path) -> tuple[list[Path], list[Finding]]:
                     "PUBLIC_SYMLINK",
                     path,
                     None,
-                    "symlink público não é permitido; publique um arquivo regular",
+                    "public symlinks are not allowed; publish a regular file",
                 )
             )
             continue
@@ -175,18 +175,18 @@ def walk_public_files(root: Path) -> tuple[list[Path], list[Finding]]:
             or path.name.startswith("._")
             or path.name.endswith(".egg-info")
         ):
-            findings.append(Finding("GENERATED_ARTIFACT", path, None, "artefato local presente"))
+            findings.append(Finding("GENERATED_ARTIFACT", path, None, "local artifact present"))
             continue
         if is_sensitive_path(path):
-            findings.append(Finding("SENSITIVE_FILE", path, None, "nome de arquivo sensível"))
+            findings.append(Finding("SENSITIVE_FILE", path, None, "sensitive filename"))
             continue
         if path.is_dir():
             continue
         if relative.as_posix() in {"config.yaml", "config.yml"}:
-            findings.append(Finding("LOCAL_CONFIG", path, None, "configuração local na raiz"))
+            findings.append(Finding("LOCAL_CONFIG", path, None, "local configuration at root"))
             continue
         if path.name == ".env" or path.name.startswith(".env.") and path.name != ".env.example":
-            findings.append(Finding("LOCAL_CONFIG", path, None, "arquivo de ambiente local"))
+            findings.append(Finding("LOCAL_CONFIG", path, None, "local environment file"))
             continue
         if path.suffix.lower() in TEXT_SUFFIXES or path.name in TEXT_NAMES:
             text_files.append(path)
@@ -195,7 +195,7 @@ def walk_public_files(root: Path) -> tuple[list[Path], list[Finding]]:
 
 
 def _is_local_config_name(path: Path) -> bool:
-    """Identifica configurações locais pelo nome, sem abrir conteúdo."""
+    """Identify local configuration by name without opening its contents."""
     lowered = path.name.lower()
     if lowered == ".env" or lowered.startswith(".env.") and lowered != ".env.example":
         return True
@@ -208,34 +208,32 @@ def _is_local_config_name(path: Path) -> bool:
 
 
 def check_repository_paths(root: Path, tracked_paths: list[Path]) -> list[Finding]:
-    """Rejeita payload local ou gerado que tenha entrado na árvore Git."""
+    """Reject local or generated payloads tracked by Git."""
     findings: list[Finding] = []
     for relative in sorted(tracked_paths):
         if relative in ALLOWED_TRACKED_LOCAL_PATHS:
             continue
         path = root / relative
         if is_sensitive_path(relative):
-            findings.append(Finding("SENSITIVE_FILE", path, None, "arquivo sensível rastreado"))
+            findings.append(Finding("SENSITIVE_FILE", path, None, "tracked sensitive file"))
             continue
         if _is_local_config_name(relative):
             findings.append(
-                Finding("TRACKED_LOCAL_CONFIG", path, None, "configuração local rastreada")
+                Finding("TRACKED_LOCAL_CONFIG", path, None, "tracked local configuration")
             )
             continue
         first_part = relative.parts[0] if relative.parts else ""
         if first_part in TRACKED_LOCAL_DIRS:
-            findings.append(
-                Finding("TRACKED_LOCAL_DATA", path, None, "dado local rastreado no Git")
-            )
+            findings.append(Finding("TRACKED_LOCAL_DATA", path, None, "local data tracked by Git"))
         elif first_part in TRACKED_BUILD_DIRS:
             findings.append(
-                Finding("TRACKED_BUILD_ARTIFACT", path, None, "artefato gerado rastreado no Git")
+                Finding("TRACKED_BUILD_ARTIFACT", path, None, "generated artifact tracked by Git")
             )
     return findings
 
 
 def check_repository_inventory(root: Path) -> list[Finding]:
-    """Obtém a árvore rastreada sem inspecionar histórico nem conteúdo sensível."""
+    """Read the tracked tree without inspecting history or sensitive contents."""
     if not (root / ".git").exists():
         return []
     try:
@@ -250,7 +248,7 @@ def check_repository_inventory(root: Path) -> list[Finding]:
                 "GIT_INVENTORY",
                 root / ".git",
                 None,
-                f"não foi possível listar a árvore rastreada ({type(error).__name__})",
+                f"could not list the tracked tree ({type(error).__name__})",
             )
         ]
 
@@ -263,7 +261,7 @@ def check_repository_inventory(root: Path) -> list[Finding]:
 
 
 def _is_allowed_git_identity(name: str, email: str) -> bool:
-    """Aceita identidades genéricas e endereços no-reply, nunca e-mail pessoal."""
+    """Allow generic identities and no-reply addresses, never personal email."""
     normalized = (name.strip().casefold(), email.strip().casefold())
     normalized_email = normalized[1]
     return (
@@ -274,7 +272,7 @@ def _is_allowed_git_identity(name: str, email: str) -> bool:
 
 
 def check_repository_history(root: Path) -> list[Finding]:
-    """Rejeita e-mails pessoais nos autores e committers dos refs Git locais."""
+    """Reject personal email in authors and committers reachable from HEAD."""
     git_path = root / ".git"
     if not git_path.exists():
         return []
@@ -298,7 +296,7 @@ def check_repository_history(root: Path) -> list[Finding]:
                 "GIT_HISTORY",
                 git_path,
                 None,
-                f"não foi possível inspecionar o histórico ({type(error).__name__})",
+                f"could not inspect Git history ({type(error).__name__})",
             )
         ]
 
@@ -313,7 +311,7 @@ def check_repository_history(root: Path) -> list[Finding]:
                     "GIT_HISTORY",
                     git_path,
                     None,
-                    "registro de identidade Git inválido",
+                    "invalid Git identity record",
                 )
             )
             continue
@@ -324,7 +322,7 @@ def check_repository_history(root: Path) -> list[Finding]:
         commit = raw_commit.decode("ascii", errors="replace")[:12]
         identities = (
             (
-                "autor",
+                "author",
                 raw_author_name.decode("utf-8", errors="replace"),
                 raw_author_email.decode("utf-8", errors="replace"),
             ),
@@ -341,7 +339,7 @@ def check_repository_history(root: Path) -> list[Finding]:
                         "GIT_HISTORY_IDENTITY",
                         git_path,
                         None,
-                        f"commit {commit}: {role} usa e-mail público não permitido",
+                        f"commit {commit}: {role} uses a prohibited public email address",
                     )
                 )
 
@@ -349,7 +347,7 @@ def check_repository_history(root: Path) -> list[Finding]:
 
 
 def _archive_member_is_public(name: str) -> bool:
-    """Diz se um nome interno pode pertencer a um artefato público."""
+    """Return whether an archive member name may belong to a public artifact."""
     member = PurePosixPath(name)
     parts = member.parts
     if member.is_absolute() or ".." in parts:
@@ -363,13 +361,13 @@ def _archive_member_is_public(name: str) -> bool:
 
 
 def _archive_member_findings(archive: Path, names: list[str]) -> list[Finding]:
-    """Valida nomes de membros sem extrair o arquivo."""
+    """Validate member names without extracting the archive."""
     findings: list[Finding] = []
     seen: set[str] = set()
     for name in names:
         if name in seen:
             findings.append(
-                Finding("DIST_DUPLICATE_MEMBER", archive, None, f"membro duplicado: {name}")
+                Finding("DIST_DUPLICATE_MEMBER", archive, None, f"duplicate member: {name}")
             )
             continue
         seen.add(name)
@@ -378,31 +376,31 @@ def _archive_member_findings(archive: Path, names: list[str]) -> list[Finding]:
         parts = member.parts
         if member.is_absolute() or ".." in parts:
             findings.append(
-                Finding("DIST_UNSAFE_PATH", archive, None, f"path inseguro no pacote: {name}")
+                Finding("DIST_UNSAFE_PATH", archive, None, f"unsafe archive path: {name}")
             )
             continue
         relative = Path(*parts) if parts else Path()
         if is_sensitive_path(relative) or _is_local_config_name(relative):
             findings.append(
-                Finding("DIST_LOCAL_PAYLOAD", archive, None, f"arquivo local no pacote: {name}")
+                Finding("DIST_LOCAL_PAYLOAD", archive, None, f"local file in archive: {name}")
             )
             continue
         if any(part in ARCHIVE_LOCAL_DIRS for part in parts):
             findings.append(
-                Finding("DIST_LOCAL_PAYLOAD", archive, None, f"diretório local no pacote: {name}")
+                Finding("DIST_LOCAL_PAYLOAD", archive, None, f"local directory in archive: {name}")
             )
     return findings
 
 
 def _scan_text_content(path: Path, content: str, *, member: str | None = None) -> list[Finding]:
-    """Procura conteúdo público proibido sem reproduzir o valor encontrado."""
+    """Find prohibited public content without reproducing matched values."""
     findings: list[Finding] = []
     prefix = "DIST_" if member is not None else ""
     for line_number, line in enumerate(content.splitlines(), start=1):
         if SYNTHETIC_FIXTURE_MARKER in line:
             continue
 
-        location = f"membro {member}:{line_number}: " if member is not None else ""
+        location = f"member {member}:{line_number}: " if member is not None else ""
         finding_line = None if member is not None else line_number
         for code, pattern in CONTENT_PATTERNS.items():
             if pattern.search(line):
@@ -411,7 +409,7 @@ def _scan_text_content(path: Path, content: str, *, member: str | None = None) -
                         f"{prefix}{code}",
                         path,
                         finding_line,
-                        f"{location}padrão público proibido",
+                        f"{location}prohibited public pattern",
                     )
                 )
 
@@ -422,14 +420,14 @@ def _scan_text_content(path: Path, content: str, *, member: str | None = None) -
                         f"{prefix}EMAIL",
                         path,
                         finding_line,
-                        f"{location}endereço não sintético",
+                        f"{location}non-synthetic address",
                     )
                 )
     return findings
 
 
 def _scan_archive_text(archive: Path, member: str, data: bytes) -> list[Finding]:
-    """Inspeciona um membro textual em memória, sem extrair o artefato."""
+    """Inspect a text member in memory without extracting the artifact."""
     relative = Path(*PurePosixPath(member).parts)
     if relative.suffix.lower() not in TEXT_SUFFIXES and relative.name not in TEXT_NAMES:
         return []
@@ -439,7 +437,7 @@ def _scan_archive_text(archive: Path, member: str, data: bytes) -> list[Finding]
                 "DIST_TEXT_TOO_LARGE",
                 archive,
                 None,
-                f"membro textual excede {MAX_ARCHIVE_TEXT_BYTES} bytes: {member}",
+                f"text member exceeds {MAX_ARCHIVE_TEXT_BYTES} bytes: {member}",
             )
         ]
     try:
@@ -450,18 +448,18 @@ def _scan_archive_text(archive: Path, member: str, data: bytes) -> list[Finding]
                 "DIST_ENCODING",
                 archive,
                 None,
-                f"membro textual não está em UTF-8: {member}",
+                f"text member is not UTF-8: {member}",
             )
         ]
     return _scan_text_content(archive, content, member=member)
 
 
 def check_distribution_archives(root: Path, *, require_dist: bool = False) -> list[Finding]:
-    """Inspeciona wheel e sdist por nome de membro, sem extrair os pacotes."""
+    """Inspect wheel and sdist members without extracting the packages."""
     dist_dir = root / "dist"
     if not dist_dir.exists():
         return (
-            [Finding("DIST_MISSING", dist_dir, None, "diretório dist ausente")]
+            [Finding("DIST_MISSING", dist_dir, None, "dist directory is missing")]
             if require_dist
             else []
         )
@@ -470,7 +468,7 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
     sdists = sorted(dist_dir.glob("*.tar.gz"))
     if not wheels and not sdists:
         return (
-            [Finding("DIST_MISSING", dist_dir, None, "wheel e sdist ausentes")]
+            [Finding("DIST_MISSING", dist_dir, None, "wheel and sdist are missing")]
             if require_dist
             else []
         )
@@ -478,7 +476,7 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
     findings: list[Finding] = []
     if require_dist and (not wheels or not sdists):
         missing = "wheel" if not wheels else "sdist"
-        findings.append(Finding("DIST_INCOMPLETE", dist_dir, None, f"{missing} ausente"))
+        findings.append(Finding("DIST_INCOMPLETE", dist_dir, None, f"missing {missing}"))
 
     for archive in wheels:
         try:
@@ -494,7 +492,7 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
                                 "DIST_UNSAFE_MEMBER",
                                 archive,
                                 None,
-                                f"link simbólico no pacote: {member.filename}",
+                                f"symlink in archive: {member.filename}",
                             )
                         )
                         continue
@@ -508,7 +506,7 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
                                     "DIST_TEXT_TOO_LARGE",
                                     archive,
                                     None,
-                                    "membro textual excede "
+                                    "text member exceeds "
                                     f"{MAX_ARCHIVE_TEXT_BYTES} bytes: {member.filename}",
                                 )
                             )
@@ -522,7 +520,7 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
                     "DIST_INVALID",
                     archive,
                     None,
-                    f"wheel inválido ({type(error).__name__})",
+                    f"invalid wheel ({type(error).__name__})",
                 )
             )
             continue
@@ -542,7 +540,7 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
                                 "DIST_UNSAFE_MEMBER",
                                 archive,
                                 None,
-                                f"membro especial no pacote: {member.name}",
+                                f"special member in archive: {member.name}",
                             )
                         )
                         continue
@@ -554,7 +552,7 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
                                     "DIST_TEXT_TOO_LARGE",
                                     archive,
                                     None,
-                                    "membro textual excede "
+                                    "text member exceeds "
                                     f"{MAX_ARCHIVE_TEXT_BYTES} bytes: {member.name}",
                                 )
                             )
@@ -566,7 +564,7 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
                                 "DIST_INVALID",
                                 archive,
                                 None,
-                                f"não foi possível ler o membro: {member.name}",
+                                f"could not read archive member: {member.name}",
                             )
                         )
                         continue
@@ -577,7 +575,7 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
                     "DIST_INVALID",
                     archive,
                     None,
-                    f"sdist inválido ({type(error).__name__})",
+                    f"invalid sdist ({type(error).__name__})",
                 )
             )
             continue
@@ -586,27 +584,25 @@ def check_distribution_archives(root: Path, *, require_dist: bool = False) -> li
 
 
 def scan_content(paths: list[Path]) -> list[Finding]:
-    """Procura paths pessoais, placeholders e tokens nos textos públicos."""
+    """Find personal paths, placeholders, and tokens in public text files."""
     findings: list[Finding] = []
     for path in paths:
         try:
             content = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            findings.append(Finding("ENCODING", path, None, "texto público não está em UTF-8"))
+            findings.append(Finding("ENCODING", path, None, "public text is not UTF-8"))
             continue
 
         findings.extend(_scan_text_content(path, content))
 
         if path.suffix in {".md", ".sh"} and DESTRUCTIVE_COMMAND.search(content):
-            findings.append(
-                Finding("DESTRUCTIVE_DELETE", path, None, "comando de exclusão permanente")
-            )
+            findings.append(Finding("DESTRUCTIVE_DELETE", path, None, "permanent deletion command"))
 
     return findings
 
 
 def _normalized_reference(label: str) -> str:
-    """Aplica a normalização case-insensitive usada por referências Markdown."""
+    """Apply the case-insensitive normalization used by Markdown references."""
     return " ".join(label.split()).casefold()
 
 
@@ -617,7 +613,7 @@ def _check_markdown_target(
     target: str,
     offset: int,
 ) -> Finding | None:
-    """Valida um destino local e devolve a posição da declaração."""
+    """Validate a local target and preserve the declaration position."""
     target = target.strip().split()[0].strip("<>")
     if not target or target.startswith(("#", "http://", "https://", "mailto:")):
         return None
@@ -628,11 +624,11 @@ def _check_markdown_target(
     if resolved.is_relative_to(root.resolve()) and resolved.exists():
         return None
     line = content.count("\n", 0, offset) + 1
-    return Finding("BROKEN_LINK", path, line, f"destino ausente: {target}")
+    return Finding("BROKEN_LINK", path, line, f"missing target: {target}")
 
 
 def check_markdown_links(root: Path, paths: list[Path]) -> list[Finding]:
-    """Confere links inline e por referência, incluindo destinos locais."""
+    """Check inline and reference links, including local targets."""
     findings: list[Finding] = []
     for path in (candidate for candidate in paths if candidate.suffix == ".md"):
         content = path.read_text(encoding="utf-8")
@@ -652,7 +648,7 @@ def check_markdown_links(root: Path, paths: list[Path]) -> list[Finding]:
                         "DUPLICATE_REFERENCE",
                         path,
                         line,
-                        f"referência Markdown duplicada: {label}",
+                        f"duplicate Markdown reference: {label}",
                     )
                 )
                 continue
@@ -671,14 +667,14 @@ def check_markdown_links(root: Path, paths: list[Path]) -> list[Finding]:
                     "BROKEN_REFERENCE",
                     path,
                     line,
-                    f"referência Markdown ausente: {label}",
+                    f"missing Markdown reference: {label}",
                 )
             )
     return findings
 
 
 def discover_mcp(root: Path) -> tuple[list[str], list[str]]:
-    """Descobre nomes e URIs MCP diretamente nos decoradores de produção."""
+    """Discover MCP names and URIs directly from production decorators."""
     server_dir = root / "src" / "vault_search" / "server"
     tools: list[str] = []
     resources: list[str] = []
@@ -695,13 +691,13 @@ def discover_mcp(root: Path) -> tuple[list[str], list[str]]:
 
 
 def count_mcp(root: Path) -> tuple[int, int]:
-    """Conta registros MCP descobertos no código de produção."""
+    """Count MCP registrations discovered in production code."""
     tools, resources = discover_mcp(root)
     return len(tools), len(resources)
 
 
 def check_mcp_contract(root: Path) -> list[Finding]:
-    """Compara nomes, URIs e contagem do código com os índices públicos."""
+    """Compare code names, URIs, and counts with the public indexes."""
     tools, resources = discover_mcp(root)
     findings: list[Finding] = []
     if (len(tools), len(resources)) != (43, 6):
@@ -710,7 +706,7 @@ def check_mcp_contract(root: Path) -> list[Finding]:
                 "MCP_COUNT",
                 root / "src" / "vault_search" / "server",
                 None,
-                f"encontrado {len(tools)} tools e {len(resources)} resources; esperado 43 e 6",
+                f"found {len(tools)} tools and {len(resources)} resources; expected 43 and 6",
             )
         )
 
@@ -722,32 +718,56 @@ def check_mcp_contract(root: Path) -> list[Finding]:
                     "MCP_DUPLICATE",
                     root / "src" / "vault_search" / "server",
                     None,
-                    f"{label}(s) duplicado(s): {', '.join(duplicates)}",
+                    f"duplicate {label}(s): {', '.join(duplicates)}",
                 )
             )
 
     for path in (root / "README.md", root / "docs" / "api" / "tools.md"):
         content = path.read_text(encoding="utf-8")
         if "43 tools" not in content or "6 resources" not in content:
-            findings.append(Finding("MCP_DOC_COUNT", path, None, "contagem canônica não declarada"))
+            findings.append(Finding("MCP_DOC_COUNT", path, None, "canonical count not declared"))
 
     catalog_path = root / "docs" / "api" / "tools.md"
     catalog = catalog_path.read_text(encoding="utf-8")
     for tool_name in tools:
         if f"`{tool_name}`" not in catalog:
             findings.append(
-                Finding("MCP_DOC_TOOL", catalog_path, None, f"tool ausente: {tool_name}")
+                Finding("MCP_DOC_TOOL", catalog_path, None, f"missing tool: {tool_name}")
             )
     for resource_uri in resources:
         if f"`{resource_uri}`" not in catalog:
             findings.append(
-                Finding("MCP_DOC_RESOURCE", catalog_path, None, f"resource ausente: {resource_uri}")
+                Finding("MCP_DOC_RESOURCE", catalog_path, None, f"missing resource: {resource_uri}")
             )
     return findings
 
 
+def _check_public_document_contracts(path: Path, content: str) -> list[Finding]:
+    """Reject removed endpoints and internal entry points in one public document."""
+    findings: list[Finding] = []
+    if "/shutdown" in content:
+        findings.append(
+            Finding(
+                "REMOVED_DAEMON_ENDPOINT",
+                path,
+                None,
+                "the removed /shutdown endpoint must not appear in public documentation",
+            )
+        )
+    if re.search(r"python\s+-m\s+vault_search\.(?:server\.mcp|daemon\.server)", content):
+        findings.append(
+            Finding(
+                "INTERNAL_ENTRYPOINT",
+                path,
+                None,
+                "use python -m vault_search [daemon] in public documentation",
+            )
+        )
+    return findings
+
+
 def check_public_contracts(root: Path) -> list[Finding]:
-    """Mantém contratos críticos alinhados entre código, exemplo e documentação."""
+    """Keep critical contracts aligned across code, examples, and documentation."""
     findings: list[Finding] = []
     daemon_source = (root / "src" / "vault_search" / "daemon" / "server.py").read_text(
         encoding="utf-8"
@@ -759,7 +779,7 @@ def check_public_contracts(root: Path) -> list[Finding]:
 
     for endpoint in sorted(runtime_endpoints - documented_endpoints):
         findings.append(
-            Finding("DAEMON_DOC_ENDPOINT", daemon_docs_path, None, f"endpoint ausente: {endpoint}")
+            Finding("DAEMON_DOC_ENDPOINT", daemon_docs_path, None, f"missing endpoint: {endpoint}")
         )
     for endpoint in sorted(documented_endpoints - runtime_endpoints):
         findings.append(
@@ -767,14 +787,14 @@ def check_public_contracts(root: Path) -> list[Finding]:
                 "DAEMON_DOC_ENDPOINT",
                 daemon_docs_path,
                 None,
-                f"endpoint não registrado: {endpoint}",
+                f"unregistered endpoint: {endpoint}",
             )
         )
 
     required_fragments = {
         root / "README.md": (
-            "Snapshot de 5.000 notas",
-            "Acesso remoto ao daemon não é suportado",
+            "Snapshot of up to 5,000 notes",
+            "Remote daemon access is unsupported",
             "--cov-fail-under=65",
             "uv run mypy src/vault_search",
         ),
@@ -783,37 +803,38 @@ def check_public_contracts(root: Path) -> list[Finding]:
             "uv run mypy src/vault_search",
         ),
         root / "docs" / "api" / "tools-indexing.md": (
-            "contagens observadas",
-            "não modifica o índice",
+            "It does not parse files",
+            "does not create an ANN index",
         ),
         root / "docs" / "api" / "tools-navigation.md": (
             '"returned_notes"',
             '"has_more"',
         ),
         root / "docs" / "features" / "link-index.md": (
-            '"returned_notes"',
-            '"has_more"',
+            "`returned_notes`",
+            "`has_more`",
         ),
         root / "docs" / "api" / "tools-resources.md": (
-            "primeiras 5.000",
-            "portanto não permite buscar",
-            '"returned"',
-            '"has_more"',
+            "first 5,000",
+            "Use `list_notes` for pagination or filtering",
+            "`returned`",
+            "`has_more`",
         ),
         root / "docs" / "api" / "tools-graph.md": (
-            "Tarjan iterativo",
+            "iterative Tarjan",
             '"separated_branches"',
             '"returned_notes"',
         ),
         root / "docs" / "features" / "ai-enrichment.md": (
-            "1.000 paths",
+            "job accepts at most 1,000",
             "`queue_full`",
             "200 jobs",
-            "`returned` e `truncated`",
+            "`returned`",
+            "`truncated`",
         ),
         root / "docs" / "performance" / "indexing.md": (
-            "conta os arquivos observados",
-            "O retorno não estima duração",
+            "counts files in the current scan",
+            "does not estimate duration",
         ),
         root / "docs" / "development" / "testing.md": (
             "--cov-fail-under=65",
@@ -822,11 +843,11 @@ def check_public_contracts(root: Path) -> list[Finding]:
         root / "docs" / "config" / "variables.md": (
             "`VAULT_PATH`",
             "`VAULT_SEARCH_DATA_DIR`",
-            "`VAULT_SEARCH_DB_DIR` não é reconhecida",
+            "`VAULT_SEARCH_DB_DIR` is not recognized",
         ),
         daemon_docs_path: (
             "HTTP 503",
-            "TLS, autenticação, quotas",
+            "TLS, authentication, quotas",
         ),
     }
     for path, fragments in required_fragments.items():
@@ -834,7 +855,7 @@ def check_public_contracts(root: Path) -> list[Finding]:
         for fragment in fragments:
             if fragment not in content:
                 findings.append(
-                    Finding("PUBLIC_CONTRACT", path, None, f"declaração ausente: {fragment}")
+                    Finding("PUBLIC_CONTRACT", path, None, f"missing declaration: {fragment}")
                 )
 
     config_example = (root / "config.example.yaml").read_text(encoding="utf-8")
@@ -844,7 +865,7 @@ def check_public_contracts(root: Path) -> list[Finding]:
                 "UNSUPPORTED_CONFIG",
                 root / "config.example.yaml",
                 None,
-                "allow_remote não pertence ao schema público",
+                "allow_remote is not part of the public schema",
             )
         )
     if 'host: "127.0.0.1"' not in config_example:
@@ -853,31 +874,14 @@ def check_public_contracts(root: Path) -> list[Finding]:
                 "UNSAFE_DAEMON_EXAMPLE",
                 root / "config.example.yaml",
                 None,
-                "o exemplo deve manter host de loopback explícito",
+                "the example must keep an explicit loopback host",
             )
         )
 
     public_docs = [root / "README.md", *(root / "docs").rglob("*.md")]
     for path in public_docs:
         content = path.read_text(encoding="utf-8")
-        if "/shutdown" in content:
-            findings.append(
-                Finding(
-                    "REMOVED_DAEMON_ENDPOINT",
-                    path,
-                    None,
-                    "a documentação ainda expõe /shutdown",
-                )
-            )
-        if re.search(r"python\s+-m\s+vault_search\.(?:server\.mcp|daemon\.server)", content):
-            findings.append(
-                Finding(
-                    "INTERNAL_ENTRYPOINT",
-                    path,
-                    None,
-                    "use python -m vault_search [daemon] na documentação pública",
-                )
-            )
+        findings.extend(_check_public_document_contracts(path, content))
 
     return findings
 
@@ -888,12 +892,12 @@ def parse_args() -> argparse.Namespace:
         "--root",
         type=Path,
         default=Path(__file__).resolve().parent.parent,
-        help="raiz do projeto",
+        help="project root",
     )
     parser.add_argument(
         "--require-dist",
         action="store_true",
-        help="exige e inspeciona ao menos um wheel e um sdist",
+        help="require and inspect at least one wheel and one sdist",
     )
     return parser.parse_args()
 
@@ -916,12 +920,12 @@ def main() -> int:
     if unique_findings:
         for finding in unique_findings:
             print(finding.render(root), file=sys.stderr)
-        print(f"publication check: {len(unique_findings)} problema(s)", file=sys.stderr)
+        print(f"publication check: {len(unique_findings)} problem(s)", file=sys.stderr)
         return 1
 
     tools, resources = count_mcp(root)
     print(
-        f"publication check: ok; {len(public_files)} textos; {tools} tools; {resources} resources"
+        f"publication check: ok; {len(public_files)} text files; {tools} tools; {resources} resources"
     )
     return 0
 

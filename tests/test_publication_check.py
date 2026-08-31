@@ -1,4 +1,4 @@
-"""Regressões do gate que protege a superfície pública do repositório."""
+"""Regressions of the gate that protects a surface public of the repository."""
 
 from __future__ import annotations
 
@@ -195,7 +195,7 @@ def test_distribution_check_accepts_regular_wheel_and_sdist(tmp_path: Path):
 
 def test_markdown_check_rejects_undefined_reference(tmp_path: Path):
     readme = tmp_path / "README.md"
-    readme.write_text("Leia [o guia][missing].\n", encoding="utf-8")
+    readme.write_text("Read the [guide][missing].\n", encoding="utf-8")
 
     findings = publication.check_markdown_links(tmp_path, [readme])
 
@@ -205,10 +205,32 @@ def test_markdown_check_rejects_undefined_reference(tmp_path: Path):
 def test_markdown_check_rejects_missing_reference_target(tmp_path: Path):
     readme = tmp_path / "README.md"
     readme.write_text(
-        "Leia [o guia][guide].\n\n[guide]: docs/missing.md\n",
+        "Read the [guide][guide].\n\n[guide]: docs/missing.md\n",
         encoding="utf-8",
     )
 
     findings = publication.check_markdown_links(tmp_path, [readme])
 
     assert any(finding.code == "BROKEN_LINK" for finding in findings)
+
+
+def test_public_document_contract_rejects_removed_shutdown_endpoint(tmp_path: Path):
+    readme = tmp_path / "README.md"
+
+    findings = publication._check_public_document_contracts(
+        readme,
+        "Call `/shutdown` to stop the daemon.\n",
+    )
+
+    assert [finding.code for finding in findings] == ["REMOVED_DAEMON_ENDPOINT"]
+
+
+def test_public_document_contract_allows_documenting_signal_only_shutdown(tmp_path: Path):
+    readme = tmp_path / "README.md"
+
+    findings = publication._check_public_document_contracts(
+        readme,
+        "Stop the daemon through the service manager or a local signal.\n",
+    )
+
+    assert findings == []

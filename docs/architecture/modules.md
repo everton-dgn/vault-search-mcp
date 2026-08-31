@@ -1,148 +1,157 @@
-# Mapa de módulos
+# Module map
 
-Este documento mostra responsabilidades e dependências principais. Ele não
-declara estabilidade para símbolos internos. Os contratos públicos ficam na
-[referência MCP](../api/tools.md).
+This page describes responsibilities and primary dependencies. It does not
+promise stability for internal symbols. Public contracts live in the
+[MCP reference](../api/tools.md).
 
-## Árvore do pacote
+## Package tree
 
 ```text
 src/vault_search/
-├── config/       # schema, carga YAML e snapshots compatíveis
-├── core/         # scanner, chunking, modelos, indexação e busca
-├── crud/         # leitura, escrita, validação e catálogo de notas
-├── daemon/       # servidor HTTP local e cliente de modelos
-├── frontmatter/  # schema, coerção, validação e enriquecimento opcional
-├── parsers/      # Markdown, MDX, texto, PDF e Canvas
-├── server/       # aplicação MCP, tools, resources e watcher
-├── utils/        # logging, privacidade, retry, shutdown e helpers
-├── __init__.py   # exports de compatibilidade
-└── type_defs.py  # TypedDicts compartilhados
+├── config/       # schema, YAML loading, and compatible snapshots
+├── core/         # scanner, chunking, models, indexing, and search
+├── crud/         # note reads, writes, validation, and catalog
+├── daemon/       # local HTTP model server and client
+├── frontmatter/  # schema, coercion, validation, and optional enrichment
+├── parsers/      # Markdown, MDX, text, PDF, and Canvas
+├── server/       # MCP application, tools, resources, and lifecycle
+├── utils/        # logging, privacy, retries, shutdown, and helpers
+├── watching/     # filesystem events and incremental reindexing
+├── __init__.py   # compatibility exports
+└── type_defs.py  # shared TypedDict contracts
 ```
 
 ## `config`
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 |---|---|
-| `settings.py` | Modelos Pydantic estritos e defaults |
-| `loader.py` | Descoberta do YAML, precedência, resolução de paths e cache |
-| `paths.py` | `VAULT_PATH`, `DATA_DIR`, `DB_DIR` e aliases de ambiente |
-| `embedding.py` | Modelo, dimensão, device e precisão efetivos |
-| `search.py` | Busca, indexação, FTS, ANN, navegação e prewarm |
-| `chunking.py` | Tamanho, overlap, headers e separadores |
-| `security.py` | Limites técnicos usados pelo runtime |
-| `watcher.py` | Debounce, polling e timeout de encerramento |
-| `pdf.py` | OCR, idiomas e DPI |
+| `settings.py` | Strict Pydantic models and defaults |
+| `loader.py` | YAML discovery, precedence, path resolution, and cache |
+| `paths.py` | `VAULT_PATH`, `DATA_DIR`, `DB_DIR`, and environment aliases |
+| `embedding.py` | Effective model, dimension, device, and precision |
+| `search.py` | Search, indexing, FTS, ANN, navigation, and prewarm constants |
+| `chunking.py` | Size, overlap, headers, and separators |
+| `security.py` | Runtime technical limits |
+| `watcher.py` | Debounce, polling, and shutdown timeout |
+| `pdf.py` | OCR, languages, and DPI |
 
-`get_config()` mantém a instância em cache. Os módulos de constantes capturam a
-configuração no primeiro import para preservar consumidores existentes. Alterar
-YAML ou aliases exige reiniciar o processo.
+`get_config()` caches one instance. Compatibility constant modules capture
+configuration on first import. Restart after changing YAML or aliases.
 
 ## `core`
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 |---|---|
-| `scanner.py` | Seleção segura dos arquivos indexáveis |
-| `chunker.py` | Divisão recursiva e overlap |
-| `models.py` | Embedding, reranking e escolha entre daemon e processo local |
-| `indexer.py` | Indexação completa, incremental, links, aliases, FTS e ANN |
-| `searcher.py` | Busca vetorial, textual, híbrida e cache de queries |
-| `batch_processor.py` | Embedding de lotes e montagem de registros |
-| `fts_builder.py` | Criação e manutenção do índice textual |
-| `highlight.py` | Destaque controlado de termos |
-| `result_formatter.py` | Formatação de resultados de busca |
-| `exceptions.py` | Exceções do domínio de indexação |
+| `scanner.py` | Safe selection of indexable files |
+| `chunker.py` | Recursive splitting with overlap |
+| `models.py` | Embedding, reranking, and daemon/local selection |
+| `indexer.py` | Full and incremental indexing, links, aliases, FTS, and ANN |
+| `searcher.py` | Vector, text, and hybrid retrieval plus query cache |
+| `batch_processor.py` | Batched embedding and record assembly |
+| `fts_builder.py` | Full-text index creation and maintenance |
+| `highlight.py` | Bounded term highlighting |
+| `result_formatter.py` | Search response formatting |
+| `exceptions.py` | Indexing domain exceptions |
 
-O índice é derivado. A reindexação completa usa staging antes de trocar a
-geração canônica; a indexação incremental serializa escrita com as demais
-operações do indexador.
+The index is derived. Full rebuilds stage a replacement before changing the
+canonical generation. Incremental indexing shares write serialization with
+other indexer operations.
 
 ## `crud`
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 |---|---|
-| `validation.py` | Contenção de path, extensão, tamanho e frontmatter |
-| `read.py` | Conteúdo, metadados e listagem paginada |
-| `write.py` | Criação, substituição e append de notas |
-| `delete.py` | Movimentação e envio recuperável para `.trash/` |
-| `catalog.py` | Catálogo SQLite reconstruível |
-| `cache.py` | Cache local de metadados |
-| `types.py` | Tipos dos retornos CRUD |
+| `validation.py` | Path containment, extensions, size, and frontmatter |
+| `read.py` | Content, metadata, and paginated listing |
+| `write.py` | Create, replace, append, and enrichment persistence |
+| `delete.py` | Movement, rename, and recoverable `.trash/` behavior |
+| `catalog.py` | Rebuildable SQLite catalog |
+| `cache.py` | Local metadata cache |
+| `types.py` | CRUD response types |
 
-O vault é a fonte primária. Catálogo, cache e índices podem ser reconstruídos.
+The vault is primary. Catalog, cache, and indexes are rebuildable.
 
 ## `daemon`
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 |---|---|
-| `server.py` | HTTP em loopback, warmup, readiness, limites e watcher |
-| `client.py` | Probes, cache curto de disponibilidade e chamadas de inferência |
+| `server.py` | Loopback HTTP, warmup, readiness, limits, and watcher |
+| `client.py` | Probes, short availability cache, and inference calls |
 
-O daemon não fala MCP. Ele mantém modelos residentes para o `ModelManager` e
-aceita somente host de loopback. `/health` retorna 200 apenas em `ready`.
+The daemon does not speak MCP. It keeps models resident for `ModelManager`,
+accepts loopback hosts only, and returns HTTP 200 from `/health` only when
+`ready`.
 
 ## `frontmatter`
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 |---|---|
-| `schema.py` | Definição e validação de campos |
-| `types.py` | Tipos do schema e dos resultados |
-| `coercion.py` | Conversões explícitas de valores |
-| `validator.py` | Aplicação do modo e das regras configuradas |
-| `enrichment.py` | Processo externo opcional via stdin |
+| `schema.py` | Field definition and validation |
+| `types.py` | Schema and result types |
+| `coercion.py` | Explicit value conversions |
+| `validator.py` | Mode and rule application |
+| `enrichment.py` | Optional external process over `stdin` |
 
-O enriquecimento começa desativado e só pode ser habilitado com consentimento e
-provider declarados.
+Enrichment starts disabled and requires explicit consent plus a declared
+provider.
 
 ## `parsers`
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 |---|---|
-| `markdown.py` | Markdown, texto e extração estrutural |
-| `mdx.py` | Remoção controlada de JSX antes do parsing textual |
-| `pdf.py` | Extração PyMuPDF e OCR opcional |
-| `canvas.py` | Nós de texto e arquivo do Obsidian Canvas |
-| `frontmatter.py` | Separação de YAML e corpo da nota |
+| `markdown.py` | Markdown, text, and structural extraction |
+| `mdx.py` | Controlled JSX removal before text parsing |
+| `pdf.py` | PyMuPDF extraction and optional OCR |
+| `canvas.py` | Obsidian Canvas text nodes, file nodes, and labels |
+| `frontmatter.py` | YAML/body separation |
 
-O dispatcher fica em `parsers/__init__.py`. Formatos e operações permitidas
-estão em [file-formats.md](../features/file-formats.md).
+The dispatcher lives in `parsers/__init__.py`. See
+[file formats](../features/file-formats.md).
 
 ## `server`
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 |---|---|
-| `mcp.py` | FastMCP, registro dos domínios e ciclo de vida |
-| `search_tools.py` | Busca, indexação, sistema e navegação |
-| `crud_tools.py` | Leitura e escrita de notas e frontmatter |
-| `graph_tools.py` | Exportação, componentes e pontos de articulação |
-| `resource_tools.py` | Seis resources somente de leitura |
-| `watcher.py` | Worker de reindexação incremental |
-| `event_handler.py` | Normalização e fila de eventos do filesystem |
-| `frontmatter_jobs.py` | Fila assíncrona de enriquecimento |
-| `helpers.py` | Validação e utilitários compartilhados pelas tools |
-| `errors.py` | Respostas públicas sanitizadas |
+| `mcp.py` | FastMCP, domain registration, and lifecycle |
+| `search_tools.py` | Search, indexing, system, and navigation tools |
+| `crud_tools.py` | Note and frontmatter reads and writes |
+| `graph_tools.py` | Graph export, components, and articulation points |
+| `resource_tools.py` | Six read-only resources |
+| `frontmatter_jobs.py` | Asynchronous enrichment queue |
+| `helpers.py` | Shared tool validation and utilities |
+| `errors.py` | Sanitized public failures |
 
-O registro atual contém 43 tools e 6 resources. O gate de publicação conta os
-decoradores diretamente no código.
+The current registry contains 43 tools and 6 resources. Publication checks
+count decorators directly.
+
+## `watching`
+
+| File | Responsibility |
+|---|---|
+| `watcher.py` | Incremental reindex worker and catalog reconciliation |
+| `event_handler.py` | Filesystem event normalization and coalescing |
+
+The package initializer has no runtime imports. CRUD operations can register
+internal file revisions without loading index or MCP modules.
 
 ## `utils`
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 |---|---|
-| `logging.py` | Logging estruturado e sanitização de contexto |
-| `privacy.py` | Redação recursiva de valores sensíveis |
-| `security.py` | Escape de SQL e validações auxiliares |
-| `network.py` | Identificação de endereços de loopback |
-| `shutdown.py` | Sinais, callbacks e seções protegidas |
-| `retry.py` | Retry limitado e circuit breaker |
-| `metrics.py` | Medições locais e health agregado |
-| `links.py` | Extração e normalização de links |
-| `chunking.py` | Helpers de lote e coleta |
-| `metadata.py` | Metadados de arquivo e título |
-| `math.py` | Normalização de vetores |
-| `uuid.py` | Geração e validação de UUID v7 |
+| `logging.py` | Structured logs and context sanitization |
+| `privacy.py` | Recursive sensitive-value redaction |
+| `security.py` | SQL escaping and auxiliary validation |
+| `network.py` | Loopback-address recognition |
+| `shutdown.py` | Signals, callbacks, and protected sections |
+| `retry.py` | Bounded retries and circuit breaker |
+| `metrics.py` | Local measurements and aggregate health |
+| `links.py` | Link extraction and normalization |
+| `chunking.py` | Batch and collection helpers |
+| `metadata.py` | File metadata and title helpers |
+| `math.py` | Vector normalization |
+| `uuid.py` | UUID v7 generation and validation |
 
-## Direção das dependências
+## Dependency direction
 
 ```mermaid
 flowchart LR
@@ -159,6 +168,5 @@ flowchart LR
     MCP --> Utils
 ```
 
-Evite importar `server` a partir das camadas inferiores. Configuração e helpers
-podem ser compartilhados, mas efeitos de inicialização devem permanecer nos
-entry points.
+Lower layers should not import `server`. Configuration and helpers can be
+shared, but initialization effects belong in entry points.

@@ -1,5 +1,5 @@
 """
-Testes para o sistema de configuração YAML + Pydantic.
+Tests for the system of configuration YAML + Pydantic.
 """
 
 import json
@@ -35,16 +35,16 @@ from vault_search.config.settings import (
 
 @pytest.mark.parametrize("host", ["192.0.2.10", "example.test", "0.0.0.0"])
 def test_daemon_config_rejects_remote_host(host):
-    """Configuração nunca pode encaminhar notas para HTTP remoto."""
+    """Configuration never can route notes for HTTP remote."""
     with pytest.raises(ValueError, match="loopback"):
         load_config_from_dict({"daemon": {"host": host}})
 
 
 class TestVaultSearchConfig:
-    """Testes para o modelo raiz de configuração."""
+    """Tests for the model root of configuration."""
 
     def test_default_values(self):
-        """Configuração default deve ter valores sensíveis."""
+        """Configuration default must have values sensitive."""
         config = VaultSearchConfig()
 
         assert config.search.top_k == 10
@@ -57,18 +57,18 @@ class TestVaultSearchConfig:
         assert ".git" in config.indexing.ignored_folders
 
     def test_nested_config_access(self):
-        """Acesso a configurações aninhadas funciona."""
+        """Nested configuration access works."""
         config = VaultSearchConfig()
 
         assert config.paths.lancedb_table == "vault_chunks"
 
     def test_unknown_fields_are_rejected(self):
-        """Typos de configuração devem falhar cedo."""
+        """Typos of configuration must fail early."""
         with pytest.raises(ValueError, match="extra_forbidden"):
             VaultSearchConfig.model_validate({"daemon": {"timout": 3}})
 
     def test_resolve_paths(self, tmp_path):
-        """resolve_paths() converte paths relativos para absolutos."""
+        """resolve_paths() converts paths relative for absolute."""
         config = VaultSearchConfig(
             paths=PathsConfig(
                 vault_path="my_vault",
@@ -83,10 +83,10 @@ class TestVaultSearchConfig:
 
 
 class TestPathsConfig:
-    """Testes para configuração de paths."""
+    """Tests for configuration of paths."""
 
     def test_default_paths(self):
-        """Paths default são relativos ao projeto."""
+        """Paths default are relative to the project."""
         config = PathsConfig()
 
         assert config.vault_path == "vaults/obsidian_vault"
@@ -94,7 +94,7 @@ class TestPathsConfig:
         assert config.lancedb_table == "vault_chunks"
 
     def test_custom_paths(self):
-        """Paths customizados funcionam."""
+        """Custom paths work."""
         config = PathsConfig(
             vault_path="/custom/vault",
             data_dir="/custom/data",
@@ -105,10 +105,10 @@ class TestPathsConfig:
 
 
 class TestSearchConfig:
-    """Testes para configuração de busca."""
+    """Tests for configuration of search."""
 
     def test_default_values(self):
-        """Valores default de busca."""
+        """Values default of search."""
         config = SearchConfig()
 
         assert config.candidates == 50
@@ -118,16 +118,16 @@ class TestSearchConfig:
         assert config.top_k_max == 100
 
     def test_validation_top_k_range(self):
-        """top_k deve estar dentro dos limites."""
-        # Válido
+        """top_k must be inside of the limits."""
+        # Valid
         config = SearchConfig(top_k=50)
         assert config.top_k == 50
 
-        # Inválido - abaixo do mínimo
+        # Invalid: below the minimum.
         with pytest.raises(ValueError):
             SearchConfig(top_k=0)
 
-        # Inválido - acima do máximo
+        # Invalid: above the maximum.
         with pytest.raises(ValueError):
             SearchConfig(top_k=101)
 
@@ -144,13 +144,13 @@ class TestSearchConfig:
         ],
     )
     def test_rejects_contradictory_ranges(self, overrides, message):
-        """Limites contraditórios devem falhar na carga, antes da primeira busca."""
+        """Limits contradictory must fail in the loading, before of the first search."""
         with pytest.raises(ValueError, match=message):
             SearchConfig(**overrides)
 
 
 class TestIndexingConfig:
-    """Testes para extensões e diretórios ignorados na indexação."""
+    """Tests for extensions and directories ignored in the indexing."""
 
     @pytest.mark.parametrize(
         "extensions",
@@ -172,10 +172,10 @@ class TestIndexingConfig:
 
 
 class TestChunkingConfig:
-    """Testes para configuração de chunking."""
+    """Tests for configuration of chunking."""
 
     def test_default_values(self):
-        """Valores default de chunking."""
+        """Values default of chunking."""
         config = ChunkingConfig()
 
         assert config.size == 2000
@@ -184,21 +184,21 @@ class TestChunkingConfig:
         assert config.separators == ["\n\n", "\n", ". ", " "]
 
     def test_overlap_validation(self):
-        """Overlap deve ser menor que size."""
-        # Válido
+        """Overlap is smaller than chunk size."""
+        # Valid
         config = ChunkingConfig(size=1000, overlap=100)
         assert config.overlap == 100
 
-        # Inválido - overlap >= size
-        with pytest.raises(ValueError, match="overlap.*deve ser menor"):
+        # Invalid - overlap >= size
+        with pytest.raises(ValueError, match="overlap.*must be smaller"):
             ChunkingConfig(size=1000, overlap=1000)
 
 
 class TestEmbeddingConfig:
-    """Testes para configuração de embedding."""
+    """Tests for configuration of embedding."""
 
     def test_default_values(self):
-        """Valores default de embedding."""
+        """Values default of embedding."""
         config = EmbeddingConfig()
 
         assert config.model == "BAAI/bge-m3"
@@ -207,13 +207,13 @@ class TestEmbeddingConfig:
         assert config.device == "auto"
 
     def test_device_validation(self):
-        """Device deve ser válido."""
-        # Válidos
+        """Only supported devices are accepted."""
+        # Valid
         for device in ["auto", "cpu", "cuda", "mps"]:
             config = EmbeddingConfig(device=device)
             assert config.device == device
 
-        # Inválido
+        # Invalid
         with pytest.raises(ValueError):
             EmbeddingConfig(device="invalid")
 
@@ -242,7 +242,7 @@ class TestEmbeddingConfig:
         assert resolve_fp16("cpu", configured=True) is False
 
     def test_tilde_paths_are_expanded_before_project_resolution(self, tmp_path, monkeypatch):
-        """Paths com til devem apontar para o diretório pessoal efetivo."""
+        """Paths containing a tilde must resolve to the effective home directory."""
         monkeypatch.setenv("HOME", str(tmp_path))
         config = VaultSearchConfig(paths=PathsConfig(vault_path="~/vault", data_dir="~/index"))
 
@@ -253,10 +253,10 @@ class TestEmbeddingConfig:
 
 
 class TestSecurityConfig:
-    """Testes para configuração de segurança."""
+    """Tests for configuration of security."""
 
     def test_default_values(self):
-        """Valores default de segurança."""
+        """Values default of security."""
         config = SecurityConfig()
 
         assert config.max_query_length == 10_000
@@ -264,22 +264,22 @@ class TestSecurityConfig:
         assert config.max_frontmatter_keys == 100
 
     def test_positive_values(self):
-        """Valores devem ser positivos."""
+        """The configured values are positive."""
         with pytest.raises(ValueError):
             SecurityConfig(max_query_length=0)
 
     @pytest.mark.parametrize("field", ["rate_limit", "reindex_timeout", "log_query_max_length"])
     def test_rejects_reserved_fields_without_runtime_effect(self, field):
-        """A configuração pública não deve aceitar controles que não são aplicados."""
+        """A configuration public must not accept controls that are not applied."""
         with pytest.raises(ValueError, match="extra_forbidden"):
             SecurityConfig.model_validate({field: 1})
 
 
 class TestPrewarmConfig:
-    """Testes para configuração de prewarm."""
+    """Tests for configuration of prewarm."""
 
     def test_default_values(self):
-        """Valores default de prewarm."""
+        """Values default of prewarm."""
         config = PrewarmConfig()
 
         assert config.enabled is True
@@ -288,10 +288,10 @@ class TestPrewarmConfig:
 
 
 class TestVectorIndexConfig:
-    """Testes para configuração de índice vetorial."""
+    """Tests for configuration of index vector."""
 
     def test_default_values(self):
-        """Valores default de índice vetorial."""
+        """Values default of index vector."""
         config = VectorIndexConfig()
 
         assert config.min_chunks == 5000
@@ -301,18 +301,18 @@ class TestVectorIndexConfig:
         assert config.distance_type == "cosine"
 
     def test_index_type_validation(self):
-        """Tipo de índice deve ser válido."""
-        # Válidos
+        """Type of index must be valid."""
+        # Valid
         for index_type in ["IVF_PQ", "IVF_HNSW_SQ"]:
             config = VectorIndexConfig(index_type=index_type)
             assert config.index_type == index_type
 
-        # Inválido
+        # Invalid
         with pytest.raises(ValueError):
             VectorIndexConfig(index_type="INVALID")
 
     def test_ivf_pq_subvectors_must_divide_embedding_dimension(self):
-        """Configuração ANN inválida deve falhar antes de uma indexação demorada."""
+        """Configuration ANN invalid must fail before of a indexing slow."""
         with pytest.raises(ValueError, match="num_sub_vectors"):
             VaultSearchConfig.model_validate(
                 {
@@ -323,7 +323,7 @@ class TestVectorIndexConfig:
 
 
 class TestNavigationConfig:
-    """Testes para limites da árvore de pastas."""
+    """Tests for limits of the tree of folders."""
 
     def test_default_depth_cannot_exceed_public_limit(self):
         with pytest.raises(ValueError, match="folder_tree_max_depth"):
@@ -331,10 +331,10 @@ class TestNavigationConfig:
 
 
 class TestFrontmatterAIConfig:
-    """Testes para configuração de enriquecimento de frontmatter via IA."""
+    """Tests for configuration of enrichment of frontmatter via AI."""
 
     def test_default_values(self):
-        """Valores default de frontmatter.ai."""
+        """Values default of frontmatter.ai."""
         config = FrontmatterAIConfig()
 
         assert config.enabled is False
@@ -371,35 +371,35 @@ class TestFrontmatterAIConfig:
 
 
 class TestLoadConfigFromDict:
-    """Testes para load_config_from_dict()."""
+    """Tests for load_config_from_dict()."""
 
     def test_empty_dict(self):
-        """Dict vazio usa defaults."""
+        """An empty mapping uses defaults."""
         config = load_config_from_dict({})
 
         assert config.search.top_k == 10
         assert config.embedding.model == "BAAI/bge-m3"
 
     def test_partial_override(self):
-        """Override parcial mantém outros defaults."""
+        """Override partial keeps other defaults."""
         config = load_config_from_dict({"search": {"top_k": 20}})
 
         assert config.search.top_k == 20
-        assert config.search.candidates == 50  # Default mantido
+        assert config.search.candidates == 50  # Default preserved
 
     def test_nested_override(self):
-        """Override de configs aninhadas."""
+        """Override nested configuration values."""
         config = load_config_from_dict({"search": {"score_precision": 2}})
 
         assert config.search.score_precision == 2
-        assert config.search.top_k == 10  # Default mantido
+        assert config.search.top_k == 10  # Default preserved
 
 
 class TestLoadConfigFromFile:
-    """Testes para load_config_from_file()."""
+    """Tests for load_config_from_file()."""
 
     def test_valid_yaml(self, tmp_path):
-        """YAML válido é carregado corretamente."""
+        """YAML valid is loaded correctly."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
             yaml.dump(
@@ -416,7 +416,7 @@ class TestLoadConfigFromFile:
         assert config.fts.language == "English"
 
     def test_empty_yaml(self, tmp_path):
-        """YAML vazio usa defaults."""
+        """YAML empty uses defaults."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text("")
 
@@ -436,12 +436,12 @@ class TestLoadConfigFromFile:
         assert config.paths.data_dir == str(tmp_path / "index")
 
     def test_file_not_found(self, tmp_path):
-        """Arquivo inexistente levanta erro."""
+        """A missing file raises an error."""
         with pytest.raises(FileNotFoundError):
             load_config_from_file(tmp_path / "nonexistent.yaml")
 
     def test_invalid_yaml(self, tmp_path):
-        """YAML inválido levanta erro."""
+        """Invalid YAML raises an error."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text("search: { invalid yaml")
 
@@ -450,24 +450,24 @@ class TestLoadConfigFromFile:
 
 
 class TestGetConfig:
-    """Testes para get_config()."""
+    """Tests for get_config()."""
 
     def test_returns_config(self):
-        """get_config() retorna configuração válida."""
+        """get_config() returns configuration valid."""
         config = get_config()
 
         assert isinstance(config, VaultSearchConfig)
         assert config.search.top_k > 0
 
     def test_cached(self):
-        """get_config() retorna mesma instância (cached)."""
+        """get_config() returns same instance (cached)."""
         config1 = get_config()
         config2 = get_config()
 
         assert config1 is config2
 
     def test_explicit_missing_config_fails_fast(self, tmp_path, monkeypatch):
-        """Override inválido não pode cair silenciosamente nos defaults."""
+        """An invalid override cannot silently fall back to defaults."""
         monkeypatch.setenv("VAULT_SEARCH_CONFIG", str(tmp_path / "missing.yaml"))
         get_config.cache_clear()
         try:
@@ -479,24 +479,24 @@ class TestGetConfig:
 
 
 class TestReloadConfig:
-    """Testes para reload_config()."""
+    """Tests for reload_config()."""
 
     def test_clears_cache(self):
-        """reload_config() limpa o cache."""
+        """reload_config() clears the cache."""
         get_config()
         reload_config()
         config2 = get_config()
 
-        # Após reload, deve ser nova instância
-        # (na prática, pode ser igual se não houver mudança no arquivo)
+        # After reload, must be new instance
+        # (in the practice, can be equal if not there are change in the file)
         assert isinstance(config2, VaultSearchConfig)
 
 
 class TestLegacyCompatibility:
-    """Testes de compatibilidade com imports legados."""
+    """Tests for compatibility with legacy imports."""
 
     def test_paths_import(self):
-        """Imports de paths funcionam."""
+        """Path imports must work."""
         from vault_search.config.paths import DATA_DIR, LANCEDB_TABLE, VAULT_PATH
 
         assert VAULT_PATH is not None
@@ -504,7 +504,7 @@ class TestLegacyCompatibility:
         assert LANCEDB_TABLE == "vault_chunks"
 
     def test_search_import(self):
-        """Imports de search funcionam."""
+        """Search configuration imports work."""
         from vault_search.config.search import (
             FTS_LANGUAGE,
             SEARCH_CANDIDATES,
@@ -516,7 +516,7 @@ class TestLegacyCompatibility:
         assert FTS_LANGUAGE is None
 
     def test_security_import(self):
-        """Imports de security funcionam."""
+        """Security configuration imports work."""
         from vault_search.config.security import (
             MAX_QUERY_LENGTH,
             RiskLevel,
@@ -526,7 +526,7 @@ class TestLegacyCompatibility:
         assert RiskLevel.LOW.value == "low"
 
     def test_legacy_constants_use_yaml_on_initial_import(self, tmp_path):
-        """Aliases legados devem refletir o YAML no primeiro import do processo."""
+        """Legacy aliases must reflect YAML values on the process's first import."""
         config_path = tmp_path / "runtime.yaml"
         config_path.write_text(
             yaml.safe_dump(
@@ -649,22 +649,22 @@ print(json.dumps({
 
 
 class TestConfigExampleFile:
-    """Testes para o arquivo config.example.yaml."""
+    """Tests for the file config.example.yaml."""
 
     def test_example_file_is_valid(self):
-        """config.example.yaml deve ser YAML válido e gerar config válida."""
+        """config.example.yaml is valid YAML and produces a valid configuration."""
         example_path = Path(__file__).parent.parent / "config.example.yaml"
 
         if example_path.exists():
             with open(example_path) as f:
                 data = yaml.safe_load(f)
 
-            # Deve ser carregável como config válida
+            # The example must load as valid configuration.
             config = VaultSearchConfig.model_validate(data)
             assert config.search.top_k > 0
 
     def test_example_operational_defaults_match_pydantic_defaults(self):
-        """O exemplo pode adicionar schema, mas não mudar defaults operacionais em silêncio."""
+        """The example may add a schema but must not silently change operational defaults."""
         example_path = Path(__file__).parent.parent / "config.example.yaml"
         data = yaml.safe_load(example_path.read_text(encoding="utf-8"))
 
@@ -677,7 +677,7 @@ class TestConfigExampleFile:
 
 
 def test_folder_tree_tool_uses_configured_default(tmp_path):
-    """O default publicado pela tool deve refletir navigation.folder_tree_max_depth."""
+    """The published tool default must reflect navigation.folder_tree_max_depth."""
     config_path = tmp_path / "runtime.yaml"
     config_path.write_text(
         yaml.safe_dump(

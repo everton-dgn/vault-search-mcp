@@ -1,8 +1,8 @@
 """
-Cliente HTTP para conectar ao daemon de modelos.
+HTTP client for the local model daemon.
 
-O MCP server usa este cliente para delegar embed/rerank ao daemon
-quando ele está rodando, evitando carregar modelos localmente.
+The MCP server uses this client to delegate embedding and reranking when the
+daemon is ready, avoiding a second local model load.
 """
 
 import json
@@ -23,16 +23,41 @@ _READY_STATES = frozenset({"ready", "healthy"})
 MAX_DAEMON_RESPONSE_BYTES = 64 * 1024 * 1024
 
 
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    """Keep daemon requests on the original loopback endpoint."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+def _open_loopback(request: urllib.request.Request, *, timeout: float) -> Any:
+    """Open a loopback request without consulting environment proxy settings."""
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _RejectRedirects(),
+    )
+    return opener.open(request, timeout=timeout)
+
+
 def _models_are_loaded(loaded: Any) -> bool:
-    """Normaliza os contratos booleano e detalhado de versões anteriores."""
+    """Normalize legacy boolean and current detailed readiness contracts."""
     if isinstance(loaded, dict):
-        return bool(loaded.get("embed_model") and loaded.get("reranker_model"))
-    return bool(loaded)
+        return loaded.get("embed_model") is True and loaded.get("reranker_model") is True
+    return type(loaded) is bool and loaded
 
 
-def _health_is_ready(health: dict[str, Any]) -> bool:
-    """Aceita o contrato atual e a resposta legada ``healthy``."""
-    return health.get("status") in _READY_STATES and _models_are_loaded(health.get("models_loaded"))
+def _health_is_ready(health: dict[str, Any], expected_pid: int | None = None) -> bool:
+    """Validate readiness and, when supplied, bind it to one daemon process."""
+    if expected_pid is None:
+        return health.get("status") in _READY_STATES and _models_are_loaded(
+            health.get("models_loaded")
+        )
+    return (
+        health.get("status") == "ready"
+        and _models_are_loaded(health.get("models_loaded"))
+        and type(health.get("pid")) is int
+        and health.get("pid") == expected_pid
+    )
 
 
 def is_daemon_running(
@@ -40,19 +65,26 @@ def is_daemon_running(
     port: int | None = None,
     timeout: float = 5.0,
     retries: int = 3,
+    expected_pid: int | None = None,
 ) -> bool:
     """
-    Verifica se o daemon está rodando.
+    Check whether the daemon is ready.
 
-    Faz uma requisição de health check com retry para evitar
-    falsos negativos quando o daemon está ocupado.
+    Retry a bounded health check to reduce false negatives while the daemon is
+    briefly busy.
 
     Args:
-        host: Host do daemon
-        port: Porta do daemon
-        timeout: Timeout de conexão em segundos (default: 5.0)
-        retries: Número de tentativas (default: 3)
+        host: daemon host
+        port: daemon port
+        timeout: connection timeout in seconds
+        retries: number of attempts
+        expected_pid: require the ready response to belong to this process ID
     """
+    if expected_pid is not None and (
+        isinstance(expected_pid, bool) or not isinstance(expected_pid, int) or expected_pid <= 0
+    ):
+        raise ValueError("expected_pid must be a positive integer")
+
     daemon_config = get_config().daemon
     effective_host = host or daemon_config.host
     effective_port = port or daemon_config.port
@@ -60,20 +92,20 @@ def is_daemon_running(
     for attempt in range(retries):
         try:
             client = DaemonClient(effective_host, effective_port, timeout)
-            if _health_is_ready(client.health()):
+            if _health_is_ready(client.health(), expected_pid):
                 return True
         except ConnectionError, TimeoutError, OSError, RuntimeError, ValueError:
             if attempt < retries - 1:
-                time.sleep(0.5)  # Espera 500ms entre tentativas
+                time.sleep(0.5)  # Wait 500 ms between attempts.
     return False
 
 
 class DaemonClient:
     """
-    Cliente para o daemon de modelos.
+    Client for the local model daemon.
 
-    Implementa a mesma interface do ModelManager para ser usado
-    como drop-in replacement quando o daemon está disponível.
+    Implements the ModelManager interface for use as a drop-in backend when
+    the daemon is available.
     """
 
     def __init__(
@@ -86,7 +118,7 @@ class DaemonClient:
         daemon_config = get_config().daemon
         self.host = host or daemon_config.host
         if not is_loopback_host(self.host):
-            raise ValueError("O cliente do daemon aceita apenas host de loopback")
+            raise ValueError("The daemon client accepts only a loopback host")
         self.port = port or daemon_config.port
         self.timeout = timeout or daemon_config.timeout
         self.base_url = f"http://{format_url_host(self.host)}:{self.port}"
@@ -100,7 +132,7 @@ class DaemonClient:
         path: str,
         data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Faz uma requisição HTTP ao daemon."""
+        """Send an HTTP request to the daemon."""
         url = f"{self.base_url}{path}"
 
         if data is not None:
@@ -118,13 +150,13 @@ class DaemonClient:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+            with _open_loopback(req, timeout=self.timeout) as response:
                 payload = response.read(MAX_DAEMON_RESPONSE_BYTES + 1)
                 if len(payload) > MAX_DAEMON_RESPONSE_BYTES:
-                    raise ValueError("Resposta do daemon excede o limite")
+                    raise ValueError("Daemon response exceeds the size limit")
                 result = json.loads(payload.decode("utf-8"))
                 if not isinstance(result, dict):
-                    raise ValueError("Resposta inválida do daemon")
+                    raise ValueError("Daemon response is invalid")
                 return result
         except urllib.error.HTTPError as e:
             if e.code >= 500:
@@ -132,18 +164,18 @@ class DaemonClient:
             raise RuntimeError(f"Daemon request failed (HTTP {e.code})") from e
         except urllib.error.URLError as e:
             self.invalidate()
-            raise ConnectionError("Não foi possível conectar ao daemon") from e
+            raise ConnectionError("Could not connect to the daemon") from e
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
             self.invalidate()
-            raise RuntimeError("Daemon retornou uma resposta inválida") from error
+            raise RuntimeError("Daemon returned an invalid response") from error
 
     def invalidate(self) -> None:
-        """Invalida o último probe para permitir reconexão imediata."""
+        """Invalidate the last probe so the next call reconnects immediately."""
         self._available = False
         self._last_availability_check = 0.0
 
     def is_available(self, *, force: bool = False) -> bool:
-        """Verifica readiness com cache curto e revalidação explícita."""
+        """Check readiness with a short cache and explicit forced refresh."""
         now = time.monotonic()
         cache_is_fresh = (
             self._available is not None
@@ -160,18 +192,18 @@ class DaemonClient:
         return bool(self._available)
 
     def health(self) -> dict[str, Any]:
-        """Health check do daemon."""
+        """Return the daemon health snapshot."""
         return self._request("GET", "/health")
 
     def stats(self) -> dict[str, Any]:
-        """Estatísticas do daemon."""
+        """Return daemon statistics."""
         return self._request("GET", "/stats")
 
     def embed_queries(self, texts: list[str]) -> np.ndarray:
         """
-        Embed queries via daemon.
+        Embed queries through the daemon.
 
-        Equivalente a ModelManager.embed_queries().
+        Equivalent to ModelManager.embed_queries().
         """
         if not texts:
             return np.array([])
@@ -182,9 +214,9 @@ class DaemonClient:
 
     def embed_corpus(self, texts: list[str]) -> np.ndarray:
         """
-        Embed corpus via daemon.
+        Embed corpus text through the daemon.
 
-        Equivalente a ModelManager.embed_corpus().
+        Equivalent to ModelManager.embed_corpus().
         """
         if not texts:
             return np.array([])
@@ -200,12 +232,12 @@ class DaemonClient:
         top_k: int = 10,
     ) -> list[tuple[int, float]]:
         """
-        Rerank via daemon.
+        Rerank through the daemon.
 
-        Equivalente a ModelManager.rerank().
+        Equivalent to ModelManager.rerank().
 
         Returns:
-            Lista de (index, score) ordenada por score decrescente.
+            List of (index, score) pairs ordered by descending score.
         """
         if not texts:
             return []
@@ -221,11 +253,11 @@ class DaemonClient:
         )
 
         scores = response.get("scores", [])
-        # scores já vem como lista de [index, score]
+        # Scores arrive as [index, score] pairs.
         return [(int(s[0]), float(s[1])) for s in scores]
 
     def is_loaded(self) -> bool:
-        """Verifica se os modelos estão carregados no daemon."""
+        """Return whether both daemon models are loaded."""
         try:
             health = self.health()
             return _models_are_loaded(health.get("models_loaded"))
@@ -234,29 +266,29 @@ class DaemonClient:
 
     def warmup(self) -> None:
         """
-        Warmup - no cliente, apenas verifica se daemon está pronto.
+        Verify daemon readiness.
 
-        Os modelos são carregados no daemon, não no cliente.
+        Models are loaded in the daemon rather than this client.
         """
         if not self.is_available(force=True):
-            raise ConnectionError("Daemon ainda não está pronto")
+            raise ConnectionError("Daemon is not ready yet")
 
     def cleanup(self) -> None:
         """
-        Cleanup - no cliente, não faz nada.
+        Perform no client-side cleanup.
 
-        O daemon mantém os modelos carregados.
+        The daemon owns and retains the loaded models.
         """
         pass
 
 
 class HybridModelManager:
     """
-    Model manager híbrido que usa daemon se disponível, senão carrega local.
+    Model manager that prefers the daemon and falls back to local models.
 
-    Uso:
+    Example:
         models = HybridModelManager()
-        # Automaticamente usa daemon se rodando, senão carrega localmente
+        # Automatically select a ready daemon or local models.
         embeddings = models.embed_queries(["query"])
     """
 
@@ -271,14 +303,14 @@ class HybridModelManager:
         self._use_daemon: bool | None = None
 
     def _get_backend(self) -> DaemonClient | Any:
-        """Retorna o backend a usar (daemon ou local)."""
+        """Return the active daemon or local backend."""
         daemon_available = self._daemon_client.is_available(force=self._use_daemon is True)
         if self._use_daemon is None or self._use_daemon != daemon_available:
             self._use_daemon = daemon_available
             if self._use_daemon:
-                logger.info("Usando daemon para modelos")
+                logger.info("model_backend selected=daemon")
             else:
-                logger.info("Daemon não disponível, carregando modelos localmente")
+                logger.info("model_backend selected=local")
 
         if self._use_daemon:
             return self._daemon_client
@@ -307,11 +339,11 @@ class HybridModelManager:
         return self._get_backend().rerank(query, texts, top_k=top_k)
 
     def is_loaded(self) -> bool:
-        """Verifica se modelos estão carregados."""
+        """Return whether the selected backend has loaded its models."""
         return self._get_backend().is_loaded()
 
     def warmup(self) -> None:
-        """Warmup dos modelos."""
+        """Warm up the selected backend."""
         self._get_backend().warmup()
 
     def cleanup(self) -> None:
@@ -320,5 +352,5 @@ class HybridModelManager:
 
     @property
     def using_daemon(self) -> bool:
-        """Retorna True se está usando o daemon."""
+        """Return true when the daemon backend is active."""
         return self._use_daemon is True

@@ -1,122 +1,115 @@
-# Erros da API
+# API errors
 
-A versão 0.1 usa três formas de falha pública. Clientes precisam aceitar as
-três até que um envelope único seja adotado como contrato estável.
+The 0.x line has three public failure shapes. Clients must accept all three
+until a single envelope becomes a stable contract.
 
-## Formas atuais
+## Sanitized message
 
-### Mensagem sanitizada
-
-Exceções capturadas por uma tool retornam:
+Unexpected exceptions captured by a tool return:
 
 ```text
-Erro [internal_error]: A operação não pôde ser concluída. Referência: a1b2c3d4.
+Error [internal_error]: The operation could not be completed. Reference: a1b2c3d4.
 ```
 
-A referência tem oito caracteres hexadecimais e muda a cada falha. Códigos
-específicos em uso incluem `invalid_request`, `search_unavailable`,
-`daemon_unavailable` e `internal_error`.
+The reference is an eight-character hexadecimal identifier generated for each
+failure. Current codes include `invalid_request`, `search_unavailable`,
+`daemon_unavailable`, and `internal_error`.
 
-O texto público não inclui tipo da exceção, stack trace, path absoluto, query ou
-conteúdo da nota. O log local registra operação, referência e tipo da exceção
-para correlação.
+The public string omits exception type, traceback, absolute path, query, and
+note content. Local logs retain operation name, reference, and exception type
+for correlation.
 
-### Mensagem de validação direta
+## Direct validation message
 
-Guardrails simples podem retornar uma string antes de iniciar a operação:
+Small guardrails can return a string before work begins:
 
 ```text
-Erro: query não pode ser vazia.
+Error: query cannot be empty.
 ```
 
-Outros exemplos cobrem path ou pasta vazia, extensão inválida e seleção de
-argumentos mutuamente exclusivos. O texto pode mudar durante a fase alpha.
+Other cases cover empty paths or folders, unsupported extensions, and mutually
+exclusive selectors. Human-readable wording can change during alpha.
 
-### Resultado de operação
+## Operation result
 
-CRUD usa um objeto mesmo quando a operação de domínio falha:
+CRUD uses an object for expected domain failures:
 
 ```python
 {
     "success": False,
-    "message": "Tempo limite ao aguardar outra escrita. Tente novamente.",
+    "message": "Timed out while waiting for another write. Try again.",
     "path": "notes/example.md",
     "error_code": "write_lock_timeout",
 }
 ```
 
-O path é o valor relativo fornecido pelo cliente. Falhas inesperadas no wrapper
-continuam usando a mensagem sanitizada.
+The path is the relative value supplied by the client. Unexpected wrapper
+failures still use the sanitized-message form.
 
-Mutações CRUD podem retornar dois códigos recuperáveis:
-
-| `error_code` | Significado | Próxima ação |
+| `error_code` | Meaning | Client action |
 |---|---|---|
-| `write_lock_timeout` | Outro escritor cooperativo reteve o lock além do prazo | Relê a nota e tenta novamente se o efeito ainda for necessário |
-| `write_conflict` | A revisão do arquivo mudou durante a operação | Relê a versão atual antes de produzir novo conteúdo |
+| `write_lock_timeout` | Another cooperative writer held the lock past the deadline | Reread and retry only when the effect is still needed |
+| `write_conflict` | The file revision changed during the operation | Reread before producing replacement content |
 
-## Resources
+## Resource envelopes
 
-Resources convertem exceções para um envelope:
+Resources convert unexpected exceptions to:
 
 ```python
 {
-    "error": "Erro [internal_error]: A operação não pôde ser concluída. Referência: a1b2c3d4.",
+    "error": "Error [internal_error]: The operation could not be completed. Reference: a1b2c3d4.",
     "code": "internal_error",
 }
 ```
 
-Validações focais de `vault://notes/{path*}` também podem devolver `error` e
-`code` sem referência, por exemplo `invalid_path` ou `not_found`.
+Focused validation in `vault://notes/{path*}` may return `error` and `code`
+without a reference, for example `invalid_path` or `not_found`.
 
-## Reindexação incremental
+## Incremental reindex states
 
-`reindex_note` descreve falhas esperadas pelo campo `status`, em vez de lançar
-exceção para o cliente:
+`reindex_note` reports expected outcomes through `status`:
 
-| Status | Significado |
+| Status | Meaning |
 |---|---|
-| `updated` | Chunks da nota foram substituídos |
-| `empty` | Arquivo válido sem conteúdo indexável |
-| `deleted` | Arquivo ausente e registros removidos |
-| `parse_error` | Parser falhou; versão anterior é preservada quando possível |
-| `error_add_failed` | Escrita no índice falhou |
-| `rejected_path_traversal` | Path saiu da raiz permitida |
-| `rejected_extension` | Extensão fora da configuração |
-| `circuit_breaker_open` | Índice suspendeu novas escritas após falhas repetidas |
+| `updated` | Note chunks were replaced |
+| `empty` | Valid file with no indexable content |
+| `deleted` | File is absent and old rows were removed |
+| `parse_error` | Parsing failed; old rows remain when possible |
+| `error_add_failed` | Index write failed |
+| `rejected_path_traversal` | Path escaped the allowed root |
+| `rejected_extension` | Extension is outside configuration |
+| `circuit_breaker_open` | Repeated failures paused new index writes |
 
-Campos opcionais podem informar links, aliases, ID, enriquecimento e
-compactação automática.
+Optional fields can describe links, aliases, identifiers, enrichment, and
+automatic compaction.
 
-## Estratégia de cliente
-
-Um cliente tolerante à versão alpha pode normalizar a resposta assim:
+## Client normalization
 
 ```python
 def failure_message(result: object) -> str | None:
-    if isinstance(result, str) and result.startswith("Erro"):
+    if isinstance(result, str) and result.startswith("Error"):
         return result
     if isinstance(result, dict):
         if result.get("success") is False:
-            return str(result.get("message", "Falha de operação"))
+            return str(result.get("message", "Operation failed"))
         if "error" in result:
             return str(result["error"])
     return None
 ```
 
-Não analise o texto para decidir se uma tentativa é segura. Use `code`,
-`error_code`, `status` e `success` quando existirem. Confira a versão atual da
-nota antes de repetir qualquer mutação.
+Do not parse human text to decide whether a retry is safe. Prefer `code`,
+`error_code`, `status`, and `success`. Read the current note revision before
+repeating any mutation.
 
-## Privacidade no diagnóstico
+## Private diagnostics
 
-Ao abrir uma issue:
+When opening an issue:
 
-1. informe o código e a referência;
-2. descreva a operação e a versão;
-3. substitua paths por nomes sintéticos;
-4. não anexe configuração local, vault, índice ou log completo;
-5. envie detalhes de vulnerabilidade pelo fluxo de [segurança](../../SECURITY.md).
+1. include the code and reference;
+2. identify the operation and project version;
+3. replace paths with synthetic names;
+4. omit local configuration, vault data, indexes, and complete logs;
+5. report vulnerabilities through the private [security policy](../../SECURITY.md).
 
-O guia de [solução de problemas](../operation/troubleshooting.md) mostra checks
-locais que evitam publicar dados da máquina.
+The [troubleshooting guide](../operation/troubleshooting.md) lists checks that
+avoid publishing local machine data.

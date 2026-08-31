@@ -1,5 +1,5 @@
 """
-Utilitários de segurança para queries e validação de paths.
+Security utilities for queries and path validation.
 """
 
 from pathlib import Path
@@ -7,84 +7,84 @@ from pathlib import Path
 
 def escape_sql_string(value: str) -> str:
     """
-    Escapa string para uso seguro em queries SQL/LanceDB.
+    Escape a string for safe use in SQL and LanceDB queries.
 
-    Previne SQL injection escapando aspas simples.
+    Prevent SQL injection by escaping single quotes.
 
-    Parâmetros:
-        value: string a ser escapada
+    Parameters:
+        value: String to escape.
 
-    Retorna:
-        String com aspas simples duplicadas.
+    Returns:
+        The string with duplicated single quotes.
 
-    Exemplo:
+    Example:
         "O'Brien" -> "O''Brien"
     """
     if not value:
         return value
-    # Escapar aspas simples duplicando-as (padrão SQL)
+    # Escape single quotes by duplicating them, following SQL conventions.
     return value.replace("'", "''")
 
 
 def escape_like_pattern(value: str) -> str:
     """
-    Escapa caracteres especiais em patterns LIKE.
+    Escape special characters in LIKE patterns.
 
-    Previne matching indesejado de wildcards.
+    Prevent unintended wildcard matches.
 
-    Parâmetros:
-        value: pattern a ser escapado
+    Parameters:
+        value: Pattern to escape.
 
-    Retorna:
-        String com %, _ e \\ escapados.
+    Returns:
+        The string with ``%``, ``_``, and ``\\`` escaped.
     """
     if not value:
         return value
-    # Escapar caracteres especiais de LIKE
+    # Escape LIKE special characters.
     value = value.replace("\\", "\\\\")
     value = value.replace("%", "\\%")
     value = value.replace("_", "\\_")
-    # Também escapar aspas simples
+    # Escape single quotes as well.
     value = value.replace("'", "''")
     return value
 
 
 def validate_relative_path(relative_path: str) -> bool:
     """
-    Valida que um path relativo não contém traversal.
+    Validate that a relative path does not contain traversal.
 
-    Previne path traversal attacks (../../etc/passwd).
+    Prevent path traversal attacks such as ``../../etc/passwd``.
 
-    Parâmetros:
-        relative_path: path relativo a ser validado
+    Parameters:
+        relative_path: Relative path to validate.
 
-    Retorna:
-        True se o path é seguro, False caso contrário.
+    Returns:
+        ``True`` when the path is safe.
     """
     if not relative_path:
         return False
 
-    # Rejeitar paths absolutos
+    # Reject absolute paths.
     if relative_path.startswith("/") or relative_path.startswith("\\"):
         return False
 
-    # Normalizar e verificar componentes
+    # Normalize and inspect components.
     path = Path(relative_path)
 
-    # Rejeitar .. em qualquer parte
+    # Reject ``..`` in any component.
     for part in path.parts:
         if part == "..":
             return False
-        # Rejeitar caracteres nulos (null byte injection)
+        # Reject null characters.
         if "\x00" in part:
             return False
 
-    # Verificar se o path normalizado não escapa do diretório base
+    # Verify that the normalized path remains inside the base directory.
     try:
-        # Resolve relativo a um diretório fictício
+        # Resolve against a synthetic base directory.
         base = Path("/safe/base")
         resolved = (base / relative_path).resolve()
-        # Deve permanecer dentro do base
+        # The resolved path must remain inside the base.
         return str(resolved).startswith(str(base))
     except ValueError, OSError:
         return False

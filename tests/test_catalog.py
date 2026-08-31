@@ -1,5 +1,5 @@
 """
-Testes para o catálogo SQLite de notas.
+Tests for the catalog SQLite of notes.
 """
 
 import time
@@ -10,15 +10,15 @@ from vault_search.crud.catalog import NotesCatalog
 
 
 class TestNotesCatalog:
-    """Testes para NotesCatalog."""
+    """Tests for NotesCatalog."""
 
     def test_create_schema(self, tmp_path: Path):
-        """Deve criar tabela e índices."""
+        """Must create table and indexes."""
         db_path = tmp_path / "catalog-schema.db"
         catalog = NotesCatalog(db_path=db_path)
         catalog._create_schema()
 
-        # Verificar que tabela existe
+        # Verify that table exists
         with catalog._connection() as conn:
             tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
             table_names = [table["name"] for table in tables]
@@ -26,11 +26,11 @@ class TestNotesCatalog:
         assert "notes_catalog" in table_names
 
     def test_upsert_and_list(self, tmp_path: Path):
-        """Deve inserir e listar notas."""
+        """Insert and list notes."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-upsert.db")
         catalog._create_schema()
 
-        # Inserir diretamente no banco
+        # Insert directly into the database.
         with catalog._connection() as conn:
             conn.execute(
                 """
@@ -38,19 +38,19 @@ class TestNotesCatalog:
                 (path, folder, extension, title, mtime_ns, size)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                ("pasta/nota.md", "pasta", ".md", "nota", 1000000000, 100),
+                ("folder/note.md", "folder", ".md", "note", 1000000000, 100),
             )
 
         notes, total = catalog.list_notes()
 
         assert total == 1
         assert len(notes) == 1
-        assert notes[0]["path"] == "pasta/nota.md"
-        assert notes[0]["folder"] == "pasta"
-        assert notes[0]["title"] == "nota"
+        assert notes[0]["path"] == "folder/note.md"
+        assert notes[0]["folder"] == "folder"
+        assert notes[0]["title"] == "note"
 
     def test_list_with_folder_filter(self, tmp_path: Path):
-        """Deve filtrar por pasta."""
+        """The catalog must filter by folder."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-folder.db")
         catalog._create_schema()
 
@@ -62,23 +62,23 @@ class TestNotesCatalog:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    ("projetos/a.md", "projetos", ".md", "a", 1000, 100),
-                    ("projetos/sub/b.md", "projetos/sub", ".md", "b", 2000, 100),
-                    ("estudos/c.md", "estudos", ".md", "c", 3000, 100),
+                    ("projects/a.md", "projects", ".md", "a", 1000, 100),
+                    ("projects/sub/b.md", "projects/sub", ".md", "b", 2000, 100),
+                    ("studies/c.md", "studies", ".md", "c", 3000, 100),
                 ],
             )
 
-        # Filtrar por projetos (inclui subpastas)
-        notes, total = catalog.list_notes(folder="projetos")
+        # Filter by projects, including nested folders.
+        notes, total = catalog.list_notes(folder="projects")
 
         assert total == 2
         paths = [note["path"] for note in notes]
-        assert "projetos/a.md" in paths
-        assert "projetos/sub/b.md" in paths
-        assert "estudos/c.md" not in paths
+        assert "projects/a.md" in paths
+        assert "projects/sub/b.md" in paths
+        assert "studies/c.md" not in paths
 
     def test_list_with_extension_filter(self, tmp_path: Path):
-        """Deve filtrar por extensão."""
+        """The catalog must filter by extension."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-extension.db")
         catalog._create_schema()
 
@@ -90,23 +90,23 @@ class TestNotesCatalog:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    ("nota.md", "", ".md", "nota", 1000, 100),
+                    ("note.md", "", ".md", "note", 1000, 100),
                     ("doc.pdf", "", ".pdf", "doc", 2000, 100),
-                    ("diagrama.canvas", "", ".canvas", "diagrama", 3000, 100),
+                    ("diagram.canvas", "", ".canvas", "diagram", 3000, 100),
                 ],
             )
 
         notes, total = catalog.list_notes(extension=".md")
 
         assert total == 1
-        assert notes[0]["path"] == "nota.md"
+        assert notes[0]["path"] == "note.md"
 
     def test_list_with_pagination(self, tmp_path: Path):
-        """Deve paginar resultados."""
+        """Paginate results."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-pagination.db")
         catalog._create_schema()
 
-        # Inserir 10 notas
+        # Inserir 10 notes
         with catalog._connection() as conn:
             for i in range(10):
                 conn.execute(
@@ -115,26 +115,26 @@ class TestNotesCatalog:
                         (path, folder, extension, title, mtime_ns, size)
                         VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (f"nota{i}.md", "", ".md", f"nota{i}", i * 1000, 100),
+                    (f"note{i}.md", "", ".md", f"note{i}", i * 1000, 100),
                 )
 
-        # Página 1
+        # Page 1
         notes1, total = catalog.list_notes(limit=3, offset=0)
         assert total == 10
         assert len(notes1) == 3
 
-        # Página 2
+        # Page 2
         notes2, total = catalog.list_notes(limit=3, offset=3)
         assert total == 10
         assert len(notes2) == 3
 
-        # Páginas não devem sobrepor
+        # Pages must not overlap
         paths1 = {note["path"] for note in notes1}
         paths2 = {note["path"] for note in notes2}
         assert paths1.isdisjoint(paths2)
 
     def test_list_ordered_by_mtime_desc(self, tmp_path: Path):
-        """Deve ordenar por mtime decrescente."""
+        """The catalog must sort by descending mtime."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-ordering.db")
         catalog._create_schema()
 
@@ -154,13 +154,13 @@ class TestNotesCatalog:
 
         notes, _ = catalog.list_notes()
 
-        # Mais recente primeiro
+        # More recent first
         assert notes[0]["path"] == "new.md"
         assert notes[1]["path"] == "mid.md"
         assert notes[2]["path"] == "old.md"
 
     def test_delete(self, tmp_path: Path):
-        """Deve deletar nota do catálogo."""
+        """Delete a note from the catalog."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-delete.db")
         catalog._create_schema()
 
@@ -171,16 +171,16 @@ class TestNotesCatalog:
                 (path, folder, extension, title, mtime_ns, size)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                ("nota.md", "", ".md", "nota", 1000, 100),
+                ("note.md", "", ".md", "note", 1000, 100),
             )
 
-        catalog.delete("nota.md")
+        catalog.delete("note.md")
 
         notes, total = catalog.list_notes()
         assert total == 0
 
     def test_stats(self, tmp_path: Path):
-        """Deve retornar estatísticas corretas."""
+        """Must return statistics correct."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-stats.db")
         catalog._create_schema()
 
@@ -255,10 +255,10 @@ class TestNotesCatalog:
 
 
 class TestCatalogReconciliation:
-    """Testes para reconciliação periódica."""
+    """Tests for reconciliation periodic."""
 
     def test_start_stop_reconciliation(self, tmp_path: Path):
-        """Deve iniciar e parar thread de reconciliação."""
+        """Must start and stop thread of reconciliation."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-reconciliation.db")
         catalog._create_schema()
 
@@ -270,7 +270,7 @@ class TestCatalogReconciliation:
         assert catalog._reconcile_thread is None
 
     def test_reconciliation_idempotent_start(self, tmp_path: Path):
-        """Múltiplas chamadas a start_reconciliation não criam threads extras."""
+        """Repeated start_reconciliation calls do not create extra threads."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-idempotent.db")
         catalog._create_schema()
 
@@ -284,8 +284,8 @@ class TestCatalogReconciliation:
 
         catalog.stop_reconciliation()
 
-    def test_stop_timeout_preserva_thread_viva_e_impede_restart(self, tmp_path: Path):
-        """Timeout mantém a referência para bloquear uma segunda worker."""
+    def test_stop_timeout_preserves_thread_alive_and_prevents_restart(self, tmp_path: Path):
+        """Timeout keeps a reference for block a second worker."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-timeout.db")
         thread = MagicMock()
         thread.is_alive.return_value = True
@@ -298,15 +298,15 @@ class TestCatalogReconciliation:
 
 
 class TestCatalogWALMode:
-    """Testes para SQLite WAL mode."""
+    """Tests for SQLite WAL mode."""
 
     def test_wal_mode_enabled(self, tmp_path: Path):
-        """Deve usar WAL mode para melhor concorrência."""
+        """The catalog must use WAL mode for better concurrency."""
         catalog = NotesCatalog(db_path=tmp_path / "catalog-wal.db")
         catalog._create_schema()
 
         with catalog._connection() as conn:
             mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
 
-        # WAL ou wal (case insensitive)
+        # WAL or wal (case insensitive)
         assert mode.lower() == "wal"

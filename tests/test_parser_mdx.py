@@ -1,5 +1,5 @@
 """
-Testes unitários para parser de MDX.
+Unit tests for parser of MDX.
 """
 
 from vault_search.parsers.mdx import clean_mdx, parse_mdx
@@ -71,7 +71,7 @@ More content here.
         assert "<Button" not in cleaned
 
     def test_preserves_html_lowercase(self):
-        """HTML tags em lowercase (<div>, <span>) devem ser preservados."""
+        """HTML tags in lowercase (<div>, <span>) must be preserved."""
         content = "# Hello\n\n<div>content</div>"
         cleaned = clean_mdx(content)
         assert "<div>" in cleaned
@@ -79,7 +79,7 @@ More content here.
     def test_empty_content(self):
         assert clean_mdx("") == ""
 
-    def test_no_jsx(self):
+    def test_in_jsx(self):
         content = "# Just Markdown\n\nNo JSX here."
         assert clean_mdx(content) == content
 
@@ -117,14 +117,14 @@ This is a test MDX file.
         assert chunks[0]["note_title"] == "Test MDX"
         assert "mdx" in chunks[0]["tags"]
 
-        # Verifica que JSX foi removido do texto
+        # Checks that JSX was removed of the text
         all_text = " ".join(c["text"] for c in chunks)
         assert "<Button" not in all_text
         assert "import" not in all_text
         assert "Introduction" in all_text
         assert "Features" in all_text
 
-    def test_parse_mdx_no_frontmatter(self, tmp_path):
+    def test_parse_mdx_in_frontmatter(self, tmp_path):
         vault = tmp_path / "vault"
         vault.mkdir()
         mdx_file = vault / "simple.mdx"
@@ -133,7 +133,7 @@ This is a test MDX file.
         chunks, links, aliases = parse_mdx(mdx_file, vault)
 
         assert len(chunks) > 0
-        assert chunks[0]["note_title"] == "simple"  # stem do arquivo
+        assert chunks[0]["note_title"] == "simple"  # stem of the file
 
     def test_parse_mdx_file_not_found(self, tmp_path):
         vault = tmp_path / "vault"
@@ -161,7 +161,7 @@ Text under sub.
 
         chunks, links, aliases = parse_mdx(mdx_file, vault)
 
-        # Verifica que headers foram extraídos
+        # Checks that headers were extracted
         headers_found = [c["headers"] for c in chunks]
         assert any("Main" in h for h in headers_found)
         assert any("Sub" in h for h in headers_found)

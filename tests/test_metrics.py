@@ -1,5 +1,5 @@
 """
-Testes para o módulo de métricas de performance.
+Tests for performance metrics.
 """
 
 import time
@@ -18,7 +18,7 @@ from vault_search.utils.metrics import (
 
 
 class TestOperationMetrics:
-    """Testes para OperationMetrics."""
+    """Tests for OperationMetrics."""
 
     def test_record_latency(self):
         metrics = OperationMetrics(name="test")
@@ -35,21 +35,21 @@ class TestOperationMetrics:
         metrics = OperationMetrics(name="test")
         for i in range(1, 11):
             metrics.record(float(i))
-        # Mediana de 1-10 é 5.5
+        # Mediana of 1-10 is 5.5
         assert metrics.p50 == 5.5
 
     def test_p95_few_samples(self):
         metrics = OperationMetrics(name="test")
         metrics.record(5.0)
         metrics.record(10.0)
-        # Com poucas amostras, retorna max
+        # With few samples, return the maximum.
         assert metrics.p95 == 10.0
 
     def test_p95_many_samples(self):
         metrics = OperationMetrics(name="test")
         for i in range(1, 101):
             metrics.record(float(i))
-        # P95 de 1-100 ~= 95
+        # P95 of 1-100 ~= 95
         assert metrics.p95 >= 90
 
     def test_mean(self):
@@ -69,9 +69,9 @@ class TestOperationMetrics:
         metrics = OperationMetrics(name="test", _max_samples=10)
         for i in range(20):
             metrics.record(float(i))
-        # Deve manter apenas últimas 10
+        # Must keep only lasts 10
         assert metrics.count == 10
-        # Últimas 10 são 10-19, média = 14.5
+        # Lasts 10 are 10-19, average = 14.5
         assert metrics.mean == 14.5
 
     def test_summary(self):
@@ -86,7 +86,7 @@ class TestOperationMetrics:
 
 
 class TestMetricsCollector:
-    """Testes para MetricsCollector."""
+    """Tests for MetricsCollector."""
 
     def setup_method(self):
         reset_metrics()
@@ -104,7 +104,7 @@ class TestMetricsCollector:
         summary = collector.summary()
         assert "test_op" in summary
         assert summary["test_op"]["count"] == 1
-        # Deve ter registrado algo > 0
+        # Must have recorded a value greater than zero.
         assert summary["test_op"]["p50_ms"] > 0
 
     def test_record_direct(self):
@@ -148,7 +148,7 @@ class TestMetricsCollector:
 
 
 class TestTimedDecorator:
-    """Testes para o decorador @timed."""
+    """Tests for the @timed decorator."""
 
     def setup_method(self):
         reset_metrics()
@@ -189,7 +189,7 @@ class TestTimedDecorator:
 
 
 class TestGlobalFunctions:
-    """Testes para funções globais."""
+    """Tests for module-level functions."""
 
     def setup_method(self):
         reset_metrics()
@@ -215,25 +215,25 @@ class TestGlobalFunctions:
 
 
 class TestHealthChecks:
-    """Testes para funções de health check."""
+    """Tests for functions of health check."""
 
     def setup_method(self):
         reset_metrics()
 
     def test_thresholds_exist(self):
-        """Verifica que thresholds estão definidos."""
+        """Check that thresholds are defined."""
         assert LATENCY_THRESHOLD_MS > 0
         assert 0 < CACHE_HIT_RATE_THRESHOLD < 1
 
-    def test_check_latency_health_no_alerts(self):
-        """Sem métricas = sem alertas."""
+    def test_check_latency_health_in_alerts(self):
+        """No metrics produce no alerts."""
         alerts = check_latency_health()
         assert alerts == []
 
     def test_check_latency_health_below_threshold(self):
-        """Latência abaixo do threshold não gera alerta."""
+        """Latency below the threshold does not generate an alert."""
         collector = MetricsCollector()
-        # Registrar 20+ amostras para p95 funcionar
+        # Register at least 20 samples so p95 is meaningful.
         for _ in range(30):
             collector.record("fast_op", 100.0)  # 100ms < 500ms threshold
 
@@ -241,9 +241,9 @@ class TestHealthChecks:
         assert alerts == []
 
     def test_check_latency_health_above_threshold(self):
-        """Latência acima do threshold gera alerta."""
+        """Latency above the threshold generates an alert."""
         collector = MetricsCollector()
-        # Registrar 20+ amostras com valores altos para p95 exceder threshold
+        # Register at least 20 high values so p95 exceeds the threshold.
         for _ in range(30):
             collector.record("slow_op", 600.0)  # 600ms > 500ms threshold
 
@@ -255,27 +255,27 @@ class TestHealthChecks:
         assert alerts[0]["p95_ms"] >= LATENCY_THRESHOLD_MS
 
     def test_check_latency_health_multiple_ops(self):
-        """Verifica múltiplas operações."""
+        """Checks multiple operations."""
         collector = MetricsCollector()
         for _ in range(30):
             collector.record("fast_op", 100.0)  # OK
             collector.record("slow_op", 700.0)  # Problema
 
         alerts = check_latency_health()
-        # Apenas slow_op deve gerar alerta
+        # Only slow_op must generate an alert.
         assert len(alerts) == 1
         assert alerts[0]["operation"] == "slow_op"
 
     def test_check_cache_health_returns_list(self):
-        """check_cache_health retorna lista (pode estar vazia se searcher não inicializado)."""
+        """check_cache_health returns a list, which may be empty before initialization."""
         alerts = check_cache_health()
         assert isinstance(alerts, list)
 
     def test_check_cache_health_graceful_failure(self):
-        """check_cache_health não levanta exceção mesmo sem searcher/cache."""
-        # Não deve levantar exceção
+        """check_cache_health does not raise when the searcher or cache is absent."""
+        # Must not raise exception
         alerts = check_cache_health()
-        # Retorna lista vazia ou com alertas válidos
+        # Return an empty list or valid alerts.
         assert isinstance(alerts, list)
         for alert in alerts:
             assert "type" in alert

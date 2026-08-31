@@ -1,40 +1,39 @@
-# Configuração YAML
+# YAML configuration
 
-`config.example.yaml` é o único exemplo integral e acompanha
-`VaultSearchConfig`. Copie-o para `config.yaml` e mantenha a cópia local fora do
-Git.
+`config.example.yaml` is the only complete example and follows
+`VaultSearchConfig`. Copy it to `config.yaml` and keep the local copy out of Git.
 
-## Precedência
+## Precedence
 
-1. `VAULT_SEARCH_CONFIG`, quando aponta para um arquivo existente;
-2. `config.yaml` no diretório de trabalho;
-3. `config.yml` no diretório de trabalho;
-4. `config.yaml` ou `config.yml` na raiz da instalação, se diferente;
-5. defaults Pydantic.
+1. `VAULT_SEARCH_CONFIG`, when it points to an existing file;
+2. `config.yaml` in the working directory;
+3. `config.yml` in the working directory;
+4. `config.yaml` or `config.yml` in the installation root, when different;
+5. Pydantic defaults.
 
-O objeto é carregado uma vez e mantido em cache. Reinicie o MCP e o daemon após
-alterar o arquivo.
+The object loads once and remains cached. Restart MCP and daemon processes after
+changing the file.
 
-## Seções
+## Sections
 
-| Seção | Responsabilidade |
+| Section | Responsibility |
 |---|---|
-| `paths` | Vault, diretório de dados e tabela LanceDB |
-| `search` | Resultados, candidatos, precisão e paginação |
-| `indexing` | Lotes, workers, extensões e pastas ignoradas |
-| `fts` | Tokenização neutra ou stemming opt-in por idioma |
-| `prewarm` | Carregamento antecipado do índice em memória |
-| `embedding` | Modelos, device, precisão e dimensões |
-| `chunking` | Tamanho, overlap, headers e separadores |
-| `security` | Limites de input, path, frontmatter e campos compatíveis |
-| `watcher` | Debounce e encerramento de threads |
-| `pdf` | OCR, idiomas e DPI |
-| `vector_index` | Criação e parâmetros do ANN |
-| `navigation` | Profundidade de árvore de pastas |
-| `daemon` | Loopback, porta, timeout e detecção automática |
-| `frontmatter` | Schema, modo de validação e enriquecimento externo |
+| `paths` | Vault, data directory, and LanceDB table |
+| `search` | Results, candidates, score precision, and pagination |
+| `indexing` | Batches, workers, extensions, and ignored folders |
+| `fts` | Neutral tokenization or opt-in language stemming |
+| `prewarm` | Early index loading into memory |
+| `embedding` | Models, device, precision, and dimensions |
+| `chunking` | Size, overlap, headers, and separators |
+| `security` | Input, path, and frontmatter limits |
+| `watcher` | Debounce and thread shutdown |
+| `pdf` | OCR, languages, and DPI |
+| `vector_index` | ANN creation and parameters |
+| `navigation` | Folder-tree depth |
+| `daemon` | Loopback host, port, timeout, and auto-detection |
+| `frontmatter` | Schema, validation mode, and external enrichment |
 
-## Exemplo mínimo
+## Minimal example
 
 ```yaml
 paths:
@@ -53,25 +52,23 @@ frontmatter:
     provider: null
 ```
 
-Campos omitidos recebem defaults. O arquivo integral explica cada valor.
+Omitted fields receive defaults. The complete example explains each value.
 
 ## Paths
 
-Caminhos relativos usam o diretório que contém o YAML selecionado. Sem arquivo,
-os defaults usam o diretório de trabalho. `~` e caminhos absolutos são
-resolvidos pelo runtime. Evite registrar o resultado resolvido em issue ou
-documentação pública.
+Relative paths use the directory containing the selected YAML file. Without a
+file, defaults use the working directory. The runtime expands `~` and accepts
+absolute paths. Avoid publishing resolved values in issues or documentation.
 
-O override `VAULT_SEARCH_VAULT_PATH` troca somente o vault. O alias legado
-`VAULT_PATH` é usado quando a variável moderna não existe.
-`VAULT_SEARCH_DATA_DIR` troca o diretório de dados. Esses aliases são fixados no
-primeiro import de `vault_search.config.paths`; reinicie o processo após mudar o
-ambiente. `VAULT_SEARCH_DB_DIR` não é reconhecida.
+`VAULT_SEARCH_VAULT_PATH` overrides only the vault. Legacy `VAULT_PATH` applies
+when the modern variable is absent. `VAULT_SEARCH_DATA_DIR` overrides the data
+directory. These aliases are captured on first import; restart after changing
+the environment. `VAULT_SEARCH_DB_DIR` is not recognized.
 
-## Device e precisão
+## Device and precision
 
-O padrão `auto` escolhe um backend disponível e `null` decide a precisão em
-runtime. Para fixar CPU:
+`auto` chooses an available backend and `null` selects compatible precision at
+runtime. To force CPU:
 
 ```yaml
 embedding:
@@ -79,54 +76,52 @@ embedding:
   use_fp16: false
 ```
 
-Valide a combinação no hardware alvo. Um device aceito pelo schema ainda pode
-falhar por versão de driver, backend ou operação sem suporte.
+Validate the combination on target hardware. A schema-valid device may still
+fail because of a driver, backend version, or unsupported operation.
 
-## Extensões
+## Extensions
 
-O conjunto público é `.md`, `.mdx`, `.txt`, `.pdf` e `.canvas`. Se alterar
-`indexing.extensions`, use um subconjunto desses formatos. Valores sem parser,
-duplicados, sem ponto ou com maiúsculas são rejeitados durante a carga.
+The public set is `.md`, `.mdx`, `.txt`, `.pdf`, and `.canvas`. A custom
+`indexing.extensions` must be a subset. Unsupported formats, duplicates,
+missing dots, and uppercase values fail during configuration loading.
 
-`indexing.ignored_folders` compara nomes simples de pasta em qualquer nível. Por
-isso, paths com `/` ou `\\`, `.` e `..` são inválidos. `.git`, `.obsidian`,
-`.smart-env` e `.trash` começam ignorados.
+`indexing.ignored_folders` compares simple folder names at every level. Values
+containing `/`, `\\`, `.` or `..` are invalid. `.git`, `.obsidian`,
+`.smart-env`, and `.trash` start ignored.
 
-## Busca textual
+## Full-text search
 
-`fts.language: null` usa tokenização neutra e é o default para vaults
-multilíngues. Defina um idioma aceito pelo backend somente quando quiser stemming
-específico. A alteração exige reconstruir o índice FTS para afetar buscas já
-indexadas.
+`fts.language: null` disables language-specific stemming and stop-word removal,
+while retaining lowercase and accent folding for predictable multilingual
+matching. Set a backend-supported language only when its analyzer is desired.
+Rebuild FTS before expecting the new policy to affect indexed content.
 
-## Frontmatter e processamento externo
+## Frontmatter and external processing
 
-A validação de schema e o enriquecimento externo começam desativados.
-Processamento externo exige `allow_external_processing: true`, provider
-declarado e comando seguro. O template aceita somente `{model}`. Conteúdo da
-nota segue por stdin, sem interpolação em argumento de shell.
+Schema validation and external enrichment start disabled. External processing
+requires `allow_external_processing: true`, an explicit provider, and a safe
+command. The template accepts only `{model}`. Note content travels through
+`stdin`, never through shell interpolation.
 
-Nunca salve token ou credencial no YAML. Use o mecanismo de segredo do processo
-externo.
+Never store tokens or credentials in YAML. Use the external process's secret
+mechanism.
 
-## Validação antecipada
+## Early validation
 
-O schema interrompe a carga quando encontra uma combinação que só falharia em
-runtime:
+The schema rejects combinations that would otherwise fail later:
 
-- `search.candidates` acima de `candidates_max`;
-- `top_k` fora do intervalo configurado;
-- limite padrão de `list_notes` acima do máximo;
-- profundidade padrão de `folder_tree` acima do limite público;
-- `num_sub_vectors` incompatível com a dimensão em `IVF_PQ`;
-- enriquecimento habilitado sem consentimento, provider, comando ou modelo.
+- `search.candidates` above `candidates_max`;
+- `top_k` outside its configured range;
+- default `list_notes` limit above its maximum;
+- default `folder_tree` depth above its public maximum;
+- `num_sub_vectors` incompatible with embedding dimension for `IVF_PQ`;
+- enrichment without consent, provider, command, or model.
 
-Campos desconhecidos também são rejeitados. Configurações antigas que ainda
-tenham `security.rate_limit`, `security.reindex_timeout` ou
-`security.log_query_max_length` precisam remover esses nomes: eles nunca tiveram
-efeito no runtime e não fazem parte do contrato público atual.
+Unknown fields also fail. Remove legacy names such as `security.rate_limit`,
+`security.reindex_timeout`, and `security.log_query_max_length`; they never had
+runtime effects and are outside the current public contract.
 
-## Validação programática
+## Programmatic validation
 
 ```python
 from pathlib import Path
@@ -137,6 +132,6 @@ config = load_config_from_file(Path("config.example.yaml"))
 print(config.search.top_k)
 ```
 
-Erros de tipo ou faixa devem interromper a carga da configuração escolhida. Se
-um fallback ocorrer, trate o log como falha operacional até confirmar o vault e
-o diretório de dados efetivos.
+Type and range failures stop loading the selected configuration. Treat any
+fallback log as an operational failure until effective vault and data paths are
+confirmed locally.

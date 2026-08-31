@@ -1,8 +1,8 @@
 """
-Scanner de arquivos do vault Obsidian.
+Obsidian vault file scanner.
 
-Escaneia o vault e retorna lista de arquivos indexáveis,
-filtrando por extensão, pastas ignoradas e consistência de symlinks.
+Scan the vault for indexable files while filtering by extension,
+ignored folders, and symlink containment.
 """
 
 import logging
@@ -15,28 +15,28 @@ logger = logging.getLogger(__name__)
 
 def scan_vault(vault_path: Path) -> list[Path]:
     """
-    Escaneia o vault e retorna lista de arquivos indexáveis.
+    Scan the vault and return indexable files.
 
-    Filtra symlinks que apontam para fora do vault e compara
-    extensões case-insensitive (.MD, .Md são aceitos).
+    Exclude symlinks that point outside the vault and compare extensions
+    case-insensitively, accepting forms such as .MD and .Md.
 
-    Parâmetros:
-        vault_path: caminho raiz do vault
+    Parameters:
+        vault_path: Vault root path.
 
-    Retorna:
-        Lista de Paths para arquivos indexáveis (.md, .pdf, .canvas).
+    Returns:
+        Paths for indexable files such as .md, .pdf, and .canvas.
     """
     resolved_vault = vault_path.resolve()
     files = []
     for path in vault_path.rglob("*"):
         if not path.is_file():
             continue
-        # Extensão case-insensitive
+        # Compare extensions case-insensitively.
         if path.suffix.lower() not in INDEXABLE_EXTENSIONS:
             continue
         if any(ignored in path.parts for ignored in IGNORED_FOLDERS):
             continue
-        # Symlinks: verificar se target está dentro do vault
+        # Accept symlinks only when their targets remain inside the vault.
         if path.is_symlink():
             try:
                 if not path.resolve().is_relative_to(resolved_vault):

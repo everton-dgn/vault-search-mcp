@@ -1,8 +1,8 @@
 """
-Cache de metadados de notas com invalidação por filesystem.
+Filesystem-invalidated note metadata cache.
 
-Usa chave composta (path, mtime_ns, size) para validação automática
-sem necessidade de watcher — se o arquivo mudou, cache miss.
+Uses a composite (path, mtime_ns, size) key so changed files become cache misses
+without requiring a watcher.
 """
 
 import logging
@@ -22,7 +22,7 @@ T = TypeVar("T")
 
 @dataclass(frozen=True)
 class CacheKey:
-    """Chave de cache baseada em filesystem metadata."""
+    """Cache key based on filesystem metadata."""
 
     path: str
     mtime_ns: int
@@ -30,7 +30,7 @@ class CacheKey:
 
     @classmethod
     def from_path(cls, file_path: Path) -> CacheKey:
-        """Cria chave a partir de um path, usando stat()."""
+        """Create a key from a path using stat()."""
         stat = file_path.stat()
         return cls(
             path=str(file_path),
@@ -40,7 +40,7 @@ class CacheKey:
 
     @classmethod
     def from_stat(cls, path: str, stat_result: os.stat_result) -> CacheKey:
-        """Cria chave a partir de stat_result já obtido (evita stat() duplo)."""
+        """Create a key from an existing stat result."""
         return cls(
             path=path,
             mtime_ns=stat_result.st_mtime_ns,
@@ -50,29 +50,26 @@ class CacheKey:
 
 class MetadataCache:
     """
-    Cache LRU em memória para metadados de notas.
+    Thread-safe in-memory LRU cache for note metadata.
 
-    A validação é automática: se o arquivo mudou (mtime_ns ou size diferente),
-    a chave antiga não será encontrada e haverá cache miss.
+    A changed mtime or size yields a new key and therefore a cache miss.
 
-    Thread-safe via lock.
-
-    Uso:
+    Example:
         cache = MetadataCache(max_size=10000)
 
-        # Tentar obter do cache
+        # Try the cache first.
         key = CacheKey.from_path(file_path)
         metadata = cache.get(key)
         if metadata is None:
-            # Cache miss - carregar e armazenar
+            # Load and store on a miss.
             metadata = load_metadata(file_path)
             cache.set(key, metadata)
     """
 
     def __init__(self, max_size: int = 10000):
         """
-        Parâmetros:
-            max_size: número máximo de entradas no cache
+        Parameters:
+            max_size: maximum number of cache entries
         """
         self._max_size = max_size
         self._cache: OrderedDict[CacheKey, NoteMetadata] = OrderedDict()
@@ -82,19 +79,19 @@ class MetadataCache:
 
     def get(self, key: CacheKey) -> NoteMetadata | None:
         """
-        Obtém metadados do cache.
+        Get metadata from the cache.
 
-        Move item acessado para o fim (LRU).
+        Move a hit to the most-recent end of the LRU.
 
-        Parâmetros:
-            key: chave de cache (path, mtime_ns, size)
+        Parameters:
+            key: cache key (path, mtime_ns, size)
 
-        Retorna:
-            NoteMetadata se encontrado, None caso contrário.
+        Returns:
+            Cached NoteMetadata, or None.
         """
         with self._lock:
             if key in self._cache:
-                # Move para o fim (mais recente)
+                # Mark the entry as most recently used.
                 self._cache.move_to_end(key)
                 self._hits += 1
                 return self._cache[key]
@@ -103,22 +100,22 @@ class MetadataCache:
 
     def set(self, key: CacheKey, metadata: NoteMetadata) -> None:
         """
-        Armazena metadados no cache.
+        Store metadata in the cache.
 
-        Se cache cheio, remove item mais antigo (LRU eviction).
+        Evict the least-recently used entry when the cache is full.
 
-        Parâmetros:
-            key: chave de cache
-            metadata: metadados a armazenar
+        Parameters:
+            key: cache key
+            metadata: metadata to store
         """
         with self._lock:
             if key in self._cache:
-                # Atualizar existente e mover para o fim
+                # Update an existing entry and mark it as recent.
                 self._cache.move_to_end(key)
                 self._cache[key] = metadata
                 return
 
-            # Eviction se necessário
+            # Evict until the size limit is satisfied.
             while len(self._cache) >= self._max_size:
                 self._cache.popitem(last=False)
 
@@ -126,15 +123,15 @@ class MetadataCache:
 
     def invalidate(self, path: str) -> int:
         """
-        Invalida todas as entradas para um path específico.
+        Invalidate every entry for one path.
 
-        Útil para forçar invalidação via watcher.
+        This supports explicit watcher-driven invalidation.
 
-        Parâmetros:
-            path: caminho do arquivo
+        Parameters:
+            path: file path
 
-        Retorna:
-            Número de entradas removidas.
+        Returns:
+            Number of removed entries.
         """
         with self._lock:
             to_remove = [k for k in self._cache if k.path == path]
@@ -143,7 +140,7 @@ class MetadataCache:
             return len(to_remove)
 
     def clear(self) -> None:
-        """Limpa todo o cache."""
+        """Clear the entire cache and its counters."""
         with self._lock:
             self._cache.clear()
             self._hits = 0
@@ -151,13 +148,13 @@ class MetadataCache:
 
     @property
     def size(self) -> int:
-        """Número de entradas no cache."""
+        """Number of entries in the cache."""
         with self._lock:
             return len(self._cache)
 
     @property
     def hit_rate(self) -> float:
-        """Taxa de acertos (0.0 a 1.0)."""
+        """Cache hit rate from 0.0 to 1.0."""
         with self._lock:
             total = self._hits + self._misses
             if total == 0:
@@ -165,7 +162,7 @@ class MetadataCache:
             return self._hits / total
 
     def stats(self) -> dict[str, int | float]:
-        """Retorna estatísticas do cache."""
+        """Return cache statistics."""
         with self._lock:
             total = self._hits + self._misses
             hit_rate = self._hits / total if total > 0 else 0.0
@@ -178,13 +175,13 @@ class MetadataCache:
             }
 
 
-# Instância global singleton
+# Process-wide singleton.
 _metadata_cache: MetadataCache | None = None
 _cache_lock = threading.Lock()
 
 
 def get_metadata_cache(max_size: int = 10000) -> MetadataCache:
-    """Obtém instância singleton do cache de metadados."""
+    """Return the process-wide metadata cache."""
     global _metadata_cache
     with _cache_lock:
         if _metadata_cache is None:
@@ -193,7 +190,7 @@ def get_metadata_cache(max_size: int = 10000) -> MetadataCache:
 
 
 def reset_metadata_cache() -> None:
-    """Reseta o cache singleton (útil para testes)."""
+    """Reset the process-wide cache, primarily for tests."""
     global _metadata_cache
     with _cache_lock:
         if _metadata_cache is not None:

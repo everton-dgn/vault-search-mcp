@@ -1,27 +1,23 @@
-# Diagramas de arquitetura
+# Architecture diagrams
 
-Diagramas Mermaid do sistema vault-search-mcp, organizados por tema.
+Mermaid diagrams are grouped by subsystem.
 
-## Índice de diagramas
+| File | Content |
+|---|---|
+| [diagrams-core.md](diagrams-core.md) | Topology, semantic search, indexing, hybrid search, model lifecycle |
+| [diagrams-daemon.md](diagrams-daemon.md) | Loopback daemon, startup, MCP communication, HTTP API, shutdown |
+| [diagrams-features.md](diagrams-features.md) | Cache, trust, watcher, parsing, chunking, prewarm, links, graph |
 
-| Arquivo | Conteúdo |
-|---------|----------|
-| [diagrams-core.md](./diagrams-core.md) | Arquitetura geral, busca semântica, indexação, busca híbrida |
-| [diagrams-daemon.md](./diagrams-daemon.md) | Daemon HTTP, startup, comunicação MCP↔Daemon, shutdown |
-| [diagrams-features.md](./diagrams-features.md) | Cache, watcher, parsing, chunking, prewarm |
-
----
-
-## Visão geral rápida
+## Quick topology
 
 ```mermaid
 flowchart TB
-    subgraph Daemon["⚡ Daemon :9847"]
+    subgraph Daemon["Optional daemon :9847"]
         BGE["BGE-M3"]
         RR["Reranker"]
     end
 
-    subgraph MCP["MCP Server"]
+    subgraph MCP["MCP server"]
         ST[search_tools]
         CT[crud_tools]
         GT[graph_tools]
@@ -33,7 +29,7 @@ flowchart TB
         MM[ModelManager]
     end
 
-    subgraph Data["Data"]
+    subgraph Data["Derived data"]
         LDB[(LanceDB)]
         CAT[(SQLite)]
         LNK[(links_index)]
@@ -49,36 +45,28 @@ flowchart TB
     CT --> CAT
 ```
 
----
+## Diagram groups
 
-## Diagramas por categoria
+### Core
 
-### Core (diagrams-core.md)
-- Arquitetura Geral
-- Fluxo de Busca Semântica
-- Fluxo de Indexação Completa
-- Fluxo de Indexação Incremental
-- Busca Híbrida
-- ModelManager Lifecycle
+- General architecture
+- Semantic search flow
+- Full and incremental indexing
+- Hybrid search
+- `ModelManager` lifecycle
 
-### Daemon (diagrams-daemon.md)
-- Daemon Architecture
-- Daemon Startup Sequence
-- MCP ↔ Daemon Communication
-- Daemon HTTP API
-- Graceful Shutdown Flow
-- sync_check no Startup
+### Daemon
 
-### Features (diagrams-features.md)
-- Sistema de Cache Multi-Camada
-- Escopo de Confiança dos Dados
-- File Watcher com Debounce
-- Reconciliação do Catálogo
-- Pipeline de Parsing
-- Chunking Recursivo
-- Server Startup com Prewarm
-- Prewarm Decision Flow
-- Sistema de Links Indexados
-- Fluxo de get_backlinks
-- Análise de Grafo
-- Resolução de Links
+- Daemon architecture and startup
+- MCP-to-daemon communication
+- Internal HTTP API
+- Graceful shutdown
+- Startup synchronization
+
+### Features
+
+- Layered caches and data trust
+- Debounced filesystem watcher and catalog reconciliation
+- Parsing and recursive chunking
+- Server prewarming
+- Indexed links, backlinks, graph analysis, and target resolution

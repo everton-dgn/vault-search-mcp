@@ -1,7 +1,7 @@
 """
-Instrumentação de métricas para operações de CRUD.
+Metrics instrumentation for CRUD operations.
 
-Coleta latências p50/p95 para identificar gargalos.
+Collect p50 and p95 latency to identify bottlenecks.
 """
 
 import functools
@@ -20,7 +20,7 @@ R = TypeVar("R")
 
 
 class MetricSummary(TypedDict):
-    """Resumo serializável de uma operação medida."""
+    """Serializable summary of a measured operation."""
 
     name: str
     count: int
@@ -34,14 +34,14 @@ type HealthAlert = dict[str, str | float]
 
 @dataclass
 class OperationMetrics:
-    """Métricas coletadas para uma operação."""
+    """Metrics collected for one operation."""
 
     name: str
     latencies_ms: list[float] = field(default_factory=list)
     _max_samples: int = 1000
 
     def record(self, latency_ms: float) -> None:
-        """Registra uma latência, mantendo últimas N amostras."""
+        """Record latency while retaining the most recent samples."""
         self.latencies_ms.append(latency_ms)
         if len(self.latencies_ms) > self._max_samples:
             self.latencies_ms = self.latencies_ms[-self._max_samples :]
@@ -52,14 +52,14 @@ class OperationMetrics:
 
     @property
     def p50(self) -> float:
-        """Mediana (percentil 50)."""
+        """Median, or 50th percentile."""
         if not self.latencies_ms:
             return 0.0
         return statistics.median(self.latencies_ms)
 
     @property
     def p95(self) -> float:
-        """Percentil 95."""
+        """95th percentile."""
         if not self.latencies_ms:
             return 0.0
         if len(self.latencies_ms) < 20:
@@ -68,13 +68,13 @@ class OperationMetrics:
 
     @property
     def mean(self) -> float:
-        """Média."""
+        """Mean."""
         if not self.latencies_ms:
             return 0.0
         return statistics.mean(self.latencies_ms)
 
     def summary(self) -> MetricSummary:
-        """Retorna resumo das métricas."""
+        """Return the metrics summary."""
         return {
             "name": self.name,
             "count": self.count,
@@ -86,12 +86,12 @@ class OperationMetrics:
 
 class MetricsCollector:
     """
-    Coletor singleton de métricas de operações.
+    Singleton collector for operation metrics.
 
-    Uso:
+    Usage:
         collector = MetricsCollector()
         with collector.measure("list_notes"):
-            # operação
+            # operation
         print(collector.summary())
     """
 
@@ -112,33 +112,33 @@ class MetricsCollector:
         return self._metrics[name]
 
     def measure(self, operation_name: str) -> _MeasureContext:
-        """Context manager para medir latência de uma operação."""
+        """Return a context manager that measures operation latency."""
         return _MeasureContext(self, operation_name)
 
     def record(self, operation_name: str, latency_ms: float) -> None:
-        """Registra latência diretamente."""
+        """Record latency directly."""
         if self._enabled:
             self._get_or_create(operation_name).record(latency_ms)
 
     def summary(self) -> dict[str, MetricSummary]:
-        """Retorna resumo de todas as métricas coletadas."""
+        """Return summaries for every collected metric."""
         return {name: metrics.summary() for name, metrics in self._metrics.items()}
 
     def reset(self) -> None:
-        """Limpa todas as métricas coletadas."""
+        """Clear all collected metrics."""
         self._metrics.clear()
 
     def enable(self) -> None:
-        """Habilita coleta de métricas."""
+        """Enable metrics collection."""
         self._enabled = True
 
     def disable(self) -> None:
-        """Desabilita coleta de métricas."""
+        """Disable metrics collection."""
         self._enabled = False
 
 
 class _MeasureContext:
-    """Context manager para medição de latência."""
+    """Context manager for latency measurement."""
 
     def __init__(self, collector: MetricsCollector, name: str):
         self._collector = collector
@@ -164,14 +164,14 @@ def timed(
     operation_name: str | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
-    Decorador para medir latência de funções.
+    Decorate functions to measure their latency.
 
-    Uso:
+    Usage:
         @timed("list_notes")
         def list_notes(...):
             ...
 
-        # Ou usa nome da função automaticamente:
+        # Or use the function name automatically:
         @timed()
         def list_notes(...):
             ...
@@ -191,31 +191,31 @@ def timed(
     return decorator
 
 
-# Instância global para acesso conveniente
+# Global instance for convenient access.
 _collector = MetricsCollector()
 
 
 def get_metrics() -> dict[str, MetricSummary]:
-    """Retorna métricas coletadas."""
+    """Return collected metrics."""
     return _collector.summary()
 
 
 def reset_metrics() -> None:
-    """Limpa métricas coletadas."""
+    """Clear collected metrics."""
     _collector.reset()
 
 
-# Thresholds para alertas de saúde
+# Health-alert thresholds.
 LATENCY_THRESHOLD_MS = 500  # p95 > 500ms = warning
 CACHE_HIT_RATE_THRESHOLD = 0.7  # hit rate < 70% = warning
 
 
 def check_latency_health() -> list[HealthAlert]:
     """
-    Verifica latência das operações e retorna alertas se p95 exceder threshold.
+    Check operation latency and return alerts when p95 exceeds the threshold.
 
-    Retorna:
-        Lista de alertas (vazia se tudo OK).
+    Returns:
+        A list of alerts, empty when every metric is healthy.
     """
     alerts: list[HealthAlert] = []
     metrics = _collector.summary()
@@ -238,14 +238,14 @@ def check_latency_health() -> list[HealthAlert]:
 
 def check_cache_health() -> list[HealthAlert]:
     """
-    Verifica saúde dos caches e retorna alertas se hit rate for baixo.
+    Check cache health and return alerts when the hit rate is low.
 
-    Retorna:
-        Lista de alertas (vazia se tudo OK).
+    Returns:
+        A list of alerts, empty when every cache is healthy.
     """
     alerts: list[HealthAlert] = []
 
-    # Verificar cache de embeddings do searcher
+    # Check the searcher embedding cache.
     try:
         from vault_search.core.searcher import VaultSearcher
 
@@ -264,9 +264,9 @@ def check_cache_health() -> list[HealthAlert]:
                 }
             )
     except Exception:
-        pass  # Searcher pode não estar inicializado ainda
+        pass  # The searcher may not be initialized yet.
 
-    # Verificar cache de metadados
+    # Check the metadata cache.
     try:
         from vault_search.crud.cache import get_metadata_cache
 
@@ -285,6 +285,6 @@ def check_cache_health() -> list[HealthAlert]:
                 }
             )
     except Exception:
-        pass  # Cache pode não estar inicializado ainda
+        pass  # The cache may not be initialized yet.
 
     return alerts

@@ -1,28 +1,28 @@
-# Suporte
+# Support
 
-## Dúvida de uso
+## Usage questions
 
-Antes de abrir uma issue:
+Before opening an issue:
 
-1. consulte o [guia de instalação](docs/operation/installation.md);
-2. execute os checks de [troubleshooting](docs/operation/troubleshooting.md);
-3. remova conteúdo de notas, consultas privadas e caminhos absolutos dos logs;
-4. confirme Python, sistema operacional e commit ou versão do projeto.
+1. read the [installation guide](docs/operation/installation.md);
+2. run the checks in [troubleshooting](docs/operation/troubleshooting.md);
+3. remove note content, private queries, and absolute paths from logs;
+4. record the Python version, operating system, and project commit or release.
 
-Ao relatar, forneça o menor exemplo sintético que reproduz o problema, o comando
-executado e a mensagem de erro sanitizada.
+Provide the smallest synthetic example that reproduces the problem, the exact
+command, and the sanitized error message.
 
-Use a categoria Q&A do
+Use the Q&A category in
 [GitHub Discussions](https://github.com/everton-dgn/vault-search-mcp/discussions/categories/q-a)
-para dúvidas que não sejam bugs reproduzíveis.
+for questions that are not reproducible bugs.
 
-## Bug
+## Bugs
 
-Use o template de bug do issue tracker. Falhas de segurança seguem
-[SECURITY.md](SECURITY.md) e nunca devem ser publicadas como bug comum.
+Use the issue tracker's bug template. Security defects follow
+[SECURITY.md](SECURITY.md) and must not be published as ordinary bug reports.
 
-## Escopo
+## Scope
 
-O projeto oferece suporte comunitário, sem prazo garantido. Dúvidas sobre um
-cliente MCP específico podem exigir reprodução no cliente e no servidor para
-separar as duas superfícies.
+Support is community-based and has no guaranteed response time. Problems tied
+to a specific MCP client may require reproduction in both the client and the
+server to separate their boundaries.

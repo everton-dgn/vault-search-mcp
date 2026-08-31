@@ -1,4 +1,4 @@
-"""Execução segura por ``python -m vault_search [daemon]``."""
+"""Safe entry point for ``python -m vault_search [daemon]``."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from vault_search.cli import config_main, daemon_main, mcp_main
 
 
 def main() -> int:
-    """Seleciona o servidor MCP ou o daemon sem importar o runtime antes da borda."""
+    """Select the MCP server or daemon without importing the runtime before the boundary."""
     if len(sys.argv) == 1:
         return mcp_main()
     if sys.argv[1:] == ["daemon"]:

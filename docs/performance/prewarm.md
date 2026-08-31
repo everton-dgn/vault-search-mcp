@@ -1,59 +1,58 @@
-# Prewarm do índice
+# Index prewarming
 
-Prewarm acessa estruturas LanceDB antes da primeira busca para permitir que o
-sistema operacional as mantenha em cache. Ele ocorre em background e pode ser
-ignorado quando os guardrails de memória não permitem.
+Prewarming touches LanceDB structures before first search so the operating
+system can retain them in cache. It runs in the background and skips when memory
+guardrails reject the estimate.
 
-## Decisão
+## Decision flow
 
 ```mermaid
 flowchart TD
-    Start[Solicitação de prewarm] --> Enabled{Habilitado?}
-    Enabled -->|não| Skip[Registrar motivo]
-    Enabled -->|sim| Index{Há índice?}
-    Index -->|não| Skip
-    Index -->|sim| Memory{Memória comporta estimativa?}
-    Memory -->|não| Skip
-    Memory -->|sim| Read[Acessar estruturas do índice]
-    Read --> Record[Registrar duração e índices]
+    Start[Prewarm requested] --> Enabled{Enabled?}
+    Enabled -->|no| Skip[Record reason]
+    Enabled -->|yes| Index{Index exists?}
+    Index -->|no| Skip
+    Index -->|yes| Memory{Estimate fits memory guardrails?}
+    Memory -->|no| Skip
+    Memory -->|yes| Read[Touch index structures]
+    Read --> Record[Record duration and indexes]
 ```
 
-## Configuração
+## Configuration
 
-| Campo | Default | Função |
+| Field | Default | Function |
 |---|---:|---|
-| `prewarm.enabled` | `true` | Tenta prewarm no startup |
-| `prewarm.max_ram_percent` | `0.25` | Fração máxima da memória disponível |
-| `prewarm.min_available_ram` | `2147483648` | Memória livre mínima em bytes |
-| `prewarm.bytes_per_chunk` | `5120` | Estimativa usada pelo guardrail |
+| `prewarm.enabled` | `true` | Attempt prewarm during startup |
+| `prewarm.max_ram_percent` | `0.25` | Maximum fraction of available memory |
+| `prewarm.min_available_ram` | `2147483648` | Required free-memory floor in bytes |
+| `prewarm.bytes_per_chunk` | `5120` | Protective size estimate |
 
-`bytes_per_chunk` é heurística de proteção, não medição do índice real.
+`bytes_per_chunk` is a heuristic guardrail, not a measurement of real index
+size.
 
-## Estado observável
+## Observable state
 
-`get_prewarm_status()` informa:
+`get_prewarm_status()` reports:
 
-- `enabled`;
-- índices acessados;
-- motivo quando ignorado;
+- enabled state;
+- touched indexes;
+- skip reason;
 - timestamp;
-- duração observada.
+- observed duration.
 
-`system_stats` expõe esse estado para diagnóstico.
+`system_stats` exposes the same state for diagnosis.
 
-## Quando desativar
+## Disable when
 
-- ambiente com memória disputada;
-- processo curto em que aquecimento não será reutilizado;
-- investigação de regressão de startup;
-- backend que já controla cache de outra forma.
+- memory is contested;
+- a short-lived process cannot reuse the warm state;
+- investigating startup regression;
+- the backend already controls caching differently.
 
 ```yaml
 prewarm:
   enabled: false
 ```
 
-## Validação
-
-Compare cold e warm separadamente, registre memória disponível e confirme que o
-resultado da busca permanece igual. Veja [benchmarking.md](benchmarking.md).
+Compare cold and warm state separately, record available memory, and verify
+identical search results. See [benchmarking.md](benchmarking.md).

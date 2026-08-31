@@ -1,31 +1,31 @@
 """
-TypedDicts para o módulo de validação de frontmatter.
+Typed dictionaries for frontmatter validation.
 """
 
 from typing import Any, Literal, TypedDict
 
 
 class ValidationError(TypedDict):
-    """Erro ou aviso de validação."""
+    """Validation error or warning."""
 
     field: str
     message: str
-    code: str  # unique_error_code para i18n/debugging
-    value: Any  # valor que causou o erro (pode ser None)
+    code: str  # Stable error code for clients and debugging.
+    value: Any  # Value that caused the issue, or None.
 
 
 class ValidationResult(TypedDict):
-    """Resultado completo da validação de frontmatter."""
+    """Complete frontmatter validation result."""
 
     valid: bool
-    errors: list[ValidationError]  # Bloqueiam operação (on_missing: require, tipo inválido)
-    warnings: list[ValidationError]  # Coerções aplicadas (tipo convertido)
-    suggestions: list[ValidationError]  # Campos sugeridos (on_missing: suggest)
-    auto_generated: dict[str, Any]  # Campos gerados (on_missing: auto)
-    validated_data: dict[str, Any]  # Dados finais após coerção
+    errors: list[ValidationError]  # Blocking validation failures.
+    warnings: list[ValidationError]  # Applied coercions and non-blocking issues.
+    suggestions: list[ValidationError]  # Suggested fields (on_missing: suggest).
+    auto_generated: dict[str, Any]  # Generated fields (on_missing: auto).
+    validated_data: dict[str, Any]  # Final data after coercion.
 
 
-# Tipos literais para reuso
+# Reusable literal types.
 FieldType = Literal[
     "string", "int", "float", "bool", "date", "datetime", "uuid", "url", "enum", "list"
 ]

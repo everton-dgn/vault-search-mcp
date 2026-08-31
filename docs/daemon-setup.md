@@ -1,80 +1,104 @@
-# Daemon local de modelos
+# Local model daemon
 
-O daemon mantém embedding e reranking carregados entre processos MCP. Ele é um
-componente opcional e local, separado do índice e do vault.
+The daemon keeps embedding and reranking models loaded between MCP processes.
+It is optional, local, and separate from the vault and its derived index.
 
-## Limite de segurança
+## Security boundary
 
-O protocolo HTTP interno não oferece autenticação. O schema, o servidor e o
-cliente aceitam somente endereço de loopback. Use `127.0.0.1`, não publique a
-porta e não use proxy reverso. Acesso remoto fica fora do contrato até existir
-TLS, autenticação, quotas e um modelo de ameaças específico.
+The internal HTTP protocol has no authentication. Configuration, server, and
+client accept loopback addresses only. Use `127.0.0.1`, do not publish the port,
+and do not place a reverse proxy in front of it. Remote access remains outside
+the contract until TLS, authentication, quotas, and a dedicated threat model
+exist. The client ignores environment proxy settings and refuses HTTP redirects,
+so note content cannot leave the selected loopback endpoint through either path.
 
-## Instalação
+## Installation
 
-Valide primeiro `uv run python -m vault_search.core.indexer` e o arquivo de
-configuração.
+First validate `uv run python -m vault_search.core.indexer` and local
+configuration.
 
 ```bash
 # macOS
 ./scripts/install-daemon.sh
 
-# Linux com systemd de usuário
+# Linux with user-level systemd
 ./scripts/install-daemon-linux.sh
 ```
 
-Os instaladores:
+The installers:
 
-- localizam `uv` e a raiz do projeto;
-- leem o host e a porta da configuração efetiva;
-- preservam uma unidade existente antes de sobrescrever;
-- registram um serviço de usuário;
-- verificam o processo e o endpoint de saúde;
-- restauram a unidade anterior quando ativação ou health check falham.
+- locate `uv` and the project root;
+- resolve the project environment and register its daemon executable directly;
+- read host and port from configuration resolved in the project root, unless an
+  explicit absolute `VAULT_SEARCH_CONFIG` selects another file;
+- convert configured path overrides to absolute paths and copy only the documented
+  daemon environment allowlist into the service definition;
+- preserve an existing service definition before replacement;
+- register a user service;
+- require the health response to be `ready` and identify the PID managed by the
+  service manager;
+- restore the prior definition if activation or health validation fails.
 
-O health check aguarda até 300 segundos por padrão, inclusive no primeiro
-download dos modelos. Ajuste a janela para uma instalação lenta sem alterar o
-YAML:
+Health validation waits up to 300 seconds by default, including a first model
+download. Increase the window without changing YAML:
 
 ```bash
 VAULT_SEARCH_DAEMON_STARTUP_TIMEOUT=900 ./scripts/install-daemon.sh
 ```
 
-No Linux, use a mesma variável com `install-daemon-linux.sh`.
+Use the same variable with `install-daemon-linux.sh` on Linux.
 
-Para executar no terminal sem registrar um serviço:
+The installed service captures these nonempty variables at installation time:
+`VAULT_SEARCH_CONFIG`, `VAULT_SEARCH_VAULT_PATH`, `VAULT_PATH`,
+`VAULT_SEARCH_DATA_DIR`, `VAULT_SEARCH_WRITE_LOCK_TIMEOUT_SECONDS`,
+`VAULT_SEARCH_ENV`, `VAULT_SEARCH_LOG_LEVEL`, and
+`PYTORCH_ENABLE_MPS_FALLBACK`. Rerun the installer after changing one of them.
+The complete shell environment is never copied.
+
+Run interactively without installing a service:
 
 ```bash
 uv run vault-search-daemon
-# Fronteira equivalente:
+# Equivalent module entry point:
 uv run python -m vault_search daemon
 ```
 
-## Verificação
+## Verification
 
 ```bash
-# URLs abaixo usam a configuração padrão.
+# These URLs use default configuration.
 curl --fail --silent --show-error http://127.0.0.1:9847/health
 curl --fail --silent --show-error http://127.0.0.1:9847/stats
 ```
 
-Endpoints internos:
-
-| Método | Path | Uso |
+| Method | Path | Purpose |
 |---|---|---|
-| GET | `/health` | Identidade e saúde dos modelos |
-| GET | `/stats` | Estado operacional agregado |
-| POST | `/embed/queries` | Embeddings de queries |
-| POST | `/embed/corpus` | Embeddings de chunks |
-| POST | `/rerank` | Scores de reranking |
+| GET | `/health` | Model identity and readiness |
+| GET | `/stats` | Aggregated operational state |
+| POST | `/embed/queries` | Query embeddings |
+| POST | `/embed/corpus` | Chunk embeddings |
+| POST | `/rerank` | Reranking scores |
 
-Use as tools MCP para operação normal. Os endpoints servem para integração
-interna e diagnóstico local.
+Normal operation uses MCP tools. These endpoints exist for internal integration
+and local diagnosis.
 
-`/health` responde HTTP 200 somente no estado `ready`. Durante warmup, falha
-parcial ou ausência de um dos modelos, responde HTTP 503 com o estado observado.
-Os endpoints de inferência também rejeitam chamadas enquanto o daemon não está
-pronto. O encerramento ocorre pelo gerenciador do serviço ou por sinal local.
+`/health` returns HTTP 200 only in `ready` state. During warmup it returns HTTP 503.
+A terminal partial or complete warmup failure closes the process with a
+failure status so launchd or systemd can retry it. Inference endpoints reject
+calls while the daemon is not ready. Stop it through the service manager or a
+local signal. There is no HTTP shutdown endpoint.
+
+The response includes the daemon process ID so installers and operators can
+reject a healthy response from an older process that happens to own the same
+port:
+
+```json
+{
+  "status": "ready",
+  "pid": 12345,
+  "models_loaded": true
+}
+```
 
 ## macOS
 
@@ -92,38 +116,40 @@ journalctl --user -u vault-search-daemon -f
 ./scripts/uninstall-daemon-linux.sh
 ```
 
-Os desinstaladores exigem `trash` ou `trash-put` e preservam logs. No Linux,
-`trash-put` costuma vir no pacote `trash-cli`. Eles não apagam o vault nem o
-índice.
+Uninstallers require `trash` or `trash-put` and preserve logs. On Linux,
+`trash-put` is commonly supplied by `trash-cli`. They do not remove the vault
+or index.
 
-## Modos do cliente
+## Client modes
 
-| Configuração | Comportamento |
+| Setting | Behavior |
 |---|---|
-| `daemon.auto_use: true` | Usa daemon saudável quando disponível |
-| `VAULT_SEARCH_REQUIRE_DAEMON=1` | Falha em vez de carregar modelos locais |
-| `--wait-daemon N` | Indexador espera até N segundos |
-| `--wait-daemon 0` | Indexador espera sem limite definido |
+| `daemon.auto_use: true` | Use a healthy daemon when available |
+| `VAULT_SEARCH_REQUIRE_DAEMON=1` | Fail instead of loading models locally |
+| `--wait-daemon N` | Indexer waits up to N seconds |
+| `--wait-daemon 0` | Indexer waits without a fixed deadline |
 
-Um socket aberto não basta para declarar saúde. O cliente deve validar resposta,
-schema e identidade do endpoint.
+An open socket is not health proof. The normal client validates response shape
+and readiness. Installation adds an exact PID check against systemd or launchd.
+Both `127.0.0.1` and `::1` are supported; the daemon selects the matching socket
+family.
 
-## Falhas
+## Failure handling
 
-### Serviço registrado sem resposta
+### Registered service without a response
 
-1. leia logs sanitizados;
-2. execute `/health` com timeout;
-3. confirme que a porta pertence ao processo esperado;
-4. reinicie o serviço uma vez;
-5. use modelos locais se a política permitir.
+1. inspect sanitized logs;
+2. call `/health` with a timeout;
+3. confirm the expected process owns the port;
+4. restart the service once;
+5. use local models only when policy permits.
 
-### Conflito de porta
+### Port conflict
 
-Não encerre um processo desconhecido automaticamente. Identifique o dono da
-porta e escolha outra porta em `config.yaml`, atualizando cliente e serviço.
+Never terminate an unknown process automatically. Identify the owner and choose
+another port in `config.yaml`, then update the client and service together.
 
-### Uso de memória
+### Memory use
 
-Consumo varia conforme modelo, backend, precisão e versão. Meça no seu ambiente
-e registre o manifesto de [performance/benchmarking.md](performance/benchmarking.md).
+Consumption depends on model, backend, precision, and version. Measure it in the
+target environment and retain the [benchmark manifest](performance/benchmarking.md).

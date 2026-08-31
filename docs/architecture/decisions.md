@@ -1,23 +1,23 @@
-# Registros de decisão arquitetural
+# Architecture decision records
 
-ADRs preservam o contexto de decisões que afetam mais de um módulo. Mudança que
-invalide uma decisão cria um novo ADR e marca o anterior como substituído.
+ADRs preserve context for decisions that affect several modules. A change that
+invalidates a decision creates a new ADR and marks the previous one superseded.
 
-| ADR | Status | Decisão |
+| ADR | Status | Decision |
 |---|---|---|
-| [0001](adr/0001-vault-as-source-of-truth.md) | Aceito | Vault como fonte primária |
-| [0002](adr/0002-local-model-daemon.md) | Aceito | Daemon local opcional para modelos |
-| [0003](adr/0003-canonical-configuration.md) | Aceito | Um exemplo YAML alinhado ao schema |
-| [0004](adr/0004-performance-evidence.md) | Aceito | Benchmark numérico exige manifesto |
+| [0001](adr/0001-vault-as-source-of-truth.md) | Accepted | The vault is primary |
+| [0002](adr/0002-local-model-daemon.md) | Accepted | Optional local model daemon |
+| [0003](adr/0003-canonical-configuration.md) | Accepted | One YAML example aligned with the schema |
+| [0004](adr/0004-performance-evidence.md) | Accepted | Numeric benchmarks require a manifest |
 
-## Quando criar um ADR
+## When to create an ADR
 
-- mudança de fronteira de confiança;
-- novo armazenamento ou formato persistido;
-- alteração de compatibilidade MCP;
-- decisão de dependência central;
-- estratégia de migração ou concorrência;
-- política de desempenho ou privacidade.
+- trust-boundary changes;
+- new storage or persistent formats;
+- MCP compatibility changes;
+- central dependency decisions;
+- migration or concurrency strategy;
+- performance or privacy policy.
 
-Um ADR contém contexto, decisão, consequências e alternativas consideradas.
-Detalhes transitórios de implementação ficam próximos ao código.
+An ADR contains context, decision, consequences, and considered alternatives.
+Transient implementation detail belongs near the code.

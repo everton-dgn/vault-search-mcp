@@ -1,4 +1,4 @@
-"""vault-search-mcp: busca local em bases de conhecimento."""
+"""vault-search-mcp: local search for knowledge bases."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ _LAZY_EXPORTS = {
 
 
 def __getattr__(name: str) -> Any:
-    """Preserva a API pública sem carregar configuração no import do pacote."""
+    """Preserve the public API without loading configuration during package import."""
     try:
         module_name, attribute = _LAZY_EXPORTS[name]
     except KeyError as error:

@@ -1,7 +1,7 @@
 """
-Property-based tests para frontmatter validation usando Hypothesis.
+Property-based tests for frontmatter validation using Hypothesis.
 
-Gera dados aleatórios para encontrar edge cases não cobertos por testes manuais.
+Generates data random for find edge cases not covered by tests manual.
 """
 
 from datetime import date, datetime
@@ -24,10 +24,10 @@ from vault_search.frontmatter.schema import FieldSchema, FrontmatterSchemaConfig
 from vault_search.frontmatter.validator import FrontmatterValidator
 
 # =============================================================================
-# Strategies para gerar dados de teste
+# Strategies for generate data of test
 # =============================================================================
 
-# Strings válidas para frontmatter (sem caracteres de controle problemáticos)
+# Valid frontmatter strings without problematic control characters.
 frontmatter_strings = st.text(
     alphabet=st.characters(
         whitelist_categories=("L", "N", "P", "S", "Z"),
@@ -37,10 +37,10 @@ frontmatter_strings = st.text(
     max_size=1000,
 )
 
-# Inteiros razoáveis (evita overflow)
+# Inteiros reasonable (avoids overflow)
 reasonable_ints = st.integers(min_value=-(2**31), max_value=2**31)
 
-# Floats válidos (sem NaN/Inf)
+# Floats valid (without NaN/Inf)
 valid_floats = st.floats(
     allow_nan=False,
     allow_infinity=False,
@@ -48,13 +48,13 @@ valid_floats = st.floats(
     max_value=1e10,
 )
 
-# Datas válidas
+# Valid dates
 valid_dates = st.dates(
     min_value=date(1900, 1, 1),
     max_value=date(2100, 12, 31),
 )
 
-# Datetimes válidos
+# Datetimes valid
 valid_datetimes = st.datetimes(
     min_value=datetime(1900, 1, 1),
     max_value=datetime(2100, 12, 31),
@@ -62,74 +62,74 @@ valid_datetimes = st.datetimes(
 
 
 # =============================================================================
-# Property-based tests para coerção
+# Property-based tests for coercion
 # =============================================================================
 
 
 class TestCoercionProperties:
-    """Testes de propriedades para funções de coerção."""
+    """Property-based tests for coercion functions."""
 
     @given(st.text())
     def test_string_coercion_never_crashes(self, value: str):
-        """Coerção de string nunca deve crashar com input string."""
+        """Coercion of string never must crash with input string."""
         schema = FieldSchema(type="string")
         result, warning = coerce_string(value, schema)
         assert isinstance(result, str)
 
     @given(reasonable_ints)
     def test_int_roundtrip(self, value: int):
-        """Int coercido deve manter valor."""
+        """Int coerced must keep value."""
         schema = FieldSchema(type="int")
         result, warning = coerce_int(value, schema)
         assert result == value
 
     @given(valid_floats)
     def test_float_roundtrip(self, value: float):
-        """Float coercido deve manter valor (aproximado)."""
+        """Float coerced must keep value (approximate)."""
         schema = FieldSchema(type="float")
         result, warning = coerce_float(value, schema)
         assert abs(result - value) < 1e-10 or result == value
 
     @given(st.booleans())
     def test_bool_roundtrip(self, value: bool):
-        """Bool coercido deve manter valor."""
+        """Bool coerced must keep value."""
         schema = FieldSchema(type="bool")
         result, warning = coerce_bool(value, schema)
         assert result is value
 
     @given(valid_dates)
     def test_date_roundtrip(self, value: date):
-        """Date coercido deve produzir ISO string válida."""
+        """A coerced date must produce a valid ISO string."""
         schema = FieldSchema(type="date")
         result, warning = coerce_date(value, schema)
-        # Resultado deve ser ISO parseable
+        # Result must be ISO parseable
         parsed = date.fromisoformat(result)
         assert parsed == value
 
     @given(valid_datetimes)
     def test_datetime_roundtrip(self, value: datetime):
-        """Datetime coercido deve produzir ISO string válida."""
+        """A coerced datetime must produce a valid ISO string."""
         schema = FieldSchema(type="datetime")
         result, warning = coerce_datetime(value, schema)
-        # Resultado deve ser ISO parseable
+        # Result must be ISO parseable
         parsed = datetime.fromisoformat(result)
         assert parsed == value
 
     @settings(deadline=None)
     @given(st.lists(st.text(min_size=1, max_size=50), min_size=0, max_size=20))
     def test_list_roundtrip(self, value: list[str]):
-        """Lista de strings coercida deve manter itens, sem medir aquecimento do runtime."""
+        """List of strings coerced must keep items, without measure warmup of the runtime."""
         schema = FieldSchema(type="list", item_type="string")
         result, warning = coerce_list(value, schema)
         assert result == value
 
 
 class TestCoercionConstraints:
-    """Testes para constraints de coerção."""
+    """Tests for constraints of coercion."""
 
     @given(st.text(min_size=10, max_size=100))
     def test_string_min_length_constraint(self, value: str):
-        """String deve respeitar min_length."""
+        """A string must respect min_length."""
         schema = FieldSchema(type="string", min_length=5)
         if len(value) >= 5:
             result, _ = coerce_string(value, schema)
@@ -140,7 +140,7 @@ class TestCoercionConstraints:
 
     @given(reasonable_ints)
     def test_int_range_constraint(self, value: int):
-        """Int deve respeitar minimum/maximum."""
+        """An integer must respect minimum and maximum."""
         schema = FieldSchema(type="int", minimum=0, maximum=100)
         if 0 <= value <= 100:
             result, _ = coerce_int(value, schema)
@@ -151,12 +151,12 @@ class TestCoercionConstraints:
 
 
 # =============================================================================
-# Property-based tests para Validator
+# Property-based tests for Validator
 # =============================================================================
 
 
 class TestValidatorProperties:
-    """Testes de propriedades para FrontmatterValidator."""
+    """Property-based tests for FrontmatterValidator."""
 
     @given(
         st.dictionaries(
@@ -167,7 +167,7 @@ class TestValidatorProperties:
         )
     )
     def test_validator_never_crashes(self, data: dict[str, str]):
-        """Validator nunca deve crashar com input arbitrário."""
+        """Validator never must crash with input arbitrary."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             mode="lenient",
@@ -178,7 +178,7 @@ class TestValidatorProperties:
 
         result = validator.validate(data)
 
-        # Deve sempre retornar resultado válido
+        # Every generated case must return a valid result.
         assert "valid" in result
         assert "errors" in result
         assert "warnings" in result
@@ -186,7 +186,7 @@ class TestValidatorProperties:
 
     @given(st.text(min_size=1, max_size=100))
     def test_required_field_always_checked(self, title: str):
-        """Campo required deve sempre ser validado."""
+        """A required field must always be validated."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -195,19 +195,19 @@ class TestValidatorProperties:
         )
         validator = FrontmatterValidator(config)
 
-        # Com título presente
+        # With title present
         result = validator.validate({"title": title})
         assert result["valid"] is True
         assert result["validated_data"]["title"] == title
 
-        # Sem título
+        # Without title
         result = validator.validate({})
         assert result["valid"] is False
         assert any(e["field"] == "title" for e in result["errors"])
 
     @given(st.sampled_from(["draft", "published", "archived"]))
     def test_enum_valid_values_accepted(self, status: str):
-        """Valores válidos de enum devem ser aceitos."""
+        """Valid enum values are accepted."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -237,7 +237,7 @@ class TestValidatorProperties:
         )
     )
     def test_extra_fields_preserved(self, extra: dict[str, Any]):
-        """Campos extras devem ser preservados quando permitidos."""
+        """Extra fields are preserved when allowed."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             allow_extra_fields=True,
@@ -248,17 +248,17 @@ class TestValidatorProperties:
         result = validator.validate(extra)
 
         assert result["valid"] is True
-        # Todos os campos devem estar em validated_data
+        # All the fields must be in validated_data
         for key in extra:
             assert key in result["validated_data"]
 
 
 class TestAutoGenerationProperties:
-    """Testes para auto-geração de campos."""
+    """Tests for auto-generation of fields."""
 
-    @given(st.just({}))  # Sempre dict vazio
+    @given(st.just({}))  # Always dict empty
     def test_uuid_auto_generation_format(self, _):
-        """UUID auto-gerado deve ter formato válido."""
+        """UUID auto-generated must have format valid."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -271,15 +271,15 @@ class TestAutoGenerationProperties:
 
         assert result["valid"] is True
         uuid = result["auto_generated"]["id"]
-        # UUID v7 tem versão 7 na posição 14
+        # UUID v7 has version 7 in the position 14
         assert uuid[14] == "7"
-        # Formato: 8-4-4-4-12 (36 chars com hífens)
+        # Format: 8-4-4-4-12 (36 chars with hyphens)
         assert len(uuid) == 36
         assert uuid.count("-") == 4
 
     @given(st.just({}))
     def test_datetime_auto_generation_format(self, _):
-        """Datetime auto-gerado deve ser ISO válido."""
+        """Datetime auto-generated must be ISO valid."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -292,17 +292,17 @@ class TestAutoGenerationProperties:
 
         assert result["valid"] is True
         dt_str = result["auto_generated"]["created_at"]
-        # Deve ser parseable
+        # Must be parseable
         parsed = datetime.fromisoformat(dt_str)
         assert isinstance(parsed, datetime)
 
 
 class TestAliasProperties:
-    """Testes para resolução de aliases."""
+    """Tests for resolution of aliases."""
 
     @given(st.sampled_from(["created", "date", "timestamp"]))
     def test_any_alias_resolves(self, alias: str):
-        """Qualquer alias deve resolver para campo canônico."""
+        """Any alias must resolve to the canonical field."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -318,6 +318,6 @@ class TestAliasProperties:
 
         assert result["valid"] is True
         assert "created_at" in result["validated_data"]
-        # Alias usado deve gerar warning
+        # Alias used must generate warning
         alias_warnings = [w for w in result["warnings"] if w["code"] == "alias_resolved"]
         assert len(alias_warnings) == 1

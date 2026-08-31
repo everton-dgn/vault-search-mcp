@@ -1,7 +1,7 @@
 """
-Testes unitários para parse_file() — dispatcher de parsing.
+Unit tests for parse_file() — dispatcher of parsing.
 
-Testes rápidos que NÃO precisam de modelos ML nem LanceDB.
+Fast tests that do not require ML models or LanceDB.
 """
 
 import json
@@ -16,10 +16,10 @@ from vault_search.type_defs import ParseStatus
 
 class TestParseFileDispatch:
     def test_dispatch_md(self, tmp_vault):
-        path = tmp_vault / "simples.md"  # já existe no tmp_vault fixture
+        path = tmp_vault / "simple.md"  # already exists in the tmp_vault fixture
         chunks, links, aliases = parse_file(path, tmp_vault)
         assert len(chunks) > 0
-        assert chunks[0]["note_path"] == "simples.md"
+        assert chunks[0]["note_path"] == "simple.md"
 
     def test_dispatch_canvas(self, tmp_vault):
         data = {
@@ -41,7 +41,7 @@ class TestParseFileDispatch:
         chunks, links, aliases = parse_file(path, tmp_vault)
         assert len(chunks) == 1
         assert chunks[0]["text"] == "Canvas content"
-        assert links == []  # canvas não extrai links
+        assert links == []  # Canvas parsing does not extract links.
         assert aliases == []
 
     def test_dispatch_pdf(self, tmp_vault):
@@ -54,10 +54,10 @@ class TestParseFileDispatch:
         chunks, links, aliases = parse_file(path, tmp_vault)
         assert len(chunks) >= 1
         assert "PDF content" in chunks[0]["text"]
-        assert links == []  # pdf não extrai links
+        assert links == []  # PDF parsing does not extract links.
         assert aliases == []
 
-    def test_extensao_desconhecida(self, tmp_vault):
+    def test_unknown_extension(self, tmp_vault):
         path = tmp_vault / "image.jpg"
         path.write_bytes(b"fake image data")
         chunks, links, aliases = parse_file(path, tmp_vault)
@@ -65,13 +65,13 @@ class TestParseFileDispatch:
         assert links == []
         assert aliases == []
 
-    def test_extensao_case_insensitive_md(self, tmp_vault):
+    def test_extension_case_insensitive_md(self, tmp_vault):
         path = tmp_vault / "upper.MD"
         path.write_text("# Upper Case", encoding="utf-8")
         chunks, links, aliases = parse_file(path, tmp_vault)
         assert len(chunks) > 0
 
-    def test_extensao_case_insensitive_canvas(self, tmp_vault):
+    def test_extension_case_insensitive_canvas(self, tmp_vault):
         data = {
             "nodes": [
                 {
@@ -91,7 +91,7 @@ class TestParseFileDispatch:
         chunks, links, aliases = parse_file(path, tmp_vault)
         assert len(chunks) == 1
 
-    def test_extensao_case_insensitive_pdf(self, tmp_vault):
+    def test_extension_case_insensitive_pdf(self, tmp_vault):
         doc = pymupdf.open()
         page = doc.new_page()
         page.insert_text((72, 72), "PDF uppercase")
@@ -101,7 +101,7 @@ class TestParseFileDispatch:
         chunks, links, aliases = parse_file(path, tmp_vault)
         assert len(chunks) >= 1
 
-    def test_result_distingue_arquivo_vazio(self, tmp_vault):
+    def test_result_distinguishes_empty_file(self, tmp_vault):
         path = tmp_vault / "empty.md"
         path.write_text("", encoding="utf-8")
 
@@ -110,7 +110,7 @@ class TestParseFileDispatch:
         assert result.status is ParseStatus.EMPTY
         assert result.error_type is None
 
-    def test_result_distingue_erro_de_parser(self, tmp_vault):
+    def test_result_distinguishes_parser_error(self, tmp_vault):
         path = tmp_vault / "invalid.canvas"
         path.write_text("{invalid", encoding="utf-8")
 
@@ -121,22 +121,22 @@ class TestParseFileDispatch:
 
 
 class TestParsersSyncWithConfig:
-    """Garante que parsers cobrem INDEXABLE_EXTENSIONS."""
+    """Ensure parsers cover every INDEXABLE_EXTENSIONS value."""
 
-    def test_parsers_cobrem_todas_extensoes(self):
-        """Cada extensão indexável deve ser tratada por parse_file()."""
-        # Testar que parse_file não retorna lista vazia para extensões indexáveis
-        # (verificação indireta pois _PARSERS é interno)
+    def test_parsers_cover_all_extensions(self):
+        """Each extension indexable must be handled by parse_file()."""
+        # Verify that parse_file returns content for indexable extensions.
+        # This is indirect verification because _PARSERS is internal.
         from unittest.mock import MagicMock
 
         for ext in INDEXABLE_EXTENSIONS:
-            # Criar mock do arquivo com extensão específica
+            # Create mock of the file with extension specific
             mock_path = MagicMock(spec=Path)
             mock_path.suffix = ext
             mock_path.name = f"test{ext}"
 
-            # parse_file deve pelo menos tentar processar (não levantar exceção)
-            # Não podemos testar resultado pois depende do conteúdo
-            # A verificação de sincronização é feita implicitamente:
-            # se uma extensão não tiver parser, parse_file retorna []
-            assert ext in INDEXABLE_EXTENSIONS, f"Extensão {ext} não configurada"
+            # parse_file must at least attempt processing without raising.
+            # The exact result depends on document content.
+            # Synchronization is verified implicitly:
+            # if a extension not tiver parser, parse_file returns []
+            assert ext in INDEXABLE_EXTENSIONS, f"Extension {ext} is not configured"

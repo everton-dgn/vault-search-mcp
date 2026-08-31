@@ -1,90 +1,91 @@
-# Visão arquitetural
+# Architecture overview
 
-## Componentes
+## Components
 
 ```mermaid
 flowchart TB
-    Client[Cliente MCP] <-->|stdio| Server[FastMCP server]
+    Client[MCP client] <-->|stdio| Server[FastMCP server]
     Server --> Search[VaultSearcher]
     Server --> Index[VaultIndexer]
-    Server --> Crud[CRUD e frontmatter]
-    Server --> Graph[Navegação e grafo]
+    Server --> Crud[CRUD and frontmatter]
+    Server --> Graph[Navigation and graph]
     Search <--> Lance[(LanceDB)]
     Index --> Lance
-    Crud <--> Vault[Vault local]
+    Crud <--> Vault[Local vault]
     Index --> Vault
     Watcher[Watchdog] --> Index
     Search <--> Models[ModelManager]
-    Models <-. HTTP loopback .-> Daemon[Daemon opcional]
+    Models <-. loopback HTTP .-> Daemon[Optional daemon]
 ```
 
-## Fluxo de indexação
+## Indexing flow
 
-1. O scanner seleciona extensões permitidas e ignora pastas configuradas.
-2. Cada parser produz chunks, links e aliases.
-3. O ModelManager gera embeddings localmente ou pelo daemon.
-4. O indexador grava a nova geração e seus índices de consulta.
-5. O catálogo e o watcher mantêm metadados auxiliares sincronizados.
+1. The scanner selects enabled extensions and excludes configured folders.
+2. Each parser emits chunks, links, and aliases.
+3. `ModelManager` generates embeddings locally or through the daemon.
+4. The indexer commits a new generation and query indexes.
+5. The catalog and watcher maintain auxiliary metadata.
 
-O vault é fonte primária. LanceDB, FTS e SQLite são derivados reconstruíveis.
+The vault is primary. LanceDB, FTS, and SQLite are rebuildable derivatives.
 
-## Fluxo de busca
+## Search flow
 
 ```mermaid
 sequenceDiagram
-    participant C as Cliente
+    participant C as Client
     participant M as MCP
     participant S as Searcher
     participant D as ModelManager
     participant L as LanceDB
     C->>M: search_vault_hybrid(query, top_k)
-    M->>S: validar e buscar
-    S->>D: embedding da query
-    D-->>S: vetor
-    S->>L: candidatos vetoriais e textuais
-    L-->>S: chunks candidatos
-    S->>D: reranking
+    M->>S: validate and search
+    S->>D: embed query
+    D-->>S: vector
+    S->>L: vector and text candidates
+    L-->>S: candidate chunks
+    S->>D: rerank
     D-->>S: scores
-    S-->>M: resultados formatados
-    M-->>C: dados MCP
+    S-->>M: formatted results
+    M-->>C: MCP data
 ```
 
-## Estado e concorrência
+## State and concurrency
 
-O servidor mantém indexer, searcher e watcher compartilhados. Inicializações de
-catálogo, prewarm, modelos e sync podem ocorrer em background. Qualquer mudança
-nessa sequência precisa considerar contenção de CPU, memória, banco e shutdown.
+The server shares one indexer, searcher, and watcher. Catalog initialization,
+prewarming, models, and synchronization can run in the background. Changes to
+startup order must account for CPU, memory, database contention, and shutdown.
 
-## Configuração
+## Configuration
 
-`VaultSearchConfig` agrega objetos Pydantic por domínio. A precedência e os
-overrides estão em [../config/yaml.md](../config/yaml.md). Módulos legados de
-constantes ainda existem para compatibilidade e devem convergir para o mesmo
-objeto validado.
+`VaultSearchConfig` aggregates domain-specific Pydantic models. Precedence and
+overrides are documented in [../config/yaml.md](../config/yaml.md). Legacy
+constant modules still exist for compatibility and converge on the same
+validated object.
 
-## Fronteiras
+## Boundaries
 
-| Fronteira | Transporte | Regra |
+| Boundary | Transport | Rule |
 |---|---|---|
-| Cliente para servidor | MCP stdio | Input validado e erro sanitizado |
-| Servidor para vault | Sistema de arquivos | Path contido e escrita atômica |
-| Servidor para índice | APIs locais | Geração anterior preservada até commit |
-| Servidor para daemon | HTTP loopback | Health semântico, limite e timeout |
-| Servidor para processo externo | stdin explícito | Desativado por padrão e consentido |
+| Client to server | MCP `stdio` | Validate input and sanitize failures |
+| Server to vault | Filesystem | Contain paths and use atomic writes |
+| Server to index | Local APIs | Preserve the active generation until commit |
+| Server to daemon | Loopback HTTP | Semantic health, size bounds, and timeouts |
+| Server to external process | Explicit `stdin` | Disabled by default and consent-gated |
 
-Veja [../security/threat-model.md](../security/threat-model.md).
+See the [threat model](../security/threat-model.md).
 
-## Organização do código
+## Code organization
 
-| Pacote | Responsabilidade |
+| Package | Responsibility |
 |---|---|
-| `config` | Schema, carga e constantes compatíveis |
-| `core` | Scanner, parsing coordenado, indexação e busca |
-| `crud` | Operações e catálogo de notas |
-| `frontmatter` | Schema e validação de metadados |
-| `parsers` | Markdown, MDX, texto, PDF e Canvas |
-| `server` | Tools, resources, watcher e lifecycle MCP |
-| `daemon` | Modelos persistentes em loopback |
-| `utils` | Logging, retry, UUID e shutdown |
+| `config` | Schema, loading, and compatible constants |
+| `core` | Scanning, coordinated parsing, indexing, and search |
+| `crud` | Note operations and catalog |
+| `frontmatter` | Metadata schema and validation |
+| `parsers` | Markdown, MDX, text, PDF, and Canvas |
+| `server` | MCP tools, resources, jobs, and lifecycle |
+| `daemon` | Persistent loopback model process |
+| `utils` | Logging, retries, UUIDs, and shutdown |
+| `watching` | Filesystem events and incremental reindexing |
 
-O mapa detalhado está em [modules.md](modules.md).
+See [modules.md](modules.md) for the detailed map.

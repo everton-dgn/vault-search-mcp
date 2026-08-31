@@ -1,4 +1,4 @@
-"""Testes da fila limitada e coalescente de reindexação."""
+"""Tests of the queue bounded and coalescing of reindexing."""
 
 from __future__ import annotations
 

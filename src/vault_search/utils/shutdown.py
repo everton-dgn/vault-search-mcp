@@ -1,30 +1,30 @@
 """
-Graceful shutdown para operações de longa duração.
+Graceful shutdown for long-running operations.
 
-Garante que indexação e outras operações terminem limpo quando
-o processo recebe SIGTERM ou SIGINT (Ctrl+C).
+Ensure indexing and other operations stop cleanly when the process
+receives SIGTERM or SIGINT.
 
-Padrões implementados:
-1. DelayedKeyboardInterrupt - protege seções críticas de interrupção
-2. ShutdownManager - coordena shutdown global com callbacks
-3. shutdown_requested() - flag global para verificar estado
+Implemented patterns:
+1. ``DelayedKeyboardInterrupt`` protects critical sections
+2. ``ShutdownManager`` coordinates global shutdown callbacks
+3. ``shutdown_requested()`` exposes the global shutdown state
 
-Uso:
+Usage:
     from vault_search.utils.shutdown import (
         DelayedKeyboardInterrupt,
         ShutdownManager,
         shutdown_requested,
     )
 
-    # Proteger seção crítica
+    # Protect a critical section.
     with DelayedKeyboardInterrupt():
         save_important_data()
 
-    # Verificar se deve parar
+    # Check whether processing should stop.
     while not shutdown_requested():
         process_next_item()
 
-    # Registrar cleanup callback
+    # Register a cleanup callback.
     ShutdownManager.register_callback(cleanup_resources)
 """
 
@@ -44,12 +44,12 @@ type SignalHandler = Callable[[int, FrameType | None], object] | int | None
 
 
 # =============================================================================
-# Estado global de shutdown
+# Global shutdown state
 # =============================================================================
 
 
 class _ShutdownState:
-    """Estado interno do sistema de shutdown."""
+    """Internal shutdown state."""
 
     def __init__(self):
         self._shutdown_requested = threading.Event()
@@ -61,19 +61,19 @@ class _ShutdownState:
         self._initialized = False
 
     def request_shutdown(self) -> None:
-        """Marca que shutdown foi solicitado."""
+        """Mark shutdown as requested."""
         self._shutdown_requested.set()
 
     def is_shutdown_requested(self) -> bool:
-        """Verifica se shutdown foi solicitado."""
+        """Return whether shutdown was requested."""
         return self._shutdown_requested.is_set()
 
     def start_shutdown(self) -> None:
-        """Marca que shutdown está em progresso."""
+        """Mark shutdown as in progress."""
         self._shutdown_in_progress.set()
 
     def try_start_shutdown(self) -> bool:
-        """Garante que somente um caller execute os callbacks."""
+        """Ensure that only one caller runs the callbacks."""
         with self._shutdown_transition_lock:
             if self._shutdown_in_progress.is_set():
                 return False
@@ -81,23 +81,23 @@ class _ShutdownState:
             return True
 
     def is_shutdown_in_progress(self) -> bool:
-        """Verifica se shutdown está em progresso."""
+        """Return whether shutdown is in progress."""
         return self._shutdown_in_progress.is_set()
 
     def register_callback(self, callback: Callable[[], None]) -> None:
-        """Registra callback para ser chamado no shutdown."""
+        """Register a callback to run during shutdown."""
         with self._callbacks_lock:
             if callback not in self._callbacks:
                 self._callbacks.append(callback)
 
     def unregister_callback(self, callback: Callable[[], None]) -> None:
-        """Remove callback registrado."""
+        """Remove a registered callback."""
         with self._callbacks_lock:
             if callback in self._callbacks:
                 self._callbacks.remove(callback)
 
     def run_callbacks(self) -> None:
-        """Executa todos os callbacks registrados."""
+        """Run every registered callback."""
         with self._callbacks_lock:
             callbacks = list(self._callbacks)
 
@@ -115,151 +115,150 @@ _state = _ShutdownState()
 
 
 # =============================================================================
-# API pública - funções de conveniência
+# Public convenience API
 # =============================================================================
 
 
 def shutdown_requested() -> bool:
     """
-    Verifica se shutdown foi solicitado.
+    Check whether shutdown was requested.
 
-    Use em loops de processamento para sair graciosamente:
+    Use this in processing loops to stop cleanly:
 
         while not shutdown_requested():
             process_next_item()
 
-    Retorna:
-        True se SIGTERM/SIGINT foi recebido.
+    Returns:
+        ``True`` after SIGTERM or SIGINT is received.
     """
     return _state.is_shutdown_requested()
 
 
 def request_shutdown() -> None:
     """
-    Solicita shutdown programaticamente.
+    Request shutdown programmatically.
 
-    Útil para testes ou shutdown iniciado por código.
+    Useful in tests or for code-initiated shutdown.
     """
     _state.request_shutdown()
 
 
 def wait_for_shutdown(timeout: float | None = None) -> bool:
     """
-    Bloqueia até que shutdown seja solicitado.
+    Block until shutdown is requested.
 
-    Parâmetros:
-        timeout: segundos para esperar (None = infinito)
+    Parameters:
+        timeout: Seconds to wait; ``None`` waits indefinitely.
 
-    Retorna:
-        True se shutdown foi solicitado, False se timeout.
+    Returns:
+        ``True`` when shutdown is requested, or ``False`` after a timeout.
     """
     return _state._shutdown_requested.wait(timeout)
 
 
 # =============================================================================
-# ShutdownManager - coordenador de shutdown
+# ShutdownManager coordinates shutdown
 # =============================================================================
 
 
 class ShutdownManager:
     """
-    Gerenciador de graceful shutdown.
+    Graceful-shutdown manager.
 
-    Coordena signal handlers e callbacks de cleanup.
+    Coordinate signal handlers and cleanup callbacks.
 
-    Uso:
-        # Inicializar no startup da aplicação
+    Usage:
+        # Initialize during application startup.
         ShutdownManager.initialize()
 
-        # Registrar cleanup
+        # Register cleanup callbacks.
         ShutdownManager.register_callback(close_database)
         ShutdownManager.register_callback(stop_watcher)
 
-        # No final (ou via atexit)
+        # Run at the end or through atexit.
         ShutdownManager.shutdown()
     """
 
-    _timeout: float = 30.0  # Timeout para shutdown
+    _timeout: float = 30.0  # Shutdown timeout
 
     @classmethod
     def initialize(cls, timeout: float = 30.0) -> None:
         """
-        Inicializa o gerenciador de shutdown.
+        Initialize the shutdown manager.
 
-        Instala signal handlers para SIGTERM e SIGINT.
-        Registra atexit handler para cleanup.
+        Install signal handlers for SIGTERM and SIGINT.
+        Register an atexit cleanup handler.
 
-        Parâmetros:
-            timeout: segundos máximos para aguardar callbacks (deve ser > 0)
+        Parameters:
+            timeout: Maximum seconds to wait for callbacks; must be positive.
 
         Raises:
-            ValueError: se timeout <= 0
+            ValueError: When ``timeout`` is not positive.
         """
         if timeout <= 0:
-            raise ValueError(f"timeout deve ser > 0, recebido: {timeout}")
+            raise ValueError(f"timeout must be greater than 0, received: {timeout}")
 
         if _state._initialized:
-            logger.debug("ShutdownManager já inicializado")
+            logger.debug("ShutdownManager already initialized")
             return
 
         cls._timeout = timeout
 
-        # Instalar signal handlers
+        # Install signal handlers.
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:
                 old_handler = signal.signal(sig, cls._signal_handler)
                 _state._original_handlers[sig] = old_handler
             except (ValueError, OSError) as e:
-                # Pode falhar em threads não-main ou ambientes restritos
+                # This may fail outside the main thread or in restricted environments.
                 logger.warning(
                     "shutdown_handler_install_failed signal=%s error_type=%s",
                     sig,
                     type(e).__name__,
                 )
 
-        # Registrar atexit
+        # Register the atexit handler.
         atexit.register(cls._atexit_handler)
 
         _state._initialized = True
-        logger.debug("ShutdownManager inicializado")
+        logger.debug("ShutdownManager initialized")
 
     @classmethod
     def _signal_handler(cls, signum: int, frame: FrameType | None) -> None:
-        """Handler interno para sinais."""
+        """Handle operating-system signals."""
         sig_name = signal.Signals(signum).name
-        logger.info(f"Recebido {sig_name}, iniciando graceful shutdown...")
+        logger.info(f"Received {sig_name}; starting graceful shutdown")
 
         _state.request_shutdown()
 
-        # Se já está em shutdown, força saída
+        # Force exit when shutdown is already in progress.
         if _state.is_shutdown_in_progress():
-            logger.warning("Segundo sinal recebido, forçando saída")
+            logger.warning("Second signal received; forcing exit")
             sys.exit(128 + signum)
 
-        # Executar shutdown em thread separada para não bloquear
+        # Run shutdown in a separate thread to avoid blocking the signal handler.
         shutdown_thread = threading.Thread(target=cls.shutdown, daemon=True)
         shutdown_thread.start()
 
     @classmethod
     def _atexit_handler(cls) -> None:
-        """Handler para atexit."""
+        """Handle atexit cleanup."""
         if not _state.is_shutdown_in_progress():
             cls.shutdown()
 
     @classmethod
     def shutdown(cls) -> None:
         """
-        Executa shutdown gracioso.
+        Perform graceful shutdown.
 
-        Chama todos os callbacks registrados em ordem LIFO.
-        Aguarda até timeout para conclusão.
+        Call registered callbacks in LIFO order and wait up to the timeout.
         """
         if not _state.try_start_shutdown():
             return
 
         _state.request_shutdown()
 
-        logger.info("Executando callbacks de shutdown...")
+        logger.info("Running shutdown callbacks")
         callbacks_thread = threading.Thread(
             target=_state.run_callbacks,
             name="shutdown-callbacks",
@@ -270,39 +269,39 @@ class ShutdownManager:
         if callbacks_thread.is_alive():
             logger.error("shutdown_callbacks_timeout")
             return
-        logger.info("Shutdown completo")
+        logger.info("Shutdown complete")
 
     @classmethod
     def register_callback(cls, callback: Callable[[], None]) -> None:
         """
-        Registra callback para ser chamado no shutdown.
+        Register a callback to run during shutdown.
 
-        Callbacks são executados em ordem LIFO (último registrado primeiro).
+        Callbacks run in LIFO order.
 
-        Parâmetros:
-            callback: função sem argumentos para cleanup
+        Parameters:
+            callback: No-argument cleanup function.
         """
         _state.register_callback(callback)
 
     @classmethod
     def unregister_callback(cls, callback: Callable[[], None]) -> None:
         """
-        Remove callback registrado.
+        Remove a registered callback.
 
-        Parâmetros:
-            callback: função previamente registrada
+        Parameters:
+            callback: Previously registered function.
         """
         _state.unregister_callback(callback)
 
     @classmethod
     def reset(cls) -> None:
         """
-        Reseta estado do manager (para testes).
+        Reset manager state for tests.
 
-        ATENÇÃO: Não usar em produção.
+        WARNING: Do not use in production.
         """
         global _state
-        # Restaurar signal handlers originais antes de resetar
+        # Restore original signal handlers before resetting.
         for sig, handler in _state._original_handlers.items():
             try:
                 signal.signal(sig, handler)
@@ -312,31 +311,31 @@ class ShutdownManager:
 
 
 # =============================================================================
-# DelayedKeyboardInterrupt - protege seções críticas
+# DelayedKeyboardInterrupt protects critical sections
 # =============================================================================
 
 
 class DelayedKeyboardInterrupt:
     """
-    Context manager que adia interrupções durante seções críticas.
+    Delay interruptions while a critical section is running.
 
-    Sinais SIGINT e SIGTERM são capturados e "enfileirados" durante
-    o bloco protegido. Ao sair do bloco, o sinal é re-enviado.
+    Capture SIGINT and SIGTERM during the protected block and replay
+    the last signal when leaving the block.
 
-    Isso garante que operações como salvar dados ou fechar conexões
-    não sejam interrompidas no meio.
+    This keeps operations such as saving data or closing connections
+    from being interrupted halfway through.
 
-    Uso:
+    Usage:
         with DelayedKeyboardInterrupt():
-            # Este bloco não será interrompido
+            # This block will not be interrupted.
             save_critical_data()
             close_database_connection()
 
-        # Aqui o sinal será processado se foi recebido
+        # The signal is processed here when one was received.
 
-    Nota:
-        - Funciona apenas na thread principal
-        - Sinais múltiplos são coalescidos (apenas o último é re-enviado)
+    Note:
+        - Works only on the main thread.
+        - Multiple signals are coalesced and only the last one is replayed.
     """
 
     def __init__(self):
@@ -345,10 +344,10 @@ class DelayedKeyboardInterrupt:
         self._old_handlers: dict[signal.Signals, SignalHandler] = {}
 
     def __enter__(self) -> DelayedKeyboardInterrupt:
-        # Só funciona na thread principal
+        # Signal handling works only on the main thread.
         if threading.current_thread() is not threading.main_thread():
             logger.warning(
-                "DelayedKeyboardInterrupt usado fora da main thread - proteção desabilitada",
+                "DelayedKeyboardInterrupt used outside the main thread; protection disabled",
                 extra={"thread_name": threading.current_thread().name},
             )
             return self
@@ -357,7 +356,7 @@ class DelayedKeyboardInterrupt:
             for sig in (signal.SIGINT, signal.SIGTERM):
                 self._old_handlers[sig] = signal.signal(sig, self._handler)
         except ValueError, OSError:
-            # Ambiente não suporta signal handling
+            # The environment does not support signal handling.
             pass
 
         return self
@@ -368,63 +367,63 @@ class DelayedKeyboardInterrupt:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> Literal[False]:
-        # Restaurar handlers originais
+        # Restore original handlers.
         for sig, handler in self._old_handlers.items():
             try:
                 signal.signal(sig, handler)
             except ValueError, OSError:
                 pass
 
-        # Re-enviar sinal capturado
+        # Replay the captured signal.
         if self._signal is not None:
             old_handler = self._old_handlers.get(self._signal)
             if old_handler and callable(old_handler):
                 old_handler(self._signal, self._frame)
             elif old_handler == signal.SIG_DFL:
-                # Default handler - re-raise como KeyboardInterrupt
+                # Recreate KeyboardInterrupt for the default SIGINT handler.
                 if self._signal == signal.SIGINT:
                     raise KeyboardInterrupt()
 
-        return False  # Não suprimir exceções
+        return False  # Do not suppress exceptions.
 
     def _handler(self, signum: int, frame: FrameType | None) -> None:
-        """Captura sinal para processamento posterior."""
+        """Capture a signal for later processing."""
         self._signal = signal.Signals(signum)
         self._frame = frame
-        logger.debug(f"Sinal {self._signal.name} adiado até fim da seção crítica")
+        logger.debug(f"Signal {self._signal.name} delayed until the critical section ends")
 
 
 # =============================================================================
-# Context managers de conveniência
+# Convenience context managers
 # =============================================================================
 
 
 @contextmanager
-def protected_section(description: str = "operação crítica"):
+def protected_section(description: str = "critical operation"):
     """
-    Context manager para seções protegidas com logging.
+    Protect a section and log its boundaries.
 
-    Parâmetros:
-        description: descrição da operação para logs
+    Parameters:
+        description: Operation description used in logs.
 
-    Uso:
-        with protected_section("salvando índice"):
+    Usage:
+        with protected_section("saving index"):
             index.save()
     """
-    logger.debug(f"Iniciando seção protegida: {description}")
+    logger.debug(f"Starting protected section: {description}")
     try:
         with DelayedKeyboardInterrupt():
             yield
     finally:
-        logger.debug(f"Finalizando seção protegida: {description}")
+        logger.debug(f"Finishing protected section: {description}")
 
 
 @contextmanager
 def interruptible_loop():
     """
-    Context manager que verifica shutdown a cada iteração.
+    Check shutdown state on every loop iteration.
 
-    Uso:
+    Usage:
         with interruptible_loop() as should_continue:
             for item in items:
                 if not should_continue():

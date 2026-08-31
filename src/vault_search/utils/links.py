@@ -1,10 +1,10 @@
 """
-Utilitários para extração e análise de links em notas markdown.
+Utilities for extracting and analyzing links in Markdown notes.
 
-Suporta:
-- Wikilinks: [[nota]] ou [[nota|alias]]
-- Markdown links: [texto](path.md) ou [texto](path)
-- Embeds: ![[imagem.png]] ou ![[nota]]
+Supports:
+- Wikilinks: [[note]] or [[note|alias]]
+- Markdown links: [text](path.md) or [text](path)
+- Embeds: ![[image.png]] or ![[note]]
 """
 
 import re
@@ -13,7 +13,7 @@ from typing import Literal, TypedDict, overload
 
 
 class WikilinkParts(TypedDict):
-    """Partes normalizadas de um wikilink."""
+    """Normalized parts of a wikilink."""
 
     target: str
     alias: str | None
@@ -22,13 +22,13 @@ class WikilinkParts(TypedDict):
 
 
 class WikilinkInfo(WikilinkParts):
-    """Wikilink extraído com sua representação original."""
+    """Extracted wikilink with its original representation."""
 
     raw: str
 
 
 class MarkdownLinkInfo(TypedDict):
-    """Link Markdown interno extraído."""
+    """Extracted internal Markdown link."""
 
     raw: str
     text: str
@@ -36,14 +36,14 @@ class MarkdownLinkInfo(TypedDict):
 
 
 class EmbedInfo(TypedDict):
-    """Embed Obsidian extraído."""
+    """Extracted Obsidian embed."""
 
     raw: str
     target: str
 
 
 class ExternalLinkInfo(TypedDict):
-    """Link externo extraído."""
+    """Extracted external link."""
 
     raw: str
     url: str
@@ -51,7 +51,7 @@ class ExternalLinkInfo(TypedDict):
 
 
 class ExtractedLinks(TypedDict):
-    """Coleções de links internos extraídos."""
+    """Collections of extracted internal links."""
 
     wikilinks: list[WikilinkInfo]
     markdown_links: list[MarkdownLinkInfo]
@@ -59,39 +59,39 @@ class ExtractedLinks(TypedDict):
 
 
 class ExtractedLinksWithExternal(ExtractedLinks):
-    """Coleções de links com URLs externas."""
+    """Link collections including external URLs."""
 
     external: list[ExternalLinkInfo]
 
 
-# Regex para wikilinks: [[nota]] ou [[nota|alias]] ou [[nota#heading]]
-# Captura o target (antes de | ou #)
-# Usa negative lookbehind (?<!!) para excluir embeds (![[...]])
+# Wikilink regex: [[note]], [[note|alias]], or [[note#heading]].
+# Capture the target before ``|`` or ``#``.
+# Use a negative lookbehind to exclude embeds such as ![[...]].
 WIKILINK_PATTERN = re.compile(r"(?<!!)\[\[([^\]|#]+)(?:[|#][^\]]*)?]]", re.MULTILINE)
 
-# Regex para markdown links: [texto](path) ou [texto](path.md)
-# Ignora URLs externas (http://, https://, mailto:, etc.)
+# Markdown link regex: [text](path) or [text](path.md)
+# Ignore external URLs such as http://, https://, and mailto:.
 MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\((?!https?://|mailto:|#)([^)]+)\)", re.MULTILINE)
 
-# Regex para embeds: ![[arquivo]] ou ![[arquivo|size]]
+# Embed regex: ![[file]] or ![[file|size]]
 EMBED_PATTERN = re.compile(r"!\[\[([^\]|]+)(?:\|[^\]]*)?]]", re.MULTILINE)
 
 
 def extract_wikilinks(text: str | None) -> list[str]:
     """
-    Extrai wikilinks de um texto markdown.
+    Extract wikilinks from Markdown text.
 
-    Parâmetros:
-        text: conteúdo markdown
+    Parameters:
+        text: Markdown content.
 
-    Retorna:
-        Lista de targets únicos (sem duplicatas, lowercase para comparação).
+    Returns:
+        Unique targets without duplicates, lowercase for comparison.
     """
     if not text:
         return []
 
     matches = WIKILINK_PATTERN.findall(text)
-    # Normalizar: remover espaços extras, converter para lowercase para comparação
+    # Remove extra spaces and lowercase values for comparison.
     seen = set()
     result = []
     for match in matches:
@@ -105,15 +105,15 @@ def extract_wikilinks(text: str | None) -> list[str]:
 
 def extract_markdown_links(text: str | None) -> list[str]:
     """
-    Extrai markdown links internos de um texto.
+    Extract internal Markdown links from text.
 
-    Ignora links externos (http://, https://, mailto:).
+    Ignore external links such as http://, https://, and mailto:.
 
-    Parâmetros:
-        text: conteúdo markdown
+    Parameters:
+        text: Markdown content.
 
-    Retorna:
-        Lista de paths únicos.
+    Returns:
+        Unique paths.
     """
     if not text:
         return []
@@ -122,7 +122,7 @@ def extract_markdown_links(text: str | None) -> list[str]:
     seen = set()
     result = []
     for _, path in matches:
-        # Remover âncoras (#section)
+        # Remove anchors such as #section.
         clean_path = path.split("#")[0].strip()
         if clean_path and clean_path.lower() not in seen:
             seen.add(clean_path.lower())
@@ -132,13 +132,13 @@ def extract_markdown_links(text: str | None) -> list[str]:
 
 def extract_embeds(text: str | None) -> list[str]:
     """
-    Extrai embeds (![[arquivo]]) de um texto markdown.
+    Extract embeds such as ![[file]] from Markdown text.
 
-    Parâmetros:
-        text: conteúdo markdown
+    Parameters:
+        text: Markdown content.
 
-    Retorna:
-        Lista de arquivos únicos embedados.
+    Returns:
+        Unique embedded files.
     """
     if not text:
         return []
@@ -173,18 +173,18 @@ def extract_all_links(
     text: str, include_external: bool = False
 ) -> ExtractedLinks | ExtractedLinksWithExternal:
     """
-    Extrai todos os tipos de links de um texto markdown.
+    Extract every supported link type from Markdown text.
 
-    Parâmetros:
-        text: conteúdo markdown
-        include_external: se True, inclui URLs https://
+    Parameters:
+        text: Markdown content.
+        include_external: Include HTTPS URLs when true.
 
-    Retorna:
-        Dict com:
-        - wikilinks: lista de dicts com raw, target, e partes parseadas
-        - markdown_links: lista de dicts com raw, text, target
-        - embeds: lista de dicts com raw, target
-        - external: lista de dicts com url (se include_external=True)
+    Returns:
+        A dictionary containing:
+        - ``wikilinks``: raw value, target, and parsed components
+        - ``markdown_links``: raw value, text, and target
+        - ``embeds``: raw value and target
+        - ``external``: URL entries when ``include_external`` is true
     """
     result: ExtractedLinks = {
         "wikilinks": [],
@@ -196,15 +196,15 @@ def extract_all_links(
     if not text:
         return result
 
-    # Wikilinks com estrutura completa
-    # Padrão que captura o conteúdo completo entre [[...]]
-    # Usa negative lookbehind (?<!!) para excluir embeds (![[...]])
+    # Wikilinks with their complete structure.
+    # Capture all content between [[...]].
+    # Use a negative lookbehind to exclude embeds such as ![[...]].
     wikilink_full_pattern = re.compile(r"(?<!!)\[\[([^\]]+)\]\]")
     seen_wikilinks = set()
 
     for match in wikilink_full_pattern.finditer(text):
         raw = match.group(0)  # [[...]]
-        inner = match.group(1)  # conteúdo entre [[]]
+        inner = match.group(1)  # Content inside [[]]
 
         parts = parse_wikilink_parts(inner)
         target_lower = parts["target"].lower() if parts["target"] else ""
@@ -229,7 +229,7 @@ def extract_all_links(
         raw = match.group(0)
         inner = match.group(1)
 
-        # Embeds podem ter |size, extrair só o target
+        # Embeds may include |size; extract only the target.
         target = inner.split("|")[0].strip()
         target_lower = target.lower()
 
@@ -242,8 +242,8 @@ def extract_all_links(
                 }
             )
 
-    # Markdown links internos [text](path)
-    # Padrão que ignora URLs externas
+    # Internal Markdown links: [text](path).
+    # Ignore external URLs.
     md_link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
     seen_md_links = set()
 
@@ -252,7 +252,7 @@ def extract_all_links(
         link_text = match.group(1)
         href = match.group(2).strip()
 
-        # Verificar se é externo
+        # Check whether the link is external.
         is_external = href.startswith(("http://", "https://", "mailto:", "tel:", "ftp://"))
 
         if is_external:
@@ -266,7 +266,7 @@ def extract_all_links(
                     }
                 )
         else:
-            # Link interno - remover âncora para normalização
+            # Remove anchors from internal links before normalization.
             target = href.split("#")[0].strip()
             target_lower = target.lower()
 
@@ -280,7 +280,7 @@ def extract_all_links(
                     }
                 )
 
-    # URLs soltas (se include_external)
+    # Standalone URLs when include_external is enabled.
     if include_external:
         bare_url_pattern = re.compile(r"(?<![(\[])(https?://[^\s\)>\]\"\']+)")
         for match in bare_url_pattern.finditer(text):
@@ -302,34 +302,34 @@ def extract_all_links(
 
 def normalize_link_target(target: str) -> str:
     """
-    Normaliza um target de link para matching consistente.
+    Normalize a link target for consistent matching.
 
-    Transformações:
+    Transformations:
     - Lowercase
-    - Remove extensões (.md, .canvas, .pdf, etc.)
-    - Espaços → hífens
+    - Remove extensions such as .md, .canvas, and .pdf
+    - Replace spaces with hyphens
     - Strip whitespace
 
-    Parâmetros:
-        target: nome ou path do link
+    Parameters:
+        target: link name or path
 
-    Retorna:
-        Target normalizado.
+    Returns:
+        Normalized target.
 
-    Exemplos:
-        "Meu Projeto" → "meu-projeto"
+    Examples:
+        "My Project" → "my-project"
         "docs/API.md" → "docs/api"
-        "  nota  " → "nota"
+        "  note  " → "note"
     """
     normalized = target.lower().strip()
 
-    # Remover extensão se presente
+    # Remove an extension when present.
     for ext in (".md", ".canvas", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"):
         if normalized.endswith(ext):
             normalized = normalized[: -len(ext)]
             break
 
-    # Normalizar espaços para hífens
+    # Replace spaces with hyphens.
     normalized = normalized.replace(" ", "-")
 
     return normalized
@@ -337,21 +337,21 @@ def normalize_link_target(target: str) -> str:
 
 def parse_wikilink_parts(wikilink: str) -> WikilinkParts:
     """
-    Parseia partes de um wikilink completo.
+    Parse the components of a complete wikilink.
 
-    Formatos suportados:
-    - [[Nota]]
-    - [[Nota|alias]]
-    - [[Nota#Heading]]
-    - [[Nota#Heading|alias]]
-    - [[Nota^block]]
-    - [[pasta/Nota]]
+    Supported formats:
+    - [[Note]]
+    - [[Note|alias]]
+    - [[Note#Heading]]
+    - [[Note#Heading|alias]]
+    - [[Note^block]]
+    - [[folder/Note]]
 
-    Parâmetros:
-        wikilink: conteúdo do wikilink (sem os colchetes)
+    Parameters:
+        wikilink: Wikilink content without brackets.
 
-    Retorna:
-        Dict com target, alias, heading, block_ref.
+    Returns:
+        A dictionary with ``target``, ``alias``, ``heading``, and ``block_ref``.
     """
     result: WikilinkParts = {
         "target": wikilink,
@@ -362,19 +362,19 @@ def parse_wikilink_parts(wikilink: str) -> WikilinkParts:
 
     working = wikilink
 
-    # Extrair alias (|) - sempre no final
+    # Extract the trailing alias (|).
     if "|" in working:
         parts = working.split("|", 1)
         working = parts[0]
         result["alias"] = parts[1].strip() if parts[1].strip() else None
 
-    # Extrair block ref (^)
+    # Extract the block reference (^).
     if "^" in working:
         parts = working.split("^", 1)
         working = parts[0]
         result["block_ref"] = parts[1].strip() if parts[1].strip() else None
 
-    # Extrair heading (#)
+    # Extract the heading (#).
     if "#" in working:
         parts = working.split("#", 1)
         working = parts[0]
@@ -387,15 +387,15 @@ def parse_wikilink_parts(wikilink: str) -> WikilinkParts:
 
 def extract_link_context(content: str, link_text: str, window: int = 50) -> str:
     """
-    Extrai trecho do conteúdo onde o link aparece.
+    Extract the content segment where a link appears.
 
-    Parâmetros:
-        content: conteúdo completo da nota
-        link_text: texto do link para localizar
-        window: caracteres antes/depois do link
+    Parameters:
+        content: Complete note content.
+        link_text: Link text to locate.
+        window: Number of characters before and after the link.
 
-    Retorna:
-        Trecho com ... se truncado.
+    Returns:
+        A segment containing ellipses when truncated.
     """
     idx = content.find(link_text)
     if idx == -1:
@@ -406,13 +406,13 @@ def extract_link_context(content: str, link_text: str, window: int = 50) -> str:
 
     context = content[start:end].strip()
 
-    # Adicionar elipses se truncado
+    # Add ellipses when truncated.
     if start > 0:
         context = "..." + context
     if end < len(content):
         context = context + "..."
 
-    # Limpar quebras de linha excessivas
+    # Collapse excessive line breaks.
     context = " ".join(context.split())
 
     return context
@@ -420,16 +420,16 @@ def extract_link_context(content: str, link_text: str, window: int = 50) -> str:
 
 def matches_note(link_target: str, note_path: str) -> bool:
     """
-    Verifica se um link target corresponde a uma nota.
+    Check whether a link target matches a note.
 
-    Compara usando normalize_link_target para ambos os lados.
+    Compare both values with ``normalize_link_target``.
 
-    Parâmetros:
-        link_target: target do link (ex: "minha nota", "pasta/nota")
-        note_path: path da nota (ex: "pasta/minha-nota.md")
+    Parameters:
+        link_target: Link target, for example "my note" or "folder/note".
+        note_path: Note path, for example "folder/my-note.md".
 
-    Retorna:
-        True se o link aponta para a nota.
+    Returns:
+        ``True`` when the link points to the note.
     """
     note_path_obj = Path(note_path)
     note_stem = normalize_link_target(note_path_obj.stem)
@@ -437,12 +437,12 @@ def matches_note(link_target: str, note_path: str) -> bool:
 
     target_normalized = normalize_link_target(link_target)
 
-    # Comparações
+    # Comparisons.
     return (
         target_normalized == note_stem
         or target_normalized == note_path_normalized
         or
-        # Match parcial (target é só o nome, note_path é caminho completo)
+        # Partial match when the target is a name and note_path is a full path.
         note_path_normalized.endswith("/" + target_normalized)
         or note_path_normalized.endswith("/" + target_normalized.replace("-", ""))
     )

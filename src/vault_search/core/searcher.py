@@ -1,13 +1,13 @@
 """
-Motor de busca semântica para o vault Obsidian.
+Semantic search engine for Obsidian vaults.
 
-Responsável por:
-- Busca vetorial (semântica) no LanceDB
-- Busca híbrida (semântica + keyword via FTS)
-- Reranking com cross-encoder MiniLM-L-6-v2
-- Filtragem por pasta
-- Cache de embeddings de query (evita recomputar queries repetidas)
-- Prewarm de índices (carrega na RAM para baixa latência)
+Responsibilities:
+- Semantic vector search in LanceDB
+- Hybrid semantic and FTS keyword search
+- Cross-encoder reranking with MiniLM-L-6-v2
+- Folder filtering
+- Query-embedding cache
+- Index prewarming for lower latency
 """
 
 import hashlib
@@ -62,12 +62,12 @@ from vault_search.utils.security import escape_like_pattern, escape_sql_string
 
 logger = logging.getLogger(__name__)
 
-# Tamanho máximo do cache de embeddings de query
+# Maximum query-embedding cache size.
 QUERY_EMBEDDING_CACHE_SIZE = 1000
 
 
 class EmbeddingCacheStats(TypedDict):
-    """Contadores públicos do cache de embeddings."""
+    """Public counters for the embedding cache."""
 
     size: int
     max_size: int
@@ -77,7 +77,7 @@ class EmbeddingCacheStats(TypedDict):
 
 
 class PrewarmStatus(TypedDict, total=False):
-    """Estado detalhado do prewarm dos índices."""
+    """Detailed index-prewarm state."""
 
     enabled: bool
     status: str
@@ -114,16 +114,16 @@ class _NoteEmbedding(TypedDict):
 
 def _compute_candidates(top_k: int) -> int:
     """
-    Calcula número de candidatos para busca vetorial.
+    Calculate the vector-search candidate count.
 
-    Garante que há sempre candidatos suficientes para o reranker,
-    mesmo quando top_k > SEARCH_CANDIDATES.
+    Ensure the reranker receives enough candidates even when ``top_k``
+    exceeds ``SEARCH_CANDIDATES``.
 
-    Parâmetros:
-        top_k: número de resultados finais desejados
+    Parameters:
+        top_k: Requested final result count.
 
-    Retorna:
-        Número de candidatos (mínimo SEARCH_CANDIDATES, até SEARCH_CANDIDATES_MAX).
+    Returns:
+        Candidate count between ``SEARCH_CANDIDATES`` and ``SEARCH_CANDIDATES_MAX``.
     """
     return min(
         max(SEARCH_CANDIDATES, top_k * SEARCH_CANDIDATES_MULTIPLIER),
@@ -133,19 +133,19 @@ def _compute_candidates(top_k: int) -> int:
 
 def _compute_rerank_pool_size(top_k: int, candidate_count: int) -> int:
     """
-    Calcula quantos candidatos enviar para o cross-encoder.
+    Calculate how many candidates to send to the cross-encoder.
 
-    Estratégia:
-    - Nunca abaixo de top_k (garante resultados suficientes)
-    - Janela típica: top_k * RERANK_CANDIDATES_MULTIPLIER
-    - Cap rígido via RERANK_CANDIDATES_MAX para evitar latência excessiva
+    Strategy:
+    - Never fewer than ``top_k``
+    - Typical window of ``top_k * RERANK_CANDIDATES_MULTIPLIER``
+    - Hard cap through ``RERANK_CANDIDATES_MAX``
 
-    Parâmetros:
-        top_k: número de resultados finais desejados
-        candidate_count: quantidade de candidatos disponíveis
+    Parameters:
+        top_k: Requested final result count.
+        candidate_count: Available candidate count.
 
-    Retorna:
-        Quantidade de candidatos para reranking.
+    Returns:
+        Number of candidates to rerank.
     """
     if candidate_count <= 0:
         return 0
@@ -162,7 +162,7 @@ def _fuse_hybrid_results(
     fts_results: list[SearchRow],
     limit: int,
 ) -> list[SearchRow]:
-    """Combina rankings vetorial e lexical com Reciprocal Rank Fusion."""
+    """Combine vector and lexical rankings with Reciprocal Rank Fusion."""
     if limit <= 0:
         return []
 
@@ -205,23 +205,23 @@ def _fuse_hybrid_results(
 
 class VaultSearcher:
     """
-    Busca semântica no vault com reranking.
+    Search the vault semantically with reranking.
 
-    Usa ModelManager (singleton) para compartilhar modelos com o indexer.
-    Cache de embeddings de query evita recomputar queries repetidas.
+    Share models with the indexer through the ``ModelManager`` singleton and
+    cache query embeddings to avoid repeated computation.
 
-    Uso:
+    Usage:
         searcher = VaultSearcher()
-        results = searcher.search("como funciona X?")
+        results = searcher.search("how does X work?")
         results = searcher.search_hybrid("X keyword", top_k=5)
-        results = searcher.search_by_folder("query", "pasta/sub")
+        results = searcher.search_by_folder("query", "folder/subfolder")
     """
 
     def __init__(self):
         self._models = ModelManager()
         self._db: DBConnection | None = None
         self._table: Table | None = None
-        # Cache LRU de embeddings de query
+        # LRU cache of query embeddings.
         self._embedding_cache: OrderedDict[str, list[float]] = OrderedDict()
         self._embedding_cache_lock = threading.Lock()
         self._cache_hits = 0
@@ -237,13 +237,13 @@ class VaultSearcher:
         }
 
     def _connect_db(self) -> DBConnection:
-        """Retorna conexão LanceDB."""
+        """Return the LanceDB connection."""
         if self._db is None:
             self._db = lancedb.connect(str(DATA_DIR))
         return self._db
 
     def _open_table(self) -> Table:
-        """Retorna tabela LanceDB."""
+        """Return the LanceDB table."""
         if self._table is None:
             db = self._connect_db()
             if LANCEDB_TABLE not in db.list_tables().tables:
@@ -252,49 +252,48 @@ class VaultSearcher:
         return self._table
 
     def invalidate_cache(self):
-        """Invalida cache da tabela para forçar releitura após reindexação."""
+        """Invalidate the table cache so reindexing changes are reloaded."""
         self._table = None
 
     def _query_cache_key(self, query: str) -> str:
-        """Gera chave de cache para uma query (hash MD5)."""
+        """Generate an MD5 cache key for a query."""
         return hashlib.md5(query.encode("utf-8")).hexdigest()
 
     def _embed_query(self, query: str) -> list[float]:
         """
-        Gera embedding do texto de busca usando encode_queries.
+        Generate a search-text embedding through ``encode_queries``.
 
-        Usa cache LRU para evitar recomputar queries repetidas.
+        Use an LRU cache to avoid recomputing repeated queries.
 
-        Parâmetros:
-            query: texto da consulta
+        Parameters:
+            query: search text
 
-        Retorna:
-            Vetor de embedding (1024 dims).
+        Returns:
+            Embedding vector.
         """
         cache_key = self._query_cache_key(query)
 
         with self._embedding_cache_lock:
             if cache_key in self._embedding_cache:
-                # Cache hit - mover para o fim (LRU)
+                # Move a cache hit to the end of the LRU.
                 self._embedding_cache.move_to_end(cache_key)
                 self._cache_hits += 1
                 return self._embedding_cache[cache_key]
 
-        # Cache miss - computar embedding (fora do lock para não bloquear)
+        # Compute a cache miss outside the lock.
         vecs = self._models.embed_queries([query])
         embedding = vecs[0]
 
         with self._embedding_cache_lock:
-            # Double-check: outro thread pode ter inserido enquanto computávamos
-            # Mesmo assim, contamos como miss pois fizemos o trabalho de computar
-            # Nota: há desperdício de CPU em queries concorrentes idênticas,
-            # mas isso é raro e a complexidade de um lock por query não compensa
+            # Another thread may have inserted the same value while this thread
+            # computed it. Count the work as a miss; per-query locks add more
+            # complexity than this rare duplicate computation warrants.
             if cache_key in self._embedding_cache:
                 self._embedding_cache.move_to_end(cache_key)
-                self._cache_misses += 1  # Trabalho foi feito, conta como miss
+                self._cache_misses += 1  # Computed work counts as a miss.
                 return self._embedding_cache[cache_key]
 
-            # Eviction se necessário
+            # Evict entries when necessary.
             while len(self._embedding_cache) >= QUERY_EMBEDDING_CACHE_SIZE:
                 self._embedding_cache.popitem(last=False)
 
@@ -304,7 +303,7 @@ class VaultSearcher:
         return embedding
 
     def get_embedding_cache_stats(self) -> EmbeddingCacheStats:
-        """Retorna estatísticas do cache de embeddings."""
+        """Return embedding-cache statistics."""
         with self._embedding_cache_lock:
             total = self._cache_hits + self._cache_misses
             hit_rate = self._cache_hits / total if total > 0 else 0.0
@@ -317,23 +316,23 @@ class VaultSearcher:
             }
 
     def get_prewarm_status(self) -> PrewarmStatus:
-        """Retorna status do prewarm de índices."""
+        """Return index-prewarm status."""
         return self._prewarm_status.copy()
 
     def _check_memory_for_prewarm(self, estimated_size_bytes: int) -> tuple[bool, str]:
         """
-        Verifica se há memória suficiente para prewarm.
+        Check whether enough memory is available for prewarming.
 
-        Regras:
-        1. psutil deve estar disponível
-        2. RAM disponível >= PREWARM_MIN_AVAILABLE_RAM (default: 2GB)
-        3. Tamanho estimado do índice < PREWARM_MAX_RAM_PERCENT da RAM disponível
+        Rules:
+        1. psutil must be available.
+        2. Available RAM must meet ``PREWARM_MIN_AVAILABLE_RAM``.
+        3. Estimated index size must remain below the configured RAM percentage.
 
-        Parâmetros:
-            estimated_size_bytes: tamanho estimado do índice em bytes
+        Parameters:
+            estimated_size_bytes: Estimated index size in bytes.
 
-        Retorna:
-            (can_prewarm, reason_code) - True se pode, False com código estável
+        Returns:
+            A ``(can_prewarm, reason_code)`` tuple.
         """
         if not PSUTIL_AVAILABLE:
             return False, "dependency_unavailable"
@@ -342,11 +341,11 @@ class VaultSearcher:
             mem = psutil.virtual_memory()
             available = mem.available
 
-            # Verificar RAM mínima disponível
+            # Check the minimum available RAM.
             if available < PREWARM_MIN_AVAILABLE_RAM:
                 return False, "insufficient_memory"
 
-            # Verificar se índice cabe no percentual permitido
+            # Check whether the index fits within the allowed percentage.
             max_allowed = int(available * PREWARM_MAX_RAM_PERCENT)
             if estimated_size_bytes > max_allowed:
                 return False, "estimated_index_too_large"
@@ -362,23 +361,17 @@ class VaultSearcher:
 
     def try_prewarm(self, force: bool = False) -> PrewarmStatus:
         """
-        Tenta fazer prewarm dos índices do LanceDB.
+        Attempt to prewarm LanceDB indexes.
 
-        Prewarm carrega os índices na RAM, reduzindo latência de queries.
-        Verifica automaticamente se há memória suficiente antes de carregar.
+        Load indexes into RAM to reduce query latency after checking capacity.
 
-        Parâmetros:
-            force: se True, ignora verificação de memória (use com cuidado)
+        Parameters:
+            force: Skip the memory check when true.
 
-        Retorna:
-            Dict com status do prewarm:
-            - enabled: bool - se prewarm foi ativado
-            - status: str - código do estado final
-            - indices_prewarmed: int - quantidade carregada
-            - failed_indices: int - quantidade que falhou
-            - skipped_reason: str | None - código estável do motivo
-            - prewarmed_at: str | None - timestamp do prewarm
-            - duration_ms: float | None - tempo de prewarm
+        Returns:
+            Prewarm status with enabled state, outcome code, loaded and failed
+            index counts, a stable skip reason, and a timestamp.
+            - duration_ms: float | None - prewarm duration
         """
         if not PREWARM_ENABLED and not force:
             self._prewarm_status = {
@@ -412,7 +405,7 @@ class VaultSearcher:
             )
             return self._prewarm_status
 
-        # Obter lista de índices
+        # Read the index list.
         indices = table.list_indices()
         if not indices:
             self._prewarm_status = {
@@ -429,7 +422,7 @@ class VaultSearcher:
             )
             return self._prewarm_status
 
-        # Estimar tamanho do índice
+        # Estimate index size.
         row_count = None
         try:
             row_count = table.count_rows()
@@ -437,7 +430,7 @@ class VaultSearcher:
         except Exception:
             estimated_size = 0
 
-        # Verificar memória (skip se force=True)
+        # Check memory unless force is true.
         if not force:
             can_prewarm, reason = self._check_memory_for_prewarm(estimated_size)
             if not can_prewarm:
@@ -455,7 +448,7 @@ class VaultSearcher:
                 )
                 return self._prewarm_status
 
-        # Fazer prewarm de cada índice
+        # Prewarm each index.
         start_time = time.time()
         prewarmed_count = 0
         failed_count = 0
@@ -516,15 +509,15 @@ class VaultSearcher:
         self, query_vec: list[float], candidates: int, where: str | None = None
     ) -> list[SearchRow]:
         """
-        Executa busca vetorial no LanceDB com filtro opcional.
+        Run vector search in LanceDB with an optional filter.
 
-        Parâmetros:
-            query_vec: vetor de embedding da query
-            candidates: número de candidatos a retornar
-            where: cláusula WHERE SQL opcional
+        Parameters:
+            query_vec: Query embedding vector.
+            candidates: Candidate count.
+            where: Optional SQL WHERE clause.
 
-        Retorna:
-            Lista de dicts com campos de SEARCH_COLUMNS.
+        Returns:
+            Rows containing ``SEARCH_COLUMNS`` fields.
         """
         table = self._open_table()
         builder = (
@@ -539,17 +532,17 @@ class VaultSearcher:
 
     def _rerank(self, query: str, results: list[SearchRow], top_k: int) -> list[SearchRow]:
         """
-        Reordena resultados usando cross-encoder para maior precisão.
+        Rerank results with a cross-encoder.
 
-        Não muta os dicts de entrada — cria cópias com score adicionado.
+        Copy input dictionaries instead of mutating them.
 
-        Parâmetros:
-            query: texto da consulta original
-            results: lista de dicts com campo 'text'
-            top_k: quantos resultados finais retornar
+        Parameters:
+            query: Original query text.
+            results: Rows containing a ``text`` field.
+            top_k: Final result count.
 
-        Retorna:
-            Nova lista reordenada e truncada com score atualizado.
+        Returns:
+            A reranked, truncated list with updated scores.
         """
         if not results:
             return []
@@ -562,7 +555,7 @@ class VaultSearcher:
 
         scored: list[SearchRow] = []
         for result, score in zip(rerank_candidates, scores, strict=True):
-            entry: SearchRow = result.copy()  # cópia para não mutar input
+            entry: SearchRow = result.copy()  # Copy to avoid mutating input
             entry["rerank_score"] = round(score, SCORE_PRECISION)
             scored.append(entry)
 
@@ -571,25 +564,25 @@ class VaultSearcher:
 
     def _format_results(self, rows: list[SearchRow]) -> list[SearchResult]:
         """
-        Formata resultados do LanceDB para retorno padronizado.
+        Format LanceDB results for the public response contract.
 
-        Delega para format_search_results, que normaliza e retorna
-        apenas os campos públicos do contrato de busca.
+        Delegate to ``format_search_results``, which normalizes and returns
+        only public fields.
         """
         return format_search_results(rows)
 
     def _filter_excluded(self, results: list[SearchRow], exclude: list[str]) -> list[SearchRow]:
         """
-        Remove resultados que contêm termos excluídos.
+        Remove results containing excluded terms.
 
-        Busca case-insensitive no campo 'text'.
+        Search the ``text`` field case-insensitively.
 
-        Parâmetros:
-            results: lista de resultados
-            exclude: termos para excluir
+        Parameters:
+            results: Search results.
+            exclude: Terms to exclude.
 
-        Retorna:
-            Lista filtrada sem resultados que contêm termos excluídos.
+        Returns:
+            Results that do not contain excluded terms.
         """
         if not exclude:
             return results
@@ -606,14 +599,14 @@ class VaultSearcher:
 
     def search(self, query: str, top_k: int = SEARCH_TOP_K) -> list[SearchResult]:
         """
-        Busca semântica com reranking (busca principal).
+        Run the primary semantic search with reranking.
 
-        Parâmetros:
-            query: texto de busca (qualquer idioma)
-            top_k: quantidade de resultados finais
+        Parameters:
+            query: Search text in any language.
+            top_k: Final result count.
 
-        Retorna:
-            Lista de resultados ordenados por relevância.
+        Returns:
+            Results ordered by relevance.
         """
         query_vec = self._embed_query(query)
         candidates = _compute_candidates(top_k)
@@ -628,14 +621,14 @@ class VaultSearcher:
 
     def search_hybrid(self, query: str, top_k: int = SEARCH_TOP_K) -> list[SearchResult]:
         """
-        Busca híbrida: combina semântica vetorial com busca por keyword.
+        Combine semantic vector search with keyword search.
 
-        Parâmetros:
-            query: texto de busca
-            top_k: quantidade de resultados finais
+        Parameters:
+            query: Search text.
+            top_k: Final result count.
 
-        Retorna:
-            Lista de resultados ordenados por relevância.
+        Returns:
+            Results ordered by relevance.
         """
         table = self._open_table()
         query_vec = self._embed_query(query)
@@ -669,26 +662,26 @@ class VaultSearcher:
         self, query: str, folder: str, top_k: int = SEARCH_TOP_K
     ) -> list[SearchResult]:
         """
-        Busca semântica filtrada por pasta do vault.
+        Run semantic search within a vault folder.
 
-        Usa filtro com boundary exata para evitar prefix collision:
-        folder='proj' casa 'proj' e 'proj/sub', mas NÃO 'project'.
+        Use exact boundaries to avoid prefix collisions: ``proj`` matches
+        ``proj`` and ``proj/sub``, but not ``project``.
 
-        Parâmetros:
-            query: texto de busca
-            folder: pasta para filtrar (ex: 'projetos/web')
-            top_k: quantidade de resultados finais
+        Parameters:
+            query: Search text.
+            folder: Folder filter, for example ``projects/web``.
+            top_k: Final result count.
 
-        Retorna:
-            Lista de resultados apenas da pasta especificada.
+        Returns:
+            Results from the specified folder.
         """
         query_vec = self._embed_query(query)
         candidates = _compute_candidates(top_k)
 
-        # Escapar para ambos os contextos: SQL string (=) e LIKE pattern
+        # Escape for both SQL equality and LIKE pattern contexts.
         escaped_sql = escape_sql_string(folder)
         escaped_like = escape_like_pattern(folder)
-        # Boundary exata: match 'proj' ou 'proj/...' mas não 'project'
+        # Match ``proj`` and ``proj/...`` without matching ``project``.
         where_clause = f"(folder = '{escaped_sql}' OR folder LIKE '{escaped_like}/%')"
         raw = self._vector_search(query_vec, candidates, where=where_clause)
 
@@ -700,20 +693,20 @@ class VaultSearcher:
 
     def _validate_iso_date(self, date_str: str) -> str | None:
         """
-        Valida formato de data ISO (YYYY-MM-DD ou YYYY-MM-DDTHH:MM:SS).
+        Validate ISO date format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
 
-        Parâmetros:
-            date_str: string de data para validar
+        Parameters:
+            date_str: Date string to validate.
 
-        Retorna:
-            Data validada ou None se inválida.
+        Returns:
+            Validated date, or ``None`` when invalid.
         """
         from datetime import datetime
 
         if not date_str or not isinstance(date_str, str):
             return None
 
-        date_str = date_str.strip()[:19]  # Truncar para max ISO datetime
+        date_str = date_str.strip()[:19]  # Truncate to the maximum ISO datetime length
 
         try:
             if "T" in date_str:
@@ -727,14 +720,14 @@ class VaultSearcher:
 
     def _build_date_filter(self, date_range: str | Mapping[str, str]) -> str | None:
         """
-        Constrói filtro de data para busca avançada.
+        Build a date filter for advanced search.
 
-        Parâmetros:
-            date_range: "today", "week", "month", "year" ou
+        Parameters:
+            date_range: "today", "week", "month", "year", or
                        {"from": "2026-01-01", "to": "2026-02-01"}
 
-        Retorna:
-            Cláusula WHERE para filtro de data ou None.
+        Returns:
+            A date-filter WHERE clause, or ``None``.
         """
         from datetime import datetime, timedelta
 
@@ -790,36 +783,35 @@ class VaultSearcher:
         highlight_end: str = "**",
     ) -> list[SearchResult]:
         """
-        Busca semântica com filtros avançados (faceted search).
+        Run semantic search with advanced facets.
 
-        Combina busca vetorial com filtros estruturados para
-        resultados mais precisos em vaults grandes.
+        Combine vector search with structured filters for large vaults.
 
-        Parâmetros:
-            query: texto de busca (qualquer idioma)
-            top_k: quantidade de resultados finais
-            tags: lista de tags para filtrar (OR entre elas)
-            folder: pasta para filtrar (inclui subpastas)
-            extension: extensão do arquivo (".md", ".pdf", ".canvas")
-            date_range: período - "today", "week", "month", "year" ou
+        Parameters:
+            query: Search text in any language.
+            top_k: Final result count.
+            tags: Tag filters combined with OR.
+            folder: Folder filter including subfolders.
+            extension: File extension such as .md, .pdf, or .canvas.
+            date_range: ``today``, ``week``, ``month``, ``year``, or
                        {"from": "2026-01-01", "to": "2026-02-01"}
-            status: status da nota (draft, review, published, archived)
-            note_type: tipo da nota (daily, weekly, monthly, yearly, meeting, idea, task)
-            category: categoria (work, personal, reference, project)
-            project: nome do projeto associado
-            exclude: lista de termos para EXCLUIR dos resultados
-            highlight: se True, destaca termos da query no texto
-            highlight_start: marcador de início (default: **)
-            highlight_end: marcador de fim (default: **)
+            status: Note status.
+            note_type: Note type.
+            category: Category.
+            project: Associated project name.
+            exclude: Terms to exclude from results.
+            highlight: Whether to highlight query terms.
+            highlight_start: Opening highlight marker.
+            highlight_end: Closing highlight marker.
 
-        Retorna:
-            Lista de resultados filtrados ordenados por relevância.
+        Returns:
+            Filtered results ordered by relevance.
 
-        Exemplos:
+        Examples:
             search_advanced("python", tags=["tutorial"])
             search_advanced("API", date_range="week", extension=".md")
-            search_advanced("projeto", folder="trabalho", tags=["urgente"])
-            search_advanced("reunião", note_type="meeting", status="published")
+            search_advanced("project", folder="work", tags=["urgent"])
+            search_advanced("meeting", note_type="meeting", status="published")
             search_advanced("feature", project="vault-search")
             search_advanced("python", exclude=["django", "flask"])
             search_advanced("API", highlight=True)
@@ -827,10 +819,10 @@ class VaultSearcher:
         query_vec = self._embed_query(query)
         candidates = _compute_candidates(top_k)
 
-        # Construir cláusulas WHERE
+        # Build WHERE clauses.
         conditions = []
 
-        # Filtro por tags (OR entre elas)
+        # Combine tag filters with OR.
         if tags:
             tag_conditions = []
             for tag in tags:
@@ -839,13 +831,13 @@ class VaultSearcher:
             if tag_conditions:
                 conditions.append(f"({' OR '.join(tag_conditions)})")
 
-        # Filtro por pasta (exato ou subpastas)
+        # Match an exact folder or its subfolders.
         if folder:
             escaped_sql = escape_sql_string(folder)
             escaped_like = escape_like_pattern(folder)
             conditions.append(f"(folder = '{escaped_sql}' OR folder LIKE '{escaped_like}/%')")
 
-        # Filtro por extensão
+        # Filter by extension.
         if extension:
             ext = extension.lower()
             if not ext.startswith("."):
@@ -853,12 +845,12 @@ class VaultSearcher:
             escaped_ext = escape_like_pattern(ext)
             conditions.append(f"note_path LIKE '%{escaped_ext}'")
 
-        # Filtro por data
+        # Filter by date.
         date_filter = self._build_date_filter(date_range) if date_range else None
         if date_filter:
             conditions.append(date_filter)
 
-        # Filtros de campos do frontmatter
+        # Frontmatter field filters.
         if status:
             escaped = escape_sql_string(status.lower().strip())
             conditions.append(f"status = '{escaped}'")
@@ -875,10 +867,10 @@ class VaultSearcher:
             escaped = escape_sql_string(project.strip())
             conditions.append(f"project = '{escaped}'")
 
-        # Combinar condições
+        # Combine conditions.
         where_clause = " AND ".join(conditions) if conditions else None
 
-        # Buscar mais candidatos se temos exclusão (alguns serão removidos)
+        # Request extra candidates when exclusions may remove results.
         search_candidates = candidates
         if exclude:
             search_candidates = min(candidates * 2, SEARCH_CANDIDATES_MAX)
@@ -888,7 +880,7 @@ class VaultSearcher:
         if not raw:
             return []
 
-        # Aplicar exclusão ANTES do reranking (evita reranquear itens que serão removidos)
+        # Apply exclusions before reranking.
         if exclude:
             raw = self._filter_excluded(raw, exclude)
             if not raw:
@@ -896,7 +888,7 @@ class VaultSearcher:
 
         reranked = self._rerank(query, raw, top_k)
 
-        # Aplicar highlight DEPOIS do reranking (apenas nos resultados finais)
+        # Apply highlighting only to final reranked results.
         if highlight:
             reranked = apply_highlight(reranked, query, True, highlight_start, highlight_end)
 
@@ -904,26 +896,25 @@ class VaultSearcher:
 
     def find_similar_notes(self, path: str, top_k: int = 5) -> list[SimilarNoteResult]:
         """
-        Encontra notas similares a uma nota específica.
+        Find notes similar to one note.
 
-        Calcula o embedding médio de todos os chunks da nota e
-        busca outras notas semanticamente similares.
+        Average all note-chunk embeddings and search for semantically similar notes.
 
-        Parâmetros:
-            path: caminho relativo da nota no vault
-            top_k: quantidade de notas similares a retornar
+        Parameters:
+            path: Vault-relative note path.
+            top_k: Similar-note count.
 
-        Retorna:
-            Lista de notas similares com score de similaridade.
+        Returns:
+            Similar notes with similarity scores.
 
         Raises:
-            ValueError: se a nota não foi encontrada no índice.
+            ValueError: When the note is absent from the index.
         """
         import numpy as np
 
         table = self._open_table()
 
-        # Buscar chunks da nota de referência
+        # Read chunks for the reference note.
         escaped_path = escape_sql_string(path)
         note_chunks = (
             table.search()
@@ -934,23 +925,22 @@ class VaultSearcher:
         )
 
         if not note_chunks:
-            raise ValueError(f"Nota '{path}' não encontrada no índice")
+            raise ValueError(f"Note '{path}' was not found in the index")
 
-        # Calcular embedding médio da nota
+        # Calculate the note's mean embedding.
         vectors = [c["vector"] for c in note_chunks]
         avg_vector = np.mean(vectors, axis=0).tolist()
 
-        # Buscar notas similares, excluindo a própria nota
-        # Buscar mais candidatos para ter margem após filtro
+        # Request extra candidates before excluding the reference note.
         candidates = _compute_candidates(top_k * 3)
         results = table.search(avg_vector).select(SEARCH_COLUMNS).limit(candidates).to_list()
 
-        # Agrupar por nota e pegar melhor score de cada
+        # Group by note and keep the best score.
         seen_notes: dict[str, _SimilarCandidate] = {}
         for r in results:
             note_path = r.get("note_path", "")
             if note_path == path:
-                continue  # Excluir a própria nota
+                continue  # Exclude the reference note.
 
             if note_path not in seen_notes:
                 seen_notes[note_path] = {
@@ -961,14 +951,14 @@ class VaultSearcher:
                     "_distance": r.get("_distance", 1.0),
                 }
             else:
-                # Manter o menor distance (mais similar)
+                # Keep the smallest, most-similar distance.
                 if r.get("_distance", 1.0) < seen_notes[note_path]["_distance"]:
                     seen_notes[note_path]["_distance"] = r.get("_distance", 1.0)
 
-        # Ordenar por similaridade (menor distance = mais similar)
+        # Sort by similarity, where a smaller distance is more similar.
         sorted_notes = sorted(seen_notes.values(), key=lambda x: x["_distance"])
 
-        # Converter distance para score e limitar
+        # Convert distances to scores and apply the limit.
         result: list[SimilarNoteResult] = []
         for note in sorted_notes[:top_k]:
             score = round(1 / (1 + note["_distance"]), SCORE_PRECISION)
@@ -991,58 +981,51 @@ class VaultSearcher:
         folder: str | None = None,
     ) -> list[DuplicateGroup]:
         """
-        Encontra grupos de notas duplicadas ou muito similares no vault.
+        Find duplicate or highly similar note groups in the vault.
 
-        Varre o vault calculando similaridade entre notas e agrupa
-        aquelas que excedem o threshold em clusters de duplicatas.
+        Calculate note similarity and cluster notes above the threshold.
 
-        Parâmetros:
-            threshold: similaridade mínima para considerar duplicata (0.0-1.0)
-                      0.90 = 90% similar (default, captura duplicatas óbvias)
-                      0.80 = 80% similar (mais permissivo)
-                      0.95 = 95% similar (apenas duplicatas quase idênticas)
-            max_notes: máximo de notas a processar (proteção de performance)
-                      Limitado a 2000 para evitar uso excessivo de RAM
-            folder: opcional, restringir busca a uma pasta específica
+        Parameters:
+            threshold: Minimum duplicate similarity from 0.0 to 1.0.
+            max_notes: Maximum notes to process, capped at 2,000.
+            folder: Optional folder restriction.
 
-        Retorna:
-            Lista de grupos de duplicatas, cada grupo com:
-            - notes: lista de notas no grupo
-            - similarity: score médio de similaridade do grupo
+        Returns:
+            Duplicate groups containing notes and average similarity.
 
-        Observação:
-            Operação computacionalmente cara. Para vaults grandes,
-            considere restringir por folder ou aumentar threshold.
+        Note:
+            This operation is computationally expensive. Restrict the folder
+            or raise the threshold for large vaults.
         """
         import numpy as np
 
-        # Validar max_notes para evitar OOM (50k chunks = ~200MB RAM)
+        # Cap max_notes to prevent excessive memory use.
         MAX_SAFE_NOTES = 2000
         if max_notes > MAX_SAFE_NOTES:
             logger.warning(
-                f"search_duplicates: max_notes={max_notes} muito alto, "
-                f"limitando a {MAX_SAFE_NOTES} para evitar uso excessivo de RAM"
+                f"search_duplicates: max_notes={max_notes} exceeds the safe limit; "
+                f"using {MAX_SAFE_NOTES}"
             )
             max_notes = MAX_SAFE_NOTES
 
         table = self._open_table()
 
-        # Buscar todas as notas únicas
+        # Read unique notes.
         query = table.search().select(["note_path", "note_title", "folder", "vector"])
 
         if folder:
             escaped = escape_sql_string(folder)
-            # Buscar pasta exata ou subpastas
+            # Match the exact folder or descendants.
             query = query.where(
                 f"folder = '{escaped}' OR folder LIKE '{escape_like_pattern(folder)}/%'"
             )
 
-        all_chunks = query.limit(max_notes * 100).to_list()  # ~100 chunks por nota
+        all_chunks = query.limit(max_notes * 100).to_list()  # Approximately 100 chunks per note
 
         if not all_chunks:
             return []
 
-        # Agrupar chunks por nota e calcular embedding médio
+        # Group chunks by note and calculate mean embeddings.
         note_embeddings: dict[str, _NoteEmbedding] = {}
         for chunk in all_chunks:
             path = chunk.get("note_path", "")
@@ -1058,12 +1041,12 @@ class VaultSearcher:
                 }
             note_embeddings[path]["vectors"].append(chunk.get("vector", []))
 
-        # Limitar número de notas
+        # Limit the number of notes.
         if len(note_embeddings) > max_notes:
-            # Pegar as primeiras max_notes (por ordem de descoberta)
+            # Keep the first max_notes in discovery order.
             note_embeddings = dict(list(note_embeddings.items())[:max_notes])
 
-        # Calcular embedding médio de cada nota
+        # Calculate each note's mean embedding.
         for note in note_embeddings.values():
             vectors = note["vectors"]
             if vectors:
@@ -1071,23 +1054,23 @@ class VaultSearcher:
             else:
                 note["avg_vector"] = None
 
-        # Encontrar duplicatas usando numpy (O(n*d) em vez de n queries LanceDB)
+        # Compare note vectors in one NumPy operation instead of separate queries.
         notes_list = [n for n in note_embeddings.values() if n.get("avg_vector") is not None]
 
         if len(notes_list) < 2:
             return []
 
-        # Construir matriz de vetores e normalizar para similaridade coseno
+        # Build and normalize a vector matrix for cosine similarity.
         vector_matrix = np.array([n["avg_vector"] for n in notes_list])
         norms = np.linalg.norm(vector_matrix, axis=1, keepdims=True)
-        norms[norms == 0] = 1  # Evitar divisão por zero
+        norms[norms == 0] = 1  # Avoid division by zero
         normalized = vector_matrix / norms
 
-        # Calcular matriz de similaridade (dot product de vetores normalizados = coseno)
-        # Apenas triângulo superior para evitar duplicatas (i,j) e (j,i)
+        # The dot product of normalized vectors is cosine similarity. Use only
+        # the upper triangle to avoid duplicate pairs.
         similarity_matrix = np.dot(normalized, normalized.T)
 
-        # Encontrar pares acima do threshold
+        # Find pairs above the threshold.
         processed: set[int] = set()
         duplicate_groups: list[DuplicateGroup] = []
 
@@ -1095,7 +1078,7 @@ class VaultSearcher:
             if i in processed:
                 continue
 
-            # Encontrar todas as notas similares a esta
+            # Find every note similar to this one.
             similar_indices = []
             for j in range(i + 1, len(notes_list)):
                 if j in processed:
@@ -1105,7 +1088,7 @@ class VaultSearcher:
                     similar_indices.append((j, score))
 
             if similar_indices:
-                # Criar grupo de duplicatas
+                # Create a duplicate group.
                 note = notes_list[i]
                 group_notes: list[DuplicateNoteResult] = [
                     {
@@ -1139,7 +1122,7 @@ class VaultSearcher:
 
             processed.add(i)
 
-        # Ordenar grupos por similaridade (mais similares primeiro)
+        # Sort groups by similarity, highest first.
         duplicate_groups.sort(key=lambda g: g["avg_similarity"], reverse=True)
 
         return duplicate_groups
@@ -1150,18 +1133,18 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
-    query = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "teste"
+    query = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "test"
     searcher = VaultSearcher()
 
-    print(f"\nBuscando: '{query}'")
+    print(f"\nSearching: '{query}'")
     results = searcher.search(query)
 
     if not results:
-        print("Nenhum resultado encontrado.")
+        print("No results found.")
     else:
         for i, r in enumerate(results, 1):
-            print(f"\n--- Resultado {i} (score: {r.get('score', 'N/A')}) ---")
-            print(f"Nota: {r['note_path']}")
+            print(f"\n--- Result {i} (score: {r.get('score', 'N/A')}) ---")
+            print(f"Note: {r['note_path']}")
             if r["headers"]:
-                print(f"Seção: {r['headers']}")
-            print(f"Texto: {r['text'][:200]}...")
+                print(f"Section: {r['headers']}")
+            print(f"Text: {r['text'][:200]}...")

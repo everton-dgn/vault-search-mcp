@@ -1,26 +1,26 @@
-# ADR-0001: vault como fonte primária
+# ADR-0001: the vault is the source of truth
 
 ## Status
 
-Aceito.
+Accepted.
 
-## Contexto
+## Context
 
-O sistema mantém LanceDB e catálogos auxiliares para acelerar recuperação e
-navegação. Esses artefatos podem ficar incompletos depois de falha, mudança de
-schema ou interrupção.
+The system maintains LanceDB and auxiliary catalogs to speed up retrieval and
+navigation. Those derived artifacts can become incomplete after a failure,
+schema change, or interrupted process.
 
-## Decisão
+## Decision
 
-As notas no vault são a fonte primária. Índices e catálogos são derivados e
-reconstruíveis. Uma operação de manutenção nunca usa o índice como única cópia
-de conteúdo do usuário.
+Notes in the vault are primary. Indexes and catalogs are derived and
+rebuildable. A maintenance operation must never treat an index as the only copy
+of user content.
 
-## Consequências
+## Consequences
 
-- Backup e recuperação concentram-se no vault.
-- Rebuild pode descartar somente artefatos derivados.
-- Troca de geração do índice precisa preservar a geração ativa até a nova estar
-  pronta.
-- Metadados que existem apenas no índice devem ser evitados ou explicitamente
-  classificados como efêmeros.
+- Backup and recovery focus on the vault.
+- A rebuild may discard only derived artifacts.
+- Index generation changes preserve the active generation until the replacement
+  is ready.
+- Metadata stored only in an index should be avoided or explicitly classified
+  as ephemeral.

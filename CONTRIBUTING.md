@@ -1,54 +1,53 @@
-# Como contribuir
+# Contributing
 
-Contribuições precisam preservar três propriedades: o vault continua sendo a
-fonte primária, operações de escrita ficam explícitas e afirmações de
-desempenho permanecem reproduzíveis.
+Contributions must preserve three properties: the vault remains primary, write
+operations stay explicit, and performance claims remain reproducible.
 
-## Antes de começar
+## Before you start
 
-1. Procure uma discussão ou issue que descreva o problema.
-2. Para falhas de segurança, siga [SECURITY.md](SECURITY.md) e use um canal
-   privado.
-3. Nunca anexe notas reais, caminhos da máquina, tokens, bancos de índice ou
-   logs sem sanitização.
-4. Mudanças em nomes, argumentos ou retornos MCP exigem documentação e teste de
-   contrato no mesmo pull request.
+1. Look for an issue or discussion that describes the problem.
+2. Report security defects through the private process in [SECURITY.md](SECURITY.md).
+3. Never attach real notes, machine paths, credentials, index databases, or raw
+   unsanitized logs.
+4. Changes to MCP names, arguments, or return values require documentation and
+   contract tests in the same pull request.
 
-## Ambiente local
+## Local environment
 
-Requisitos: Python 3.14 ou superior e `uv`. Mudanças nos scripts do daemon
-também exigem ShellCheck.
+Requirements are Python 3.14 or newer and `uv`. Changes to daemon shell scripts
+also require ShellCheck.
 
 ```bash
 uv sync --locked
 cp config.example.yaml config.yaml
 ```
 
-Use um vault sintético para desenvolvimento. `config.yaml`, `data/` e
-`vaults/` ficam fora do controle de versão.
+Use a synthetic vault for development. `config.yaml`, `data/`, and local vault
+contents are excluded from version control.
 
-## Fluxo de trabalho
+## Workflow
 
-Crie uma branch pequena com um dos prefixos `feat/`, `fix/`, `refactor/`,
-`perf/`, `docs/`, `test/` ou `chore/`. Use um slug em minúsculas, por exemplo
-`fix/daemon-health-check`.
+Create a focused branch with one of these prefixes: `feat/`, `fix/`,
+`refactor/`, `perf/`, `docs/`, `test/`, or `chore/`. Use a lowercase slug, for
+example `fix/daemon-health-check`.
 
-Commits seguem Conventional Commits:
+Commits follow Conventional Commits:
 
 ```text
 fix(indexer): preserve the active index during rebuild
 docs(config): document environment precedence
 ```
 
-Configure o Git com um nome público escolhido e um endereço no-reply. O gate de
-publicação rejeita e-mails pessoais nos metadados de autor e committer.
+Configure Git with a public display name and a no-reply address. The
+publication gate rejects personal email addresses from author and committer
+metadata.
 
-Evite misturar refatoração ampla com uma correção funcional. Não inclua
-artefatos gerados, conteúdo de vault ou configuração local.
+Keep broad refactors separate from functional fixes. Do not commit generated
+artifacts, vault content, or local configuration.
 
-## Gates locais
+## Local gates
 
-Execute a menor validação que cobre sua mudança e depois o conjunto padrão:
+Run the narrowest validation that covers the change, then the standard suite:
 
 ```bash
 uv run ruff check src tests scripts
@@ -62,44 +61,40 @@ uv build
 uv run python scripts/check_publication.py --require-dist
 ```
 
-Testes com a marca `slow` podem baixar e carregar modelos. Declare no pull
-request se eles foram executados, em qual hardware e com qual comando.
+Tests marked `slow` may download and load models. State in the pull request
+whether they ran, on what hardware, and with which command.
 
-## Padrões de código
+## Code standards
 
-- Funções públicas recebem type hints.
-- Efeitos colaterais, formatos de retorno e falhas relevantes entram na
-  docstring.
-- Logs não carregam conteúdo de notas, consultas completas nem caminhos
-  absolutos.
-- Escritas de notas devem ser atômicas quando o sistema de arquivos permitir.
-- Caminhos fornecidos pelo cliente são resolvidos e verificados dentro do vault.
-- Exclusões movem dados para a lixeira. Não use APIs de remoção permanente.
-- Dependência nova exige motivação, impacto de distribuição e alternativa
-  considerada.
+- Public functions have type hints.
+- Docstrings describe side effects, return shapes, and relevant failure modes.
+- Logs exclude note bodies, full queries, and absolute paths.
+- Note writes are atomic when the filesystem permits it.
+- Client-supplied paths are resolved and verified inside the vault.
+- Deletion moves data to trash. Never use permanent-removal APIs.
+- A new dependency requires motivation, distribution impact, and a considered
+  alternative.
 
-## Documentação e desempenho
+## Documentation and performance
 
-Documente o comportamento observado no código. Uma meta deve aparecer como
-meta. Um benchmark precisa incluir ambiente, dataset, estado de cache, número
-de amostras e percentis, conforme
-[docs/performance/benchmarking.md](docs/performance/benchmarking.md).
+Document behavior observed in code. Label a target as a target. A benchmark
+includes environment, dataset, cache state, sample count, and percentiles as
+defined in [docs/performance/benchmarking.md](docs/performance/benchmarking.md).
 
-Links relativos e contagens públicas são verificados pelo script de publicação.
-Se uma fixture precisar conter deliberadamente um padrão proibido, acrescente
-`publication-check: synthetic-fixture` na mesma linha. A isenção vale somente
-para essa linha. Nunca use o marcador para ocultar um valor real.
+The publication script validates relative links and public registry counts. If
+a synthetic fixture must contain a forbidden pattern, add
+`publication-check: synthetic-fixture` on that exact line. The exemption is
+line-scoped and must never hide a real value.
 
-## Pull request
+## Pull requests
 
-O pull request deve informar:
+A pull request states:
 
-- problema e impacto para o usuário;
-- contrato alterado;
-- riscos e caminho de reversão;
-- comandos executados com seus resultados;
-- validações relevantes que não foram executadas;
-- atualização de docs, ou justificativa concreta para sua ausência.
+- the problem and user impact;
+- the contract that changed;
+- risks and the rollback path;
+- commands run and their results;
+- relevant validation that did not run;
+- the documentation update, or a concrete reason it is unnecessary.
 
-Mantenedores podem pedir a divisão de mudanças quando a revisão ou reversão
-ficar difícil.
+Maintainers may request a split when a change becomes hard to review or revert.

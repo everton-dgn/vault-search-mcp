@@ -1,0 +1,562 @@
+name: Auto release
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: auto-release-main
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Validate CI and plan release
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.repository.full_name == github.repository
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      source_commit: ${{ steps.plan.outputs.source_commit }}
+      previous_tag: ${{ steps.plan.outputs.previous_tag }}
+      bump: ${{ steps.plan.outputs.bump }}
+      recovery: ${{ steps.plan.outputs.recovery }}
+
+    steps:
+      - name: Check out trusted release automation from main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: refs/heads/main
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Refresh the trusted branch and release tags
+        run: |
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          git fetch --tags origin
+
+      - name: Revalidate the workflow run and calculate SemVer
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RELEASE_EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
+          RELEASE_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_RUN_SHA: ${{ github.sha }}
+          RELEASE_RUN_ID: ${{ github.event.workflow_run.id }}
+          RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          RELEASE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_SOURCE_WORKFLOW: ${{ github.event.workflow_run.name }}
+        run: |
+          set -o pipefail
+          gh api \
+            --method GET \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${RELEASE_REPOSITORY}/actions/runs/${RELEASE_RUN_ID}" |
+            python scripts/release.py plan \
+              --repository "${RELEASE_REPOSITORY}" \
+              --event-repository "${RELEASE_EVENT_REPOSITORY}" \
+              --head-repository "${RELEASE_HEAD_REPOSITORY}" \
+              --source-workflow "${RELEASE_SOURCE_WORKFLOW}" \
+              --expected-workflow "CI" \
+              --expected-workflow-path ".github/workflows/ci.yml" \
+              --source-event "${RELEASE_SOURCE_EVENT}" \
+              --conclusion "${RELEASE_CONCLUSION}" \
+              --head-branch "${RELEASE_HEAD_BRANCH}" \
+              --default-branch "main" \
+              --source-commit "${RELEASE_SOURCE_SHA}" \
+              --release-run-sha "${RELEASE_RUN_SHA}" \
+              --run-id "${RELEASE_RUN_ID}" \
+              --run-record - \
+              --github-output "${GITHUB_OUTPUT}"
+
+  build:
+    name: Build artifacts with a local release tag
+    needs: plan
+    if: ${{ needs.plan.outputs.release == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.plan.outputs.source_commit }}
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Prepare the annotated tag without publishing it
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          python scripts/release.py prepare-tag \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install locked build backend
+        run: uv sync --locked --only-group build --no-install-project
+
+      - name: Build wheel and source archive
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "${RELEASE_SOURCE_SHA}")"
+          export SOURCE_DATE_EPOCH
+          uv build \
+            --no-build-isolation \
+            --no-create-gitignore \
+            --out-dir "${RUNNER_TEMP}/dist"
+          python scripts/release.py inspect \
+            --directory "${RUNNER_TEMP}/dist" \
+            --version "${RELEASE_VERSION}"
+
+      - name: Upload primary build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-primary-${{ needs.plan.outputs.tag }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dist/*.whl
+            ${{ runner.temp }}/dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  rebuild:
+    name: Rebuild artifacts independently with a local release tag
+    needs: plan
+    if: ${{ needs.plan.outputs.release == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.plan.outputs.source_commit }}
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Prepare the annotated tag without publishing it
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          python scripts/release.py prepare-tag \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+
+      - name: Set up uv without a shared cache
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+
+      - name: Install locked build backend
+        run: uv sync --locked --only-group build --no-install-project --no-cache
+
+      - name: Rebuild wheel and source archive
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "${RELEASE_SOURCE_SHA}")"
+          export SOURCE_DATE_EPOCH
+          uv build \
+            --no-build-isolation \
+            --no-cache \
+            --no-create-gitignore \
+            --out-dir "${RUNNER_TEMP}/dist"
+          python scripts/release.py inspect \
+            --directory "${RUNNER_TEMP}/dist" \
+            --version "${RELEASE_VERSION}"
+
+      - name: Upload independent rebuild
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-rebuild-${{ needs.plan.outputs.tag }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dist/*.whl
+            ${{ runner.temp }}/dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  assemble:
+    name: Compare builds and assemble release bundle
+    needs:
+      - plan
+      - build
+      - rebuild
+    if: ${{ needs.plan.outputs.release == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out release verification code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.plan.outputs.source_commit }}
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Download primary build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-primary-${{ needs.plan.outputs.tag }}-*
+          path: primary-candidates
+
+      - name: Download independent rebuild
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-rebuild-${{ needs.plan.outputs.tag }}-*
+          path: rebuild-candidates
+
+      - name: Select identical artifacts from all available run attempts
+        env:
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          python scripts/release.py select-build \
+            --candidates primary-candidates \
+            --output primary \
+            --prefix "release-primary-${RELEASE_TAG}-" \
+            --version "${RELEASE_VERSION}"
+          python scripts/release.py select-build \
+            --candidates rebuild-candidates \
+            --output rebuilt \
+            --prefix "release-rebuild-${RELEASE_TAG}-" \
+            --version "${RELEASE_VERSION}"
+
+      - name: Prove reproducibility and create manifest
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          python scripts/release.py finalize \
+            --primary primary \
+            --rebuilt rebuilt \
+            --output release \
+            --version "${RELEASE_VERSION}" \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-bundle-${{ needs.plan.outputs.tag }}-${{ github.run_attempt }}
+          path: release
+          if-no-files-found: error
+          retention-days: 30
+
+  tag:
+    name: Publish or recover the annotated tag
+    needs:
+      - plan
+      - assemble
+    if: ${{ needs.plan.outputs.release == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ needs.plan.outputs.source_commit }}
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Refresh the trusted branch and release tags
+        run: |
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          git fetch --tags origin
+
+      - name: Publish or validate the annotated tag
+        env:
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          python scripts/release.py ensure-tag \
+            --repository "${RELEASE_REPOSITORY}" \
+            --default-branch "main" \
+            --remote "origin" \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+
+  attest:
+    name: Attest and verify release provenance
+    needs:
+      - plan
+      - assemble
+      - tag
+    if: ${{ needs.plan.outputs.release == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out release verification code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.plan.outputs.source_commit }}
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Download verified release bundle attempts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-bundle-${{ needs.plan.outputs.tag }}-*
+          path: release-candidates
+
+      - name: Select an identical release bundle from available run attempts
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          python scripts/release.py select-release \
+            --candidates release-candidates \
+            --output release \
+            --prefix "release-bundle-${RELEASE_TAG}-" \
+            --version "${RELEASE_VERSION}" \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+
+      - name: Recheck release bundle
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          python scripts/release.py verify \
+            --directory release \
+            --version "${RELEASE_VERSION}" \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+
+      - name: Generate build provenance attestations
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: release/*
+
+      - name: Verify published attestations
+        env:
+          ATTESTATION_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for subject in release/*; do
+            gh attestation verify "${subject}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/auto-release.yml" \
+              --source-digest "${ATTESTATION_SOURCE_SHA}" \
+              --source-ref "refs/heads/main" \
+              --deny-self-hosted-runners
+          done
+
+  publish:
+    name: Publish immutable GitHub release inputs
+    needs:
+      - plan
+      - attest
+    if: ${{ needs.plan.outputs.release == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: refs/tags/${{ needs.plan.outputs.tag }}
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Download attested release bundle attempts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-bundle-${{ needs.plan.outputs.tag }}-*
+          path: release-candidates
+
+      - name: Select an identical release bundle from available run attempts
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          python scripts/release.py select-release \
+            --candidates release-candidates \
+            --output release \
+            --prefix "release-bundle-${RELEASE_TAG}-" \
+            --version "${RELEASE_VERSION}" \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+
+      - name: Verify tag and release bundle
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          python scripts/release.py verify-tag \
+            --remote origin \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+          python scripts/release.py verify \
+            --directory release \
+            --version "${RELEASE_VERSION}" \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+
+      - name: Create, recover, or verify the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE_SHA: ${{ needs.plan.outputs.source_commit }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          release_state=""
+          if release_state="$(
+            gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json assets,isDraft,isPrerelease \
+              --jq '[.isDraft, .isPrerelease, (.assets | length)] | @tsv'
+          )"; then
+            read -r release_is_draft release_is_prerelease release_asset_count \
+              <<< "${release_state}"
+            if [[ ! "${release_is_draft}" =~ ^(true|false)$ ]] ||
+              [[ ! "${release_is_prerelease}" =~ ^(true|false)$ ]] ||
+              [[ ! "${release_asset_count}" =~ ^[0-9]+$ ]]; then
+              exit 1
+            fi
+            if [[ "${release_is_prerelease}" == "true" ]]; then
+              echo "Refusing to mutate a prerelease with the stable release tag" >&2
+              exit 1
+            fi
+            if [[ "${release_is_draft}" == "false" ]]; then
+              mkdir published-release
+              if [[ "${release_asset_count}" != "0" ]]; then
+                gh release download "${RELEASE_TAG}" \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --dir published-release
+              fi
+              python scripts/release.py compare \
+                --expected release \
+                --actual published-release \
+                --version "${RELEASE_VERSION}" \
+                --tag "${RELEASE_TAG}" \
+                --source-commit "${RELEASE_SOURCE_SHA}"
+              exit 0
+            fi
+          else
+            gh release create "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --verify-tag \
+              --title "${RELEASE_TAG}" \
+              --generate-notes \
+              --draft
+            release_asset_count="0"
+          fi
+
+          mkdir draft-existing
+          if [[ "${release_asset_count}" != "0" ]]; then
+            gh release download "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --dir draft-existing
+          fi
+          python scripts/release.py reconcile-draft \
+            --expected release \
+            --existing draft-existing \
+            --missing-file "${RUNNER_TEMP}/missing-release-assets" \
+            --version "${RELEASE_VERSION}" \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+          while IFS= read -r asset_name; do
+            gh release upload "${RELEASE_TAG}" "release/${asset_name}" \
+              --repo "${GITHUB_REPOSITORY}"
+          done < "${RUNNER_TEMP}/missing-release-assets"
+
+          mkdir draft-release
+          gh release download "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir draft-release
+          python scripts/release.py compare \
+            --expected release \
+            --actual draft-release \
+            --version "${RELEASE_VERSION}" \
+            --tag "${RELEASE_TAG}" \
+            --source-commit "${RELEASE_SOURCE_SHA}"
+          gh release edit "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft=false \
+            --prerelease=false

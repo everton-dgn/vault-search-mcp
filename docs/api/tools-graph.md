@@ -1,19 +1,13 @@
-# Tools de grafo
+# Graph tools
 
-As quatro tools usam o índice de links para produzir um grafo de notas. Links
-externos ficam fora das arestas. Os exemplos abaixo são fixtures sintéticas e
-mostram somente o formato.
+Four tools derive a note graph from the link index. External URLs do not become
+graph edges. Examples are synthetic and document shape only.
 
 ## `graph_data`
 
 ```python
-graph_data(
-    folder: str | None = None,
-    include_orphans: bool = False,
-) -> dict | str
+graph_data(folder: str | None = None, include_orphans: bool = False) -> dict | str
 ```
-
-Retorna nós e arestas direcionadas:
 
 ```python
 {
@@ -26,13 +20,12 @@ Retorna nós e arestas direcionadas:
 }
 ```
 
-`folder` filtra origens sob a pasta. `include_orphans=True` acrescenta notas do
-catálogo sem links conhecidos. O índice limita a leitura a 100.000 registros e
-o catálogo de órfãs a 10.000 notas, então o payload pode ser uma visão parcial
-de conjuntos maiores.
+`folder` restricts source notes. `include_orphans=True` adds catalog notes with
+no known links. The link read is capped at 100,000 rows and the orphan catalog
+at 10,000 notes, so larger vaults can produce a partial view.
 
-O formato `nodes` e `edges` é simples de adaptar para bibliotecas de
-visualização; ele não é um arquivo nativo de Gephi nem do Obsidian.
+The node-edge shape adapts easily to visualization libraries. It is not a
+native Gephi or Obsidian file.
 
 ## `suggest_links`
 
@@ -44,24 +37,23 @@ suggest_links(
 ) -> list[dict] | str
 ```
 
-Busca notas semanticamente parecidas e remove a própria nota e targets já
-ligados. `limit` fica entre 1 e 50. Cada sugestão contém `path`, `title`,
-`similarity` e `folder`.
+Finds semantically related notes, then removes the source and already-linked
+targets. `limit` is clamped from 1 through 50. Each item contains `path`,
+`title`, `similarity`, and `folder`.
 
 ```python
 [
     {
         "path": "notes/b.md",
         "title": "B",
-        "similarity": 0.0,
+        "similarity": 0.78,
         "folder": "notes",
     }
 ]
 ```
 
-O zero acima documenta o tipo. Uma execução real só inclui itens cujo score
-atinge `min_similarity`. O score não é probabilidade calibrada; revise a nota
-antes de criar o link.
+The similarity value is not a calibrated probability. Review both notes before
+creating a link.
 
 ## `find_link_clusters`
 
@@ -72,9 +64,9 @@ find_link_clusters(
 ) -> dict | str
 ```
 
-Converte as arestas em grafo não direcionado e encontra componentes conexos com
-BFS. `min_cluster_size` fica entre 2 e 100. O retorno contém até 20 clusters e
-até 20 notas por cluster, com `truncated` quando houver mais.
+Converts edges to an undirected graph and finds connected components with BFS.
+`min_cluster_size` is clamped from 2 through 100. The response includes up to
+20 clusters and 20 notes per cluster, with `truncated` when more exist.
 
 ```python
 {
@@ -84,22 +76,19 @@ até 20 notas por cluster, com `truncated` quando houver mais.
 }
 ```
 
-`density` segue a definição de grafo simples não direcionado:
-`m / (n * (n - 1) / 2)`. Arestas repetidas são deduplicadas e self-loops ficam
-fora de `m`, portanto o resultado permanece entre 0 e 1.
+`density` uses the undirected simple-graph definition
+`m / (n * (n - 1) / 2)`. Repeated edges are deduplicated and self-loops do not
+count toward `m`, keeping the value between zero and one.
 
 ## `find_bridge_notes`
 
 ```python
-find_bridge_notes(
-    limit: int = 20,
-    folder: str | None = None,
-) -> dict | str
+find_bridge_notes(limit: int = 20, folder: str | None = None) -> dict | str
 ```
 
-Executa Tarjan iterativo em `O(V + E)` no grafo não direcionado e retorna os
-pontos de articulação: notas cuja remoção aumenta o número de componentes
-conectados. O limite fica entre 1 e 100.
+Runs iterative Tarjan traversal in `O(V + E)` and returns articulation points:
+notes whose removal increases the number of connected components. `limit` is
+clamped from 1 through 100.
 
 ```python
 {
@@ -118,14 +107,13 @@ conectados. O limite fica entre 1 e 100.
 }
 ```
 
-`total_bridge_notes` cobre todo o grafo observado; `returned_notes` e `has_more`
-descrevem o recorte limitado. `separated_branches` registra o score estrutural,
-e `bridge_score` permanece como alias compatível. O cálculo é exato para a visão
-de `graph_data`; se essa visão atingiu seus limites de leitura, o resultado não
-cobre arestas que ficaram fora dela.
+`total_bridge_notes` covers the observed graph. `returned_notes` and `has_more`
+describe the bounded response. `separated_branches` is the structural score;
+`bridge_score` remains a compatibility alias. If `graph_data` hit a read cap,
+unseen edges are outside this calculation.
 
-## Consistência
+## Consistency
 
-As quatro tools veem a última geração indexada. Depois de editar links, aguarde
-o watcher ou execute `reindex_note`. Veja [Links indexados](../features/link-index.md)
-e [Tools de indexação](tools-indexing.md).
+All graph tools read the latest indexed generation. After editing links, wait
+for the watcher or call `reindex_note`. See [the link index](../features/link-index.md)
+and [indexing tools](tools-indexing.md).

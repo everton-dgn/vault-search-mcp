@@ -1,10 +1,10 @@
 """
-Utilitários para geração de UUID v7.
+Utilities for generating UUID v7 identifiers.
 
-UUID v7 (RFC 9562) é baseado em timestamp, ordenável cronologicamente
-e ideal para identificadores de notas.
+UUID v7 (RFC 9562) is timestamp-based, chronologically sortable,
+and well suited to note identifiers.
 
-Python 3.13+ tem uuid.uuid7() nativo (PEP 707).
+Python 3.13+ provides native ``uuid.uuid7()`` support through PEP 707.
 """
 
 import uuid
@@ -12,14 +12,15 @@ import uuid
 
 def generate_uuid7() -> str:
     """
-    Gera UUID v7 como string.
+    Generate a UUID v7 string.
 
-    Usa o uuid.uuid7() nativo do Python 3.13+ (RFC 9562 compliant).
-    - 48 bits de timestamp (ms)
-    - 74 bits de random
-    - Ordenável cronologicamente
+    Use the native Python 3.13+ ``uuid.uuid7()`` implementation from RFC 9562.
+    - 48 timestamp bits in milliseconds
+    - 74 random bits
+    - Chronologically sortable
 
-    Retorna:
-        UUID v7 no formato padrão (ex: '019c503c-08e7-707f-9441-f4e6c5d0dd61')
+    Returns:
+        UUID v7 in standard form, for example
+        ``019c503c-08e7-707f-9441-f4e6c5d0dd61``.
     """
     return str(uuid.uuid7())

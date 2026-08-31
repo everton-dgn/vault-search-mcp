@@ -1,34 +1,16 @@
 """
-MCP Server para busca semântica e CRUD no vault.
+MCP server for vault search and CRUD.
 
-Expõe ferramentas de busca e gerenciamento via protocolo MCP,
-permitindo que Claude Code e outros clientes MCP façam busca
-semântica de alta qualidade nas notas do vault.
+Exposes search and note-management tools to MCP clients.
 
-Ferramentas expostas:
-- search_vault: busca semântica com reranking
-- search_vault_hybrid: busca híbrida (semântica + keyword)
-- search_by_folder: busca filtrada por pasta
-- vault_stats: estatísticas do índice
-- reindex_vault: reindexar todo o vault
-- reindex_note: reindexar uma nota específica
-- read_note: leitura completa de nota
-- get_note_metadata: metadados sem conteúdo
-- list_notes: listar notas com filtros
-- create_note: criar nova nota
-- write_note: sobrescrever/criar nota
-- append_note: adicionar conteúdo ao final
-- update_frontmatter: atualizar YAML frontmatter
-- delete_note: mover nota para a lixeira interna do vault
-- move_note: mover/renomear nota
-- system_stats: métricas de performance e cache
+Public tool names are registered in the server tool modules and checked by the
+publication gate.
 """
 
 import os
 import threading
 
-# MPS fallback para operações não suportadas no Apple Silicon
-# Sem isso, algumas ops do PyTorch podem falhar com device="mps"
+# Allow PyTorch to fall back for operations unsupported by Apple MPS.
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 from fastmcp import FastMCP
@@ -42,32 +24,32 @@ from vault_search.server.graph_tools import register_graph_tools
 from vault_search.server.middleware import SafeErrorMiddleware, SafeTimingMiddleware
 from vault_search.server.resource_tools import register_resources
 from vault_search.server.search_tools import register_search_tools
-from vault_search.server.watcher import VaultWatcher
 from vault_search.utils.logging import configure_logging, get_logger
 from vault_search.utils.shutdown import ShutdownManager, protected_section
+from vault_search.watching.watcher import VaultWatcher
 
-# Configurar structured logging (JSON em produção, console colorido em dev)
+# Configure privacy-safe structured logging.
 configure_logging()
 logger = get_logger("vault-search-mcp")
 
-# Instâncias compartilhadas (lazy loading interno)
+# Shared instances with internal lazy loading.
 _indexer = VaultIndexer()
 _searcher = VaultSearcher()
 _watcher = VaultWatcher(_indexer, on_reindex=_searcher.invalidate_cache)
 
-# Threads de inicialização (guardadas para join no shutdown)
+# Initialization threads retained for shutdown joins.
 _init_threads: list[threading.Thread] = []
 
 
 def _shutdown_watcher():
-    """Para o watcher graciosamente."""
-    with protected_section("parando file watcher"):
+    """Stop the watcher gracefully."""
+    with protected_section("stopping file watcher"):
         _watcher.stop()
 
 
 def _shutdown_catalog():
-    """Para o catálogo graciosamente."""
-    with protected_section("parando reconciliação do catálogo"):
+    """Stop the catalog gracefully."""
+    with protected_section("stopping catalog reconciliation"):
         try:
             catalog = get_catalog()
             catalog.stop_reconciliation()
@@ -76,16 +58,16 @@ def _shutdown_catalog():
 
 
 def _shutdown_models():
-    """Libera modelos ML da memória."""
-    with protected_section("liberando modelos ML"):
+    """Release ML models from memory."""
+    with protected_section("releasing ML models"):
         from vault_search.core.models import ModelManager
 
         ModelManager().cleanup()
 
 
 def _shutdown_init_threads():
-    """Aguarda threads de inicialização terminarem."""
-    with protected_section("aguardando threads de inicialização"):
+    """Wait for initialization threads to finish."""
+    with protected_section("waiting for initialization threads"):
         for thread in _init_threads:
             if thread.is_alive():
                 logger.debug("waiting_for_init_thread", thread_name=thread.name)
@@ -95,8 +77,8 @@ def _shutdown_init_threads():
 
 
 def _register_shutdown_callbacks():
-    """Registra callbacks de shutdown no ShutdownManager."""
-    # Ordem LIFO: init_threads -> models -> catalog -> watcher (inverso do registro)
+    """Register shutdown callbacks with ShutdownManager."""
+    # LIFO order reverses callback registration.
     ShutdownManager.register_callback(_shutdown_watcher)
     ShutdownManager.register_callback(_shutdown_catalog)
     ShutdownManager.register_callback(_shutdown_models)
@@ -105,14 +87,14 @@ def _register_shutdown_callbacks():
 
 mcp = FastMCP(
     "vault-search-mcp",
-    instructions="Busca semântica de alta qualidade em vault Obsidian com suporte multilíngue",
+    instructions="Local semantic, lexical, and graph search for Markdown vaults",
 )
 
-# Middlewares (ordem: error handling -> timing)
+# Middleware order: error handling, then timing.
 mcp.add_middleware(SafeErrorMiddleware())
 mcp.add_middleware(SafeTimingMiddleware())
 
-# Registrar ferramentas e resources
+# Register tools and resources.
 register_search_tools(mcp, _indexer, _searcher)
 register_crud_tools(mcp, _indexer, _searcher)
 register_graph_tools(mcp, _indexer, _searcher)
@@ -120,7 +102,7 @@ register_resources(mcp, _indexer, _searcher)
 
 
 def _init_catalog() -> bool:
-    """Inicializa o schema do catálogo sem iniciar trabalho concorrente."""
+    """Initialize the catalog schema without starting concurrent work."""
     try:
         catalog = get_catalog()
         catalog.initialize()
@@ -136,7 +118,7 @@ def _init_catalog() -> bool:
 
 
 def _start_catalog_reconciliation() -> None:
-    """Inicia reconciliação somente após o bootstrap do índice."""
+    """Start catalog reconciliation after index bootstrap."""
     try:
         get_catalog().start_reconciliation()
         logger.info("catalog_reconciliation_started", interval_min=2)
@@ -148,7 +130,7 @@ def _start_catalog_reconciliation() -> None:
 
 
 def _init_prewarm():
-    """Tenta prewarm dos índices LanceDB em background."""
+    """Attempt to prewarm LanceDB indexes in the background."""
     try:
         status = _searcher.try_prewarm()
         if status.get("enabled"):
@@ -170,7 +152,7 @@ def _init_prewarm():
 
 
 def _init_model_warmup():
-    """Pré-carrega modelos ML para eliminar latência na primeira query."""
+    """Preload ML models outside the request path."""
     try:
         from vault_search.core.models import ModelManager
 
@@ -188,7 +170,7 @@ def _init_model_warmup():
 
 
 def _init_sync_check():
-    """Verifica e sincroniza arquivos do vault com o índice."""
+    """Check and synchronize vault files with the index."""
     try:
         stats = _indexer.sync_check(auto_sync=True)
         if stats["new_files"] or stats["modified_files"] or stats["deleted_files"]:
@@ -206,7 +188,7 @@ def _init_sync_check():
 
 
 def _init_data_services() -> None:
-    """Inicializa consumidores do data dir em uma sequência determinística."""
+    """Initialize data-directory consumers in deterministic order."""
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
     except Exception as error:
@@ -233,16 +215,16 @@ def _init_data_services() -> None:
 
 
 def main():
-    """Entry point para o servidor MCP com watcher ativo."""
+    """Run the MCP server with the optional watcher."""
     logger.info("server_starting")
 
-    # Inicializar graceful shutdown (signal handlers + atexit)
+    # Initialize graceful shutdown handlers and the atexit fallback.
     ShutdownManager.initialize(timeout=30.0)
     _register_shutdown_callbacks()
     logger.info("shutdown_manager_initialized")
 
-    # Catálogo, sync, prewarm e watcher compartilham o mesmo data dir. A ordem
-    # serial evita abertura e mutação concorrentes durante o bootstrap.
+    # Catalog, sync, prewarm, and watcher share one data directory. Serial
+    # startup avoids concurrent initialization and mutation.
     data_thread = threading.Thread(
         target=_init_data_services,
         daemon=True,
@@ -251,12 +233,12 @@ def main():
     data_thread.start()
     _init_threads.append(data_thread)
 
-    # Model warmup em background (carrega modelos para primeira query ser rápida)
+    # Warm models in the background, outside the first request.
     warmup_thread = threading.Thread(target=_init_model_warmup, daemon=True, name="model-warmup")
     warmup_thread.start()
     _init_threads.append(warmup_thread)
 
-    # Banner usa stdout e pode quebrar handshake MCP em transporte stdio.
+    # A stdout banner would break the MCP stdio handshake.
     mcp.run(show_banner=False)
 
 

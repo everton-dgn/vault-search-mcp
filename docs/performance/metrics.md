@@ -1,53 +1,53 @@
-# Métricas
+# Metrics
 
-## Princípio
+## Principle
 
-Uma métrica operacional ajuda a localizar falhas. Ela só vira SLO depois de uma
-baseline do ambiente e de uma decisão explícita.
+An operational metric helps locate failure. It becomes an SLO only after an
+environment baseline and an explicit decision.
 
-## Fontes
+## Sources
 
-| Fonte | Conteúdo |
+| Source | Content |
 |---|---|
-| `system_stats` | cache, componentes e métricas internas |
-| `vault_stats` | notas, chunks e atualização do índice |
-| `health_check` | saúde agregada |
-| `benchmark_search` | amostras locais de busca |
-| daemon `/stats` | estado dos modelos locais |
-| logs estruturados | evento, duração, contagem e código de falha |
+| `system_stats` | caches, components, and internal metrics |
+| `vault_stats` | notes, chunks, and index update state |
+| `health_check` | aggregate health |
+| `benchmark_search` | local search samples |
+| daemon `/stats` | local model state |
+| structured logs | event, duration, count, and failure code |
 
-## Dimensões seguras
+## Safe dimensions
 
-Use nome de operação, status, componente, duração e contagem. Evite query,
-conteúdo, título, tag, UUID e path absoluto como label. Valores de alta
-cardinalidade pioram custo e podem expor dados.
+Use operation, status, component, duration, and count. Avoid query, note
+content, title, tag, UUID, and absolute path as labels. High-cardinality values
+increase cost and can expose data.
 
-## Distribuições
+## Distributions
 
-Para latência, mantenha dados suficientes para mediana, p95 e quantidade de
-amostras. Separe:
+Keep enough latency observations for median, p95, and sample count. Separate:
 
-- cache frio e aquecido;
-- daemon e modelos no processo;
-- busca semântica e híbrida;
-- indexação completa e incremental;
-- sucesso, timeout, cancelamento e falha.
+- cold and warm caches;
+- daemon and in-process models;
+- semantic and hybrid search;
+- full and incremental indexing;
+- success, timeout, cancellation, and failure.
 
-## Alertas derivados da baseline
+## Baseline-derived alerts
 
-Exemplos de condição:
+Useful conditions include:
 
-- health check falha em sequência;
-- p95 se afasta da baseline do mesmo ambiente;
-- hit rate cai depois de uma mudança de chave;
-- fila de enriquecimento para de avançar;
-- contagem do índice diverge do vault;
-- reinícios do daemon aumentam.
+- repeated health-check failure;
+- p95 departure from the same environment's baseline;
+- hit-rate drop after a key change;
+- enrichment queue stops advancing;
+- index count diverges from the vault;
+- daemon restart frequency increases.
 
-Não copie threshold de outro hardware. Registre o cálculo e a janela usados.
+Do not copy a threshold from different hardware. Record the calculation and
+window.
 
-## Exportação
+## Export
 
-O projeto ainda não inclui exporter Prometheus ou OpenTelemetry. Uma integração
-futura deve preservar nomes estáveis, cardinalidade limitada e privacidade por
-default. Até lá, colete tools e logs localmente.
+The project has no Prometheus or OpenTelemetry exporter. A future integration
+must preserve stable names, bounded cardinality, and private-by-default labels.
+Until then, collect tools and logs locally.

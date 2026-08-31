@@ -1,11 +1,11 @@
 """
-Operações de leitura para notas do vault.
+Read operations for vault notes.
 
-Otimizações:
-- Catálogo SQLite para list_notes() em O(1)
-- Leitura parcial de frontmatter (não carrega arquivo inteiro)
-- Cache LRU com validação por (path, mtime_ns, size)
-- Métricas de latência para profiling
+Implementation notes:
+- SQLite catalog for bounded list_notes queries
+- Partial frontmatter reads without loading the entire file
+- LRU cache validated by (path, mtime_ns, size)
+- Latency metrics for profiling
 """
 
 import logging
@@ -35,33 +35,33 @@ from vault_search.utils.security import validate_relative_path
 logger = logging.getLogger(__name__)
 _metrics = MetricsCollector()
 
-# Flag para usar catálogo SQLite (habilitado por padrão)
+# Prefer the SQLite catalog when available.
 USE_CATALOG = True
 
 
 def read_note(relative_path: str) -> NoteContent:
     """
-    Lê conteúdo completo de uma nota markdown.
+    Read the complete content of a Markdown note.
 
-    Apenas .md é suportado (texto plano com frontmatter YAML).
-    Para buscar em PDFs/Canvas, use search_vault.
+    Only .md supports plain-text reads with YAML frontmatter. Use search_vault
+    for PDF and Canvas content.
 
-    Parâmetros:
-        relative_path: caminho relativo no vault (ex: 'pasta/nota.md')
+    Parameters:
+        relative_path: path relative to the vault, such as 'folder/note.md'
 
-    Retorna:
-        NoteContent com conteúdo, frontmatter parseado e metadados.
+    Returns:
+        NoteContent with text, parsed frontmatter, and metadata.
 
     Raises:
-        ValueError: path inválido, fora do vault, ou extensão não suportada
-        FileNotFoundError: nota não existe
+        ValueError: if the path is invalid, outside the vault, or unsupported
+        FileNotFoundError: if the note does not exist
     """
     with _metrics.measure("read_note"):
         validate_readable_text(relative_path)
         file_path = resolve_path(relative_path)
 
         if not file_path.exists():
-            raise FileNotFoundError(f"Nota não encontrada: {relative_path}")
+            raise FileNotFoundError(f"Note not found: {relative_path}")
 
         content = file_path.read_text(encoding="utf-8")
         frontmatter, body = parse_frontmatter(content)
@@ -90,31 +90,29 @@ def read_note(relative_path: str) -> NoteContent:
 
 def get_note_metadata(relative_path: str) -> NoteMetadata:
     """
-    Retorna apenas metadados de uma nota markdown (sem conteúdo completo).
+    Return metadata for a Markdown note without its full content.
 
-    Apenas .md é suportado (texto plano com frontmatter YAML).
-    Mais eficiente que read_note quando só precisa de metadados.
+    This is cheaper than read_note when the caller needs only metadata.
 
-    Otimizações:
-    - Cache LRU com validação por (path, mtime_ns, size)
-    - Leitura parcial de frontmatter (não carrega arquivo inteiro)
+    Uses an LRU cache keyed by (path, mtime_ns, size) and a partial
+    frontmatter read.
 
-    Parâmetros:
-        relative_path: caminho relativo no vault
+    Parameters:
+        relative_path: path relative to the vault
 
-    Retorna:
-        NoteMetadata com frontmatter, tags e info do arquivo.
+    Returns:
+        NoteMetadata with frontmatter, tags, and file information.
     """
     with _metrics.measure("get_note_metadata"):
         validate_readable_text(relative_path)
         file_path = resolve_path(relative_path)
 
         if not file_path.exists():
-            raise FileNotFoundError(f"Nota não encontrada: {relative_path}")
+            raise FileNotFoundError(f"Note not found: {relative_path}")
 
         stat = file_path.stat()
 
-        # Tentar cache primeiro
+        # Check the cache first.
         cache = get_metadata_cache()
         cache_key = CacheKey.from_stat(str(file_path), stat)
         cached = cache.get(cache_key)
@@ -122,7 +120,7 @@ def get_note_metadata(relative_path: str) -> NoteMetadata:
             logger.debug("get_note_metadata cache_hit=true")
             return cached
 
-        # Cache miss - leitura otimizada (apenas frontmatter)
+        # Read only frontmatter on a cache miss.
         frontmatter, _ = read_frontmatter_only(file_path)
         tags = extract_tags(frontmatter)
 
@@ -140,7 +138,7 @@ def get_note_metadata(relative_path: str) -> NoteMetadata:
             "size_bytes": stat.st_size,
         }
 
-        # Armazenar no cache
+        # Store the result in the cache.
         cache.set(cache_key, metadata)
 
         logger.debug("get_note_metadata cache_hit=false")
@@ -154,12 +152,10 @@ def _scandir_recursive(
     indexable_extensions: set[str],
 ) -> list[NoteListItem]:
     """
-    Scan recursivo usando os.scandir (mais rápido que Path.rglob).
+    Recursively scan with os.scandir.
 
-    os.scandir é mais eficiente porque:
-    - Retorna DirEntry com stat() em cache no SO
-    - Não cria objetos Path intermediários
-    - Permite early-exit de diretórios ignorados
+    DirEntry reuses operating-system stat data, avoids intermediate Path
+    objects, and lets ignored directories exit early.
     """
     notes: list[NoteListItem] = []
     stack = [start_path]
@@ -170,7 +166,7 @@ def _scandir_recursive(
         try:
             with os.scandir(current_dir) as entries:
                 for entry in entries:
-                    # Skip folders ignorados imediatamente
+                    # Skip ignored folders immediately.
                     if entry.name in ignored_folders:
                         continue
 
@@ -181,7 +177,7 @@ def _scandir_recursive(
                     if not entry.is_file(follow_symlinks=False):
                         continue
 
-                    # Verificar extensão
+                    # Check the extension.
                     name = entry.name
                     dot_idx = name.rfind(".")
                     if dot_idx == -1:
@@ -194,7 +190,7 @@ def _scandir_recursive(
                     if extension and ext != extension:
                         continue
 
-                    # Obter stat (já em cache no DirEntry)
+                    # Reuse stat data from DirEntry.
                     try:
                         stat = entry.stat()
                     except OSError:
@@ -206,7 +202,7 @@ def _scandir_recursive(
                     notes.append(
                         {
                             "path": relative_path,
-                            "title": name[:dot_idx],  # stem sem extensão
+                            "title": name[:dot_idx],  # Stem without extension.
                             "folder": get_folder(path),
                             "extension": ext,
                             "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
@@ -228,29 +224,26 @@ def list_notes(
     offset: int = 0,
 ) -> NoteListResult:
     """
-    Lista notas do vault com filtros e paginação.
+    List vault notes with filters and pagination.
 
-    NOTA: Lista todas as extensões indexáveis (.md, .pdf, .canvas).
-    Porém, apenas .md pode ser lido via read_note/get_note_metadata.
-    Para PDFs/Canvas, use search_vault para buscar conteúdo.
+    The result includes every indexable extension (.md, .pdf, .canvas), while
+    read_note and get_note_metadata accept only .md. Use search_vault for PDF
+    and Canvas content.
 
-    Otimizações:
-    - Catálogo SQLite para query O(1) (se habilitado)
-    - Fallback: os.scandir (mais rápido que rglob)
-    - Early-exit de diretórios ignorados
-    - stat() via DirEntry (sem syscall extra)
+    The SQLite catalog is preferred. A filesystem scan provides a bounded
+    fallback and skips ignored directories early.
 
-    Parâmetros:
-        folder: filtrar por pasta (ex: 'projetos', 'estudos/python')
-        extension: filtrar por extensão (ex: '.md' para apenas markdown)
-        limit: máximo de notas a retornar (default: 500, max: 5000)
-        offset: pular N primeiras notas (para paginação)
+    Parameters:
+        folder: optional folder filter, such as 'projects' or 'research/python'
+        extension: optional extension filter, such as '.md'
+        limit: maximum number of notes to return
+        offset: number of matching notes to skip
 
-    Retorna:
-        NoteListResult com notes, total, limit, offset, has_more.
+    Returns:
+        NoteListResult containing notes, total, limit, offset, and has_more.
     """
     with _metrics.measure("list_notes"):
-        # Aplicar limite padrão e máximo
+        # Apply the default and maximum limits.
         if limit is None:
             limit = LIST_NOTES_DEFAULT_LIMIT
         limit = max(1, min(limit, LIST_NOTES_MAX_LIMIT))
@@ -264,13 +257,13 @@ def list_notes(
             offset,
         )
 
-        # Validações
+        # Validate filters.
         if folder:
             if not validate_relative_path(folder):
-                raise ValueError(f"Folder inválido ou fora do vault: {folder}")
+                raise ValueError(f"Folder is invalid or outside the vault: {folder}")
             folder_parts = Path(folder).parts
             if any(ignored in folder_parts for ignored in IGNORED_FOLDERS):
-                raise ValueError(f"Folder está na lista de ignorados: {folder}")
+                raise ValueError(f"Folder is ignored: {folder}")
 
         if extension:
             extension = extension.lower()
@@ -278,11 +271,11 @@ def list_notes(
                 extension = f".{extension}"
             if extension not in INDEXABLE_EXTENSIONS:
                 raise ValueError(
-                    f"Extensão '{extension}' não suportada. "
+                    f"Extension '{extension}' is not supported. "
                     f"Use: {', '.join(sorted(INDEXABLE_EXTENSIONS))}"
                 )
 
-        # Tentar usar catálogo SQLite (O(1) query)
+        # Prefer the SQLite catalog.
         if USE_CATALOG:
             try:
                 catalog = get_catalog()
@@ -294,7 +287,7 @@ def list_notes(
                 )
                 has_more = (offset + limit) < total
 
-                logger.debug(f"list_notes via catalog: {len(notes)} de {total}")
+                logger.debug("list_notes via_catalog=%d total=%d", len(notes), total)
 
                 return {
                     "notes": notes,
@@ -309,7 +302,7 @@ def list_notes(
                     type(e).__name__,
                 )
 
-        # Fallback: scan do filesystem
+        # Fall back to a filesystem scan.
         if folder:
             start_path = resolve_path(folder)
             if not start_path.exists():

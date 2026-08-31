@@ -1,7 +1,7 @@
 """
-Funções auxiliares para o servidor MCP.
+Helpers for the MCP server.
 
-Inclui validação de parâmetros, logging privado e decorators.
+Includes parameter validation, privacy-safe logging, and decorators.
 """
 
 import functools
@@ -20,20 +20,24 @@ R = TypeVar("R")
 
 
 def clamp_top_k(top_k: int) -> int:
-    """Garante top_k dentro de limites razoáveis."""
+    """Clamp top_k to configured limits."""
     return max(SEARCH_TOP_K_MIN, min(top_k, SEARCH_TOP_K_MAX))
 
 
 def truncate_query(query: str) -> str:
-    """Trunca query para evitar processar strings enormes."""
+    """Truncate oversized queries before processing."""
     if len(query) > MAX_QUERY_LENGTH:
-        logger.warning(f"Query truncada de {len(query)} para {MAX_QUERY_LENGTH} chars")
+        logger.warning(
+            "query_truncated original_length=%d maximum_length=%d",
+            len(query),
+            MAX_QUERY_LENGTH,
+        )
         return query[:MAX_QUERY_LENGTH]
     return query
 
 
 def log_query(query: str) -> str:
-    """Retorna somente metadados da query, sem registrar seu conteúdo."""
+    """Return query metadata without logging its content."""
     return f"[redacted length={len(query)}]"
 
 
@@ -45,20 +49,20 @@ def execute_search(
     **kwargs: object,
 ) -> list[dict[str, object]] | str:
     """
-    Executa busca com validação, logging e error handling padronizados.
+    Execute a search with standardized validation, logging, and errors.
 
-    Parâmetros:
-        tool_name: nome da ferramenta MCP (para logs)
-        query: texto de busca
-        top_k: quantidade de resultados
-        search_fn: método de busca a executar
-        **kwargs: argumentos adicionais para search_fn
+    Parameters:
+        tool_name: MCP tool name for logs
+        query: search text
+        top_k: result count
+        search_fn: search callable
+        **kwargs: additional arguments for search_fn
 
-    Retorna:
-        Lista de resultados ou mensagem de erro.
+    Returns:
+        Search results or a stable error message.
     """
     if not query or not query.strip():
-        return "Erro: query não pode ser vazia."
+        return "Error: query cannot be empty."
     query = truncate_query(query.strip())
     top_k = clamp_top_k(top_k)
     logger.info("%s query_length=%d top_k=%d", tool_name, len(query), top_k)
@@ -70,22 +74,22 @@ def execute_search(
             tool_name,
             e,
             code="search_unavailable",
-            message="A busca está temporariamente indisponível.",
+            message="Search is temporarily unavailable.",
         )
     except Exception as e:
         return public_error(logger, tool_name, e)
 
 
 # =============================================================================
-# Decorators para MCP Tools
+# MCP tool decorators
 # =============================================================================
 
 
 def with_error_handling(tool_name: str):
     """
-    Decorator que adiciona error handling padronizado a uma função MCP tool.
+    Add standardized error handling to an MCP tool.
 
-    Converte exceções em mensagens de erro amigáveis.
+    Converts internal exceptions to bounded public messages.
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R | str]:
@@ -99,7 +103,7 @@ def with_error_handling(tool_name: str):
                     tool_name,
                     e,
                     code="invalid_request",
-                    message="A entrada é inválida ou o recurso não existe.",
+                    message="The input is invalid or the resource does not exist.",
                 )
             except Exception as e:
                 return public_error(logger, tool_name, e)
@@ -109,4 +113,4 @@ def with_error_handling(tool_name: str):
     return decorator
 
 
-# O tratamento inline continua disponível para ferramentas com lógica específica.
+# Tools with specialized logic may continue to handle errors inline.

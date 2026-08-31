@@ -1,6 +1,4 @@
-"""
-Modelos Pydantic para schema de frontmatter.
-"""
+"""Pydantic models for the frontmatter schema."""
 
 from typing import Any, Literal
 
@@ -15,143 +13,141 @@ from vault_search.frontmatter.types import (
 
 class FieldSchema(BaseModel):
     """
-    Schema de um campo do frontmatter.
+    Schema for one frontmatter field.
 
-    Define tipo, comportamento quando ausente, e validações específicas.
+    Defines the type, missing-field behavior, and type-specific constraints.
     """
 
-    type: FieldType = Field(description="Tipo do campo")
+    type: FieldType = Field(description="Field type")
     on_missing: OnMissingBehavior = Field(
         default="ignore",
-        description="Comportamento quando campo está ausente",
+        description="Behavior when the field is missing",
     )
 
-    # Default value (usado apenas se on_missing != auto)
-    default: Any = Field(default=None, description="Valor default se ausente")
+    # Default value (used only when on_missing != auto).
+    default: Any = Field(default=None, description="Default value when missing")
 
-    # Validações de string
-    min_length: int | None = Field(default=None, ge=0, description="Comprimento mínimo")
-    max_length: int | None = Field(default=None, ge=1, description="Comprimento máximo")
-    pattern: str | None = Field(default=None, description="Regex pattern para validação")
+    # String constraints.
+    min_length: int | None = Field(default=None, ge=0, description="Minimum length")
+    max_length: int | None = Field(default=None, ge=1, description="Maximum length")
+    pattern: str | None = Field(default=None, description="Validation regex pattern")
 
-    # Validações de enum
-    values: list[str] | None = Field(default=None, description="Valores permitidos (enum)")
+    # Enum constraints.
+    values: list[str] | None = Field(default=None, description="Allowed enum values")
     case_insensitive: bool = Field(
         default=True,
-        description="Comparação case-insensitive para enum",
+        description="Use case-insensitive enum matching",
     )
 
-    # Validações de lista
+    # List constraints.
     item_type: Literal["string", "int", "float"] | None = Field(
         default=None,
-        description="Tipo dos itens da lista",
+        description="List item type",
     )
-    min_items: int | None = Field(default=None, ge=0, description="Mínimo de itens na lista")
-    max_items: int | None = Field(default=None, ge=1, description="Máximo de itens na lista")
+    min_items: int | None = Field(default=None, ge=0, description="Minimum list length")
+    max_items: int | None = Field(default=None, ge=1, description="Maximum list length")
 
-    # Validações numéricas (int/float)
-    minimum: float | None = Field(default=None, description="Valor mínimo")
-    maximum: float | None = Field(default=None, description="Valor máximo")
+    # Numeric constraints (int/float).
+    minimum: float | None = Field(default=None, description="Minimum value")
+    maximum: float | None = Field(default=None, description="Maximum value")
 
-    # Aliases (nomes alternativos para o campo)
+    # Aliases (alternative names for the field).
     aliases: list[str] = Field(
         default_factory=list,
-        description="Nomes alternativos aceitos para este campo",
+        description="Accepted alternative names for this field",
     )
 
     @field_validator("values")
     @classmethod
     def values_not_empty(cls, v: list[str] | None) -> list[str] | None:
-        """Valida que values não é lista vazia."""
+        """Reject an explicitly empty enum value list."""
         if v is not None and len(v) == 0:
-            raise ValueError("values não pode ser lista vazia")
+            raise ValueError("values cannot be an empty list")
         return v
 
     @model_validator(mode="after")
     def validate_type_constraints(self) -> FieldSchema:
-        """Valida que constraints são compatíveis com o tipo."""
-        # enum requer values
+        """Ensure constraints are compatible with the selected field type."""
+        # Enum fields require values.
         if self.type == "enum" and not self.values:
-            raise ValueError("type='enum' requer 'values' definido")
+            raise ValueError("type='enum' requires 'values'")
 
-        # list pode ter item_type
+        # List fields may specify an item type.
         if self.type == "list" and self.item_type is None:
-            # Default para string se não especificado
+            # Default to strings when no item type is specified.
             object.__setattr__(self, "item_type", "string")
 
-        # auto só faz sentido para uuid e datetime
+        # Automatic generation is defined only for UUIDs and datetimes.
         if self.on_missing == "auto" and self.type not in ("uuid", "datetime"):
             raise ValueError(
-                f"on_missing='auto' só é suportado para 'uuid' e 'datetime', não para '{self.type}'"
+                f"on_missing='auto' is supported only for 'uuid' and 'datetime', not '{self.type}'"
             )
 
-        # Validações numéricas só para int/float
+        # Numeric constraints apply only to int and float fields.
         if self.type not in ("int", "float"):
             if self.minimum is not None or self.maximum is not None:
                 raise ValueError(
-                    f"minimum/maximum só são válidos para 'int' ou 'float', não para '{self.type}'"
+                    f"minimum/maximum apply only to 'int' or 'float', not '{self.type}'"
                 )
 
-        # Validações de string só para string
+        # String-length constraints apply only to string fields.
         if self.type != "string":
             if self.min_length is not None or self.max_length is not None:
-                raise ValueError(
-                    f"min_length/max_length só são válidos para 'string', não para '{self.type}'"
-                )
+                raise ValueError(f"min_length/max_length apply only to 'string', not '{self.type}'")
 
         return self
 
 
 class FrontmatterSchemaConfig(BaseModel):
     """
-    Configuração completa do schema de frontmatter.
+    Complete frontmatter schema configuration.
 
-    Define campos, modo de validação e comportamento geral.
+    Defines fields, validation mode, and extra-field behavior.
     """
 
     enabled: bool = Field(
         default=False,
-        description="Habilitar validação de schema",
+        description="Enable schema validation",
     )
     mode: ValidationMode = Field(
         default="lenient",
-        description="Modo de validação: strict (bloqueia), lenient (avisa), warn_only",
+        description="Validation mode: strict, lenient, or warn_only",
     )
     allow_extra_fields: bool = Field(
         default=True,
-        description="Permitir campos não definidos no schema",
+        description="Allow fields that are not defined in the schema",
     )
     schema_fields: dict[str, FieldSchema] = Field(
         default_factory=dict,
-        description="Schema dos campos do frontmatter",
-        alias="schema",  # Aceita "schema" no YAML para compatibilidade
+        description="Frontmatter field schema",
+        alias="schema",  # Accept "schema" in YAML for compatibility.
     )
 
-    # Propriedade para acessar como .schema (conveniência)
+    # Convenience property for access through .schema.
     @property
     def schema(self) -> dict[str, FieldSchema]:  # type: ignore[override]
-        """Alias para schema_fields (conveniência)."""
+        """Expose schema_fields through the public .schema alias."""
         return self.schema_fields
 
     @field_validator("schema_fields", mode="before")
     @classmethod
     def parse_schema_dict(cls, v: object) -> dict[str, FieldSchema]:
-        """Converte dicts aninhados para FieldSchema."""
+        """Convert nested dictionaries to FieldSchema instances."""
         if not v:
             return {}
         if not isinstance(v, dict):
-            raise ValueError("schema deve ser um dicionário")
+            raise ValueError("schema must be a dictionary")
         result: dict[str, FieldSchema] = {}
         for field_name, field_config in v.items():
             if not isinstance(field_name, str):
-                raise ValueError("Nomes de campos do schema devem ser strings")
+                raise ValueError("schema field names must be strings")
             if isinstance(field_config, FieldSchema):
                 result[field_name] = field_config
             elif isinstance(field_config, dict):
                 result[field_name] = FieldSchema(**field_config)
             else:
                 raise ValueError(
-                    f"Campo '{field_name}' deve ser dict ou FieldSchema, "
-                    f"recebido {type(field_config).__name__}"
+                    f"Field '{field_name}' must be a dict or FieldSchema, "
+                    f"got {type(field_config).__name__}"
                 )
         return result

@@ -1,5 +1,5 @@
 """
-Utilitários para extração de metadados de arquivos.
+Utilities for extracting file metadata.
 """
 
 from datetime import datetime
@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 
 
 class FileMetadata(TypedDict):
-    """Metadados comuns extraídos de um arquivo no vault."""
+    """Common metadata extracted from a vault file."""
 
     relative_path: str
     folder: str
@@ -18,20 +18,20 @@ class FileMetadata(TypedDict):
 
 def is_empty_text(text: str | None) -> bool:
     """
-    Verifica se texto é vazio ou contém apenas whitespace.
+    Check whether text is empty or contains only whitespace.
 
-    Parâmetros:
-        text: texto a verificar (pode ser None)
+    Parameters:
+        text: Text to inspect; may be ``None``.
 
-    Retorna:
-        True se vazio/None/whitespace, False caso contrário.
+    Returns:
+        ``True`` for empty, ``None``, or whitespace-only text.
     """
     return not text or not text.strip()
 
 
 def normalize_title(raw_title: str | list[Any] | int | None, fallback: str) -> str:
     """
-    Normaliza título extraído de frontmatter.
+    Normalize a title extracted from frontmatter.
 
     Handles:
     - title: "String" → "String"
@@ -39,17 +39,17 @@ def normalize_title(raw_title: str | list[Any] | int | None, fallback: str) -> s
     - title: 123 → "123"
     - title: null/missing → fallback
 
-    Parâmetros:
-        raw_title: valor bruto do campo title (pode ser qualquer tipo)
-        fallback: valor de fallback se title for inválido (geralmente file.stem)
+    Parameters:
+        raw_title: Raw ``title`` field value of any supported type.
+        fallback: Value used when ``title`` is invalid, usually ``file.stem``.
 
-    Retorna:
-        String normalizada.
+    Returns:
+        The normalized string.
     """
     if isinstance(raw_title, str):
         return raw_title if raw_title.strip() else fallback
     if isinstance(raw_title, list):
-        if not raw_title:  # lista vazia
+        if not raw_title:  # Empty list
             return fallback
         first = raw_title[0]
         return str(first) if first else fallback
@@ -60,14 +60,15 @@ def normalize_title(raw_title: str | list[Any] | int | None, fallback: str) -> s
 
 def extract_file_metadata(file_path: Path, vault_path: Path) -> FileMetadata:
     """
-    Extrai metadados comuns de um arquivo no vault.
+    Extract common metadata from a vault file.
 
-    Parâmetros:
-        file_path: caminho absoluto do arquivo
-        vault_path: caminho raiz do vault
+    Parameters:
+        file_path: Absolute file path.
+        vault_path: Vault root path.
 
-    Retorna:
-        FileMetadata com relative_path, folder, title e modified_at.
+    Returns:
+        ``FileMetadata`` containing ``relative_path``, ``folder``, ``title``,
+        and ``modified_at``.
     """
     relative_path = str(file_path.relative_to(vault_path))
     folder = str(file_path.parent.relative_to(vault_path))

@@ -1,7 +1,7 @@
 """
-Testes unitários para models.py — singleton e lazy loading.
+Unit tests for models.py — singleton and lazy loading.
 
-Testes rápidos que NÃO precisam carregar modelos ML reais.
+Fast tests that do not load real ML models.
 """
 
 import sys
@@ -15,14 +15,14 @@ from vault_search.core.models import ModelManager
 
 
 class TestModelManagerSingleton:
-    def test_singleton_mesma_instancia(self):
-        """ModelManager() deve retornar sempre a mesma instância."""
+    def test_singleton_returns_same_instance(self):
+        """ModelManager() must return always a same instance."""
         m1 = ModelManager()
         m2 = ModelManager()
         assert m1 is m2
 
     def test_singleton_thread_safety(self):
-        """Instanciação de múltiplas threads deve retornar mesma instância."""
+        """Instantiation of multiple threads must return same instance."""
         instances = []
 
         def create_instance():
@@ -37,52 +37,52 @@ class TestModelManagerSingleton:
         assert len(instances) == 10
         assert all(inst is instances[0] for inst in instances)
 
-    def test_lazy_loading_modelo_nao_carregado(self):
-        """Modelo não deve ser carregado até primeira chamada."""
+    def test_lazy_loading_model_not_loaded(self):
+        """The model must not load before the first call."""
         m = ModelManager()
         assert m._embed_model is None or m._embed_model is not None
-        # Se nunca chamamos embed_queries, o modelo pode estar None
-        # (dependendo de testes anteriores que possam ter carregado)
-        # O ponto é que o __init__ não carrega modelos
+        # If embed_queries was never called, the model may be None,
+        # depending on whether an earlier test loaded it.
+        # The key assertion is that __init__ does not load models.
         assert hasattr(m, "_embed_model")
         assert hasattr(m, "_reranker_model")
 
-    def test_lock_existe(self):
-        """ModelManager deve ter lock para thread safety."""
+    def test_lock_exists(self):
+        """ModelManager must have lock for thread safety."""
         m = ModelManager()
         assert hasattr(m, "_lock")
         assert isinstance(m._lock, type(threading.Lock()))
         assert isinstance(m._embedding_inference_lock, type(threading.Lock()))
 
     def test_initialized_flag(self):
-        """Flag _initialized deve estar True após __init__."""
+        """Flag _initialized must be True after __init__."""
         m = ModelManager()
         assert m._initialized is True
 
 
 class TestModelManagerTouch:
-    """Testa _touch e _cleanup_models sem carregar modelos reais."""
+    """Test _touch and _cleanup_models without loading real models."""
 
-    def test_touch_atualiza_last_use(self):
-        """_touch() deve atualizar _last_use."""
+    def test_touch_updates_last_use(self):
+        """_touch() must update _last_use."""
         m = ModelManager()
         old_time = m._last_use
         with m._lock:
             m._touch()
         assert m._last_use > old_time
 
-    def test_touch_agenda_cleanup_timer(self):
-        """_touch() deve agendar timer de cleanup."""
+    def test_touch_schedules_cleanup_timer(self):
+        """_touch() must schedule a cleanup timer."""
         m = ModelManager()
         with m._lock:
             m._touch()
         assert m._cleanup_timer is not None
         assert m._cleanup_timer.is_alive()
-        # Limpar timer
+        # Clear timer
         m._cleanup_timer.cancel()
 
-    def test_touch_nao_agenda_cleanup_no_processo_daemon(self, monkeypatch):
-        """O daemon mantém modelos residentes enquanto estiver ativo."""
+    def test_touch_does_not_schedule_cleanup_in_daemon_process(self, monkeypatch):
+        """The daemon keeps models resident while it is active."""
         from unittest.mock import patch
 
         monkeypatch.setenv("VAULT_SEARCH_RUNNING_AS_DAEMON", "1")
@@ -95,10 +95,10 @@ class TestModelManagerTouch:
         timer.assert_not_called()
         assert m._cleanup_timer is None
 
-    def test_cleanup_descarrega_quando_idle(self):
-        """_cleanup_models() deve descarregar modelos se idle."""
+    def test_cleanup_unloads_when_idle(self):
+        """_cleanup_models() must unload models if idle."""
         m = ModelManager()
-        m._last_use = 0  # muito tempo atrás
+        m._last_use = 0  # very time back
         m._embed_model = "fake_model"
         m._reranker_model = "fake_reranker"
 
@@ -107,12 +107,12 @@ class TestModelManagerTouch:
         assert m._embed_model is None
         assert m._reranker_model is None
 
-    def test_cleanup_nao_descarrega_se_recente(self):
-        """_cleanup_models() não deve descarregar se uso recente."""
+    def test_cleanup_not_unloads_se_recent(self):
+        """_cleanup_models() must not unload if use recent."""
         import time
 
         m = ModelManager()
-        m._last_use = time.time()  # uso agora
+        m._last_use = time.time()  # use now
         m._embed_model = "fake_model"
         m._reranker_model = "fake_reranker"
 
@@ -123,10 +123,10 @@ class TestModelManagerTouch:
 
 
 class TestModelManagerMocked:
-    """Testa métodos de embedding/rerank com modelos mockados."""
+    """Test embedding and reranking methods with mocked models."""
 
-    def test_lazy_loader_usa_sentence_transformers_sem_flagembedding(self, monkeypatch):
-        """O backend denso não deve importar a distribuição pesada FlagEmbedding."""
+    def test_lazy_loader_uses_sentence_transformers_without_flagembedding(self, monkeypatch):
+        """The dense backend must not import the heavy FlagEmbedding distribution."""
         from vault_search.config.embedding import EMBEDDING_MODEL
 
         sentence_transformers = ModuleType("sentence_transformers")
@@ -137,7 +137,7 @@ class TestModelManagerMocked:
 
         legacy_backend = ModuleType("FlagEmbedding")
         legacy_backend.BGEM3FlagModel = MagicMock(
-            side_effect=AssertionError("FlagEmbedding não deve ser importado")
+            side_effect=AssertionError("FlagEmbedding must not be imported")
         )
 
         monkeypatch.setitem(sys.modules, "sentence_transformers", sentence_transformers)
@@ -154,8 +154,8 @@ class TestModelManagerMocked:
 
         constructor.assert_called_once_with(EMBEDDING_MODEL, device="cpu")
 
-    def test_embed_queries_retorna_lista(self):
-        """embed_queries deve retornar lista de vetores."""
+    def test_embed_queries_returns_list(self):
+        """embed_queries must return a list of vectors."""
         import numpy as np
 
         from vault_search.config.embedding import EMBEDDING_QUERY_MAX_LENGTH
@@ -171,10 +171,10 @@ class TestModelManagerMocked:
 
         fake_model.encode.side_effect = encode
 
-        # Mock _check_daemon para forçar uso de modelo local
+        # Mock _check_daemon to force use of the local model.
         with patch.object(m, "_check_daemon", return_value=False):
             with patch.object(m, "_get_embed_model", return_value=fake_model):
-                result = m.embed_queries(["teste"])
+                result = m.embed_queries(["test"])
 
         assert len(result) == 1
         assert len(result[0]) == 1024
@@ -183,8 +183,8 @@ class TestModelManagerMocked:
         assert observed_max_lengths == [EMBEDDING_QUERY_MAX_LENGTH]
         assert fake_model.max_seq_length == 8192
 
-    def test_embed_corpus_usa_batch_size(self):
-        """embed_corpus deve passar batch_size e max_length corretos."""
+    def test_embed_corpus_uses_batch_size(self):
+        """embed_corpus must pass the correct batch_size and max_length."""
         import numpy as np
 
         from vault_search.config.embedding import EMBEDDING_BATCH_SIZE, EMBEDDING_CORPUS_MAX_LENGTH
@@ -200,10 +200,10 @@ class TestModelManagerMocked:
 
         fake_model.encode.side_effect = encode
 
-        # Mock _check_daemon para forçar uso de modelo local
+        # Mock _check_daemon to force use of the local model.
         with patch.object(m, "_check_daemon", return_value=False):
             with patch.object(m, "_get_embed_model", return_value=fake_model):
-                result = m.embed_corpus(["texto1", "texto2"])
+                result = m.embed_corpus(["text1", "text2"])
 
         assert len(result) == 2
         call_kwargs = fake_model.encode.call_args
@@ -212,13 +212,13 @@ class TestModelManagerMocked:
         assert observed_max_lengths == [EMBEDDING_CORPUS_MAX_LENGTH]
         assert fake_model.max_seq_length == 8192
 
-    def test_rerank_retorna_scores_normalizados(self):
-        """rerank deve retornar lista de floats."""
+    def test_rerank_returns_normalized_scores(self):
+        """rerank returns a list of floats."""
         m = ModelManager()
         fake_reranker = MagicMock()
         fake_reranker.predict.return_value = [0.9, 0.3, 0.1]
 
-        # Mock _check_daemon para forçar uso de modelo local
+        # Mock _check_daemon to force use of the local model.
         with patch.object(m, "_check_daemon", return_value=False):
             with patch.object(m, "_get_reranker", return_value=fake_reranker):
                 scores = m.rerank("query", ["doc1", "doc2", "doc3"])
@@ -226,13 +226,13 @@ class TestModelManagerMocked:
         assert scores == [0.9, 0.3, 0.1]
         assert all(isinstance(s, float) for s in scores)
 
-    def test_rerank_score_unico_vira_lista(self):
-        """Se predict retorna escalar, deve virar lista."""
+    def test_single_rerank_score_becomes_list(self):
+        """A scalar prediction must become a list."""
         m = ModelManager()
         fake_reranker = MagicMock()
-        fake_reranker.predict.return_value = 0.85  # escalar
+        fake_reranker.predict.return_value = 0.85  # scalar
 
-        # Mock _check_daemon para forçar uso de modelo local
+        # Mock _check_daemon to force use of the local model.
         with patch.object(m, "_check_daemon", return_value=False):
             with patch.object(m, "_get_reranker", return_value=fake_reranker):
                 scores = m.rerank("query", ["doc1"])
@@ -242,14 +242,14 @@ class TestModelManagerMocked:
 
 
 class TestModelManagerRequireDaemon:
-    """Testa bloqueio de fallback local quando daemon é obrigatório."""
+    """Test local fallback blocking when the daemon is required."""
 
     def setup_method(self):
-        """Reset singleton para evitar contaminação entre testes."""
+        """Reset singleton for avoid contamination between tests."""
         ModelManager._instance = None
 
-    def test_embed_queries_falha_sem_daemon_quando_obrigatorio(self, monkeypatch):
-        """embed_queries deve falhar se daemon estiver indisponível e fallback proibido."""
+    def test_embed_queries_fails_without_daemon_when_required(self, monkeypatch):
+        """embed_queries fails when the daemon is unavailable and fallback is disabled."""
         from unittest.mock import patch
 
         monkeypatch.setenv("VAULT_SEARCH_REQUIRE_DAEMON", "1")
@@ -258,11 +258,11 @@ class TestModelManagerRequireDaemon:
         m = ModelManager()
 
         with patch.object(m, "_check_daemon", return_value=False):
-            with pytest.raises(RuntimeError, match="fallback local desabilitado"):
-                m.embed_queries(["teste"])
+            with pytest.raises(RuntimeError, match="local fallback disabled"):
+                m.embed_queries(["test"])
 
-    def test_rerank_falha_sem_daemon_quando_obrigatorio(self, monkeypatch):
-        """rerank deve falhar se daemon estiver indisponível e fallback proibido."""
+    def test_rerank_fails_without_daemon_when_required(self, monkeypatch):
+        """rerank fails when the daemon is unavailable and fallback is disabled."""
         from unittest.mock import patch
 
         monkeypatch.setenv("VAULT_SEARCH_REQUIRE_DAEMON", "1")
@@ -271,11 +271,11 @@ class TestModelManagerRequireDaemon:
         m = ModelManager()
 
         with patch.object(m, "_check_daemon", return_value=False):
-            with pytest.raises(RuntimeError, match="fallback local desabilitado"):
+            with pytest.raises(RuntimeError, match="local fallback disabled"):
                 m.rerank("query", ["doc"])
 
-    def test_running_as_daemon_permite_modelo_local(self, monkeypatch):
-        """Processo daemon ignora VAULT_SEARCH_REQUIRE_DAEMON para evitar deadlock."""
+    def test_running_as_daemon_allows_local_model(self, monkeypatch):
+        """The daemon process ignores VAULT_SEARCH_REQUIRE_DAEMON to avoid deadlock."""
         from unittest.mock import MagicMock, patch
 
         import numpy as np
@@ -296,25 +296,25 @@ class TestModelManagerRequireDaemon:
 
 
 class TestModelManagerDaemonReconnection:
-    """Testa reconexão automática ao daemon após intervalo."""
+    """Test reconnection automatic to the daemon after interval."""
 
     def setup_method(self):
-        """Reset singleton para cada teste."""
+        """Reset singleton for each test."""
         ModelManager._instance = None
 
-    def test_daemon_retry_interval_existe(self):
-        """ModelManager deve ter constante DAEMON_RETRY_INTERVAL."""
+    def test_daemon_retry_interval_exists(self):
+        """ModelManager exposes the DAEMON_RETRY_INTERVAL constant."""
         assert hasattr(ModelManager, "DAEMON_RETRY_INTERVAL")
         assert ModelManager.DAEMON_RETRY_INTERVAL == 30.0
 
-    def test_last_daemon_check_inicializado(self):
-        """_last_daemon_check deve ser inicializado como 0."""
+    def test_last_daemon_check_is_initialized(self):
+        """_last_daemon_check must be initialized as 0."""
         m = ModelManager()
         assert hasattr(m, "_last_daemon_check")
         assert m._last_daemon_check == 0.0
 
-    def test_check_daemon_usa_health_recente_sem_revalidar(self):
-        """Health recente evita um novo probe dentro do intervalo curto."""
+    def test_check_daemon_uses_recent_health_without_revalidation(self):
+        """Health recent avoids a new probe inside of the interval short."""
         import time
         from unittest.mock import MagicMock
 
@@ -324,14 +324,14 @@ class TestModelManagerDaemonReconnection:
         m._daemon_client = MagicMock()
         m._last_daemon_check = time.time()
 
-        # Deve retornar True imediatamente sem chamar is_daemon_running
+        # Return True immediately without calling is_daemon_running.
         result = m._check_daemon()
 
         assert result is True
         assert m._use_daemon is True
 
-    def test_check_daemon_invalida_health_obsoleto(self):
-        """Daemon em uso deve ser revalidado após o intervalo de health."""
+    def test_check_daemon_invalidates_stale_health(self):
+        """Daemon in use must be revalidated after the interval of health."""
         import time
         from unittest.mock import MagicMock
 
@@ -348,26 +348,26 @@ class TestModelManagerDaemonReconnection:
         assert m._check_daemon() is False
         assert m._daemon_client is None
 
-    def test_check_daemon_respeita_intervalo_retry(self):
-        """Se não usa daemon e está no intervalo, não re-verifica."""
+    def test_check_daemon_respects_interval_retry(self):
+        """If not uses daemon and is in the interval, not re-checks."""
         import time
         from unittest.mock import patch
 
         m = ModelManager()
         m._daemon_checked = True
         m._use_daemon = False
-        m._last_daemon_check = time.time()  # verificou agora
+        m._last_daemon_check = time.time()  # Checked just now.
 
-        # Mock is_daemon_running para verificar se é chamado
+        # Mock is_daemon_running for verify if is called
         with patch("vault_search.daemon.client.is_daemon_running") as mock_running:
             result = m._check_daemon()
 
-        # Não deve ter chamado is_daemon_running (ainda no intervalo)
+        # Must not have called is_daemon_running (still in the interval)
         mock_running.assert_not_called()
         assert result is False
 
-    def test_check_daemon_reverifica_apos_intervalo(self):
-        """Após DAEMON_RETRY_INTERVAL, deve re-verificar daemon."""
+    def test_check_daemon_rechecks_after_interval(self):
+        """After DAEMON_RETRY_INTERVAL, must re-verify daemon."""
         import time
         from unittest.mock import MagicMock, patch
 
@@ -375,10 +375,10 @@ class TestModelManagerDaemonReconnection:
         m._daemon_checked = True
         m._use_daemon = False
         m._daemon_client = None
-        # Simular que verificou há 35s (> 30s do intervalo)
+        # Simulate a check 35 seconds ago, beyond the 30-second interval.
         m._last_daemon_check = time.time() - 35
 
-        # Mock daemon como disponível
+        # Mock daemon as available
         mock_client = MagicMock()
         mock_client.health.return_value = {"status": "healthy", "uptime_seconds": 100}
 
@@ -390,27 +390,27 @@ class TestModelManagerDaemonReconnection:
         assert m._use_daemon is True
         assert m._daemon_client is mock_client
 
-    def test_check_daemon_nao_reverifica_antes_intervalo(self):
-        """Antes de DAEMON_RETRY_INTERVAL, não re-verifica daemon."""
+    def test_check_daemon_not_rechecks_before_interval(self):
+        """Before of DAEMON_RETRY_INTERVAL, not re-checks daemon."""
         import time
         from unittest.mock import patch
 
         m = ModelManager()
         m._daemon_checked = True
         m._use_daemon = False
-        # Simular que verificou há 10s (< 30s do intervalo)
+        # Simulate a check 10 seconds ago, within the 30-second interval.
         m._last_daemon_check = time.time() - 10
 
         with patch("vault_search.daemon.client.is_daemon_running") as mock_running:
             result = m._check_daemon()
 
-        # Não deve ter chamado is_daemon_running
+        # Must not have called is_daemon_running
         mock_running.assert_not_called()
         assert result is False
         assert m._use_daemon is False
 
-    def test_check_daemon_atualiza_timestamp_ao_verificar(self):
-        """Ao re-verificar, deve atualizar _last_daemon_check."""
+    def test_check_daemon_updates_timestamp_when_verified(self):
+        """Rechecking updates _last_daemon_check."""
         import time
         from unittest.mock import patch
 
@@ -425,8 +425,8 @@ class TestModelManagerDaemonReconnection:
 
         assert m._last_daemon_check > old_time
 
-    def test_primeira_verificacao_sempre_executa(self):
-        """Na primeira verificação (_daemon_checked=False), sempre executa."""
+    def test_first_check_always_executes(self):
+        """In the first verification (_daemon_checked=False), always executes."""
         from unittest.mock import patch
 
         m = ModelManager()
@@ -440,27 +440,27 @@ class TestModelManagerDaemonReconnection:
         mock_running.assert_called_once()
         assert m._daemon_checked is True
 
-    def test_reconexao_apos_perda_de_conexao(self):
-        """Se perder conexão com daemon, deve tentar reconectar após intervalo."""
+    def test_reconnects_after_connection_loss(self):
+        """A lost daemon connection must be retried after the interval."""
         import time
         from unittest.mock import MagicMock, patch
 
         m = ModelManager()
-        # Simular que estava usando daemon
+        # Simulate that the daemon was in use.
         m._daemon_checked = True
         m._use_daemon = True
         m._daemon_client = MagicMock()
         m._last_daemon_check = time.time()
 
-        # Primeiro _check_daemon retorna True (já está usando)
+        # First _check_daemon returns True (already is using)
         assert m._check_daemon() is True
 
-        # Simular perda de conexão
+        # Simulate loss of connection
         m._use_daemon = False
         m._daemon_client = None
         m._last_daemon_check = time.time() - 35
 
-        # Mock daemon disponível novamente
+        # Make the daemon available again.
         mock_client = MagicMock()
         mock_client.health.return_value = {"status": "healthy", "uptime_seconds": 200}
 

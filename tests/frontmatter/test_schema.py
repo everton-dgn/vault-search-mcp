@@ -1,11 +1,11 @@
 """
-Testes para o módulo de validação de frontmatter com schema Pydantic.
+Tests for frontmatter validation with Pydantic schemas.
 
-Cobre:
-- Modelos Pydantic (FieldSchema, FrontmatterSchemaConfig)
-- Funções de coerção de tipos
+Covers:
+- Pydantic models (FieldSchema, FrontmatterSchemaConfig)
+- type coercion functions
 - FrontmatterValidator
-- Integração com CRUD
+- Integration with CRUD
 """
 
 from datetime import date, datetime
@@ -34,17 +34,17 @@ from vault_search.frontmatter.validator import FrontmatterValidator
 
 
 class TestFieldSchema:
-    """Testes para modelo Pydantic FieldSchema."""
+    """Tests for the FieldSchema Pydantic model."""
 
     def test_minimal_schema(self):
-        """Schema mínimo só requer type."""
+        """A minimal schema requires only a type."""
         schema = FieldSchema(type="string")
         assert schema.type == "string"
         assert schema.on_missing == "ignore"
         assert schema.default is None
 
     def test_all_field_types(self):
-        """Todos os tipos de campo devem ser válidos."""
+        """All the types of field must be valid."""
         types: list[FieldType] = [
             "string",
             "int",
@@ -65,39 +65,39 @@ class TestFieldSchema:
             assert schema.type == t
 
     def test_on_missing_behaviors(self):
-        """Todos os comportamentos on_missing devem ser válidos."""
+        """Every on_missing behavior must be valid."""
         behaviors: list[OnMissingBehavior] = ["auto", "suggest", "require", "ignore"]
         for behavior in behaviors:
             if behavior == "auto":
-                # auto só suporta uuid e datetime
+                # auto supports only uuid and datetime.
                 schema = FieldSchema(type="uuid", on_missing=behavior)
             else:
                 schema = FieldSchema(type="string", on_missing=behavior)
             assert schema.on_missing == behavior
 
     def test_enum_requires_values(self):
-        """type='enum' sem values deve falhar."""
-        with pytest.raises(ValueError, match="requer 'values'"):
+        """type='enum' without values must fail."""
+        with pytest.raises(ValueError, match="requires 'values'"):
             FieldSchema(type="enum")
 
     def test_enum_with_empty_values_fails(self):
-        """type='enum' com values vazia deve falhar."""
-        with pytest.raises(ValueError, match="não pode ser lista vazia"):
+        """type='enum' with values empty must fail."""
+        with pytest.raises(ValueError, match="cannot be an empty list"):
             FieldSchema(type="enum", values=[])
 
     def test_auto_only_for_uuid_datetime(self):
-        """on_missing='auto' só é válido para uuid e datetime."""
+        """on_missing='auto' only is valid for uuid and datetime."""
         # uuid ok
         FieldSchema(type="uuid", on_missing="auto")
         # datetime ok
         FieldSchema(type="datetime", on_missing="auto")
 
-        # outros tipos devem falhar
-        with pytest.raises(ValueError, match="só é suportado"):
+        # other types must fail
+        with pytest.raises(ValueError, match="supported only"):
             FieldSchema(type="string", on_missing="auto")
 
     def test_string_constraints(self):
-        """Constraints de string devem ser validadas."""
+        """String constraints must be validated."""
         schema = FieldSchema(
             type="string",
             min_length=5,
@@ -109,23 +109,23 @@ class TestFieldSchema:
         assert schema.pattern == r"^[A-Z]"
 
     def test_numeric_constraints(self):
-        """Constraints numéricas devem ser validadas."""
+        """Numeric constraints must be validated."""
         schema = FieldSchema(type="int", minimum=0, maximum=100)
         assert schema.minimum == 0
         assert schema.maximum == 100
 
     def test_numeric_constraints_invalid_for_string(self):
-        """minimum/maximum não são válidos para string."""
-        with pytest.raises(ValueError, match="só são válidos para"):
+        """minimum/maximum are not valid for string."""
+        with pytest.raises(ValueError, match="apply only to"):
             FieldSchema(type="string", minimum=0)
 
     def test_string_constraints_invalid_for_int(self):
-        """min_length/max_length não são válidos para int."""
-        with pytest.raises(ValueError, match="só são válidos para"):
+        """min_length/max_length are not valid for int."""
+        with pytest.raises(ValueError, match="apply only to"):
             FieldSchema(type="int", min_length=5)
 
     def test_aliases(self):
-        """Aliases devem ser aceitos."""
+        """Aliases are accepted."""
         schema = FieldSchema(
             type="datetime",
             aliases=["created", "date", "created_at"],
@@ -133,13 +133,13 @@ class TestFieldSchema:
         assert schema.aliases == ["created", "date", "created_at"]
 
     def test_list_with_item_type(self):
-        """Lista com item_type especificado."""
+        """A list with a specified item_type is supported."""
         schema = FieldSchema(type="list", item_type="int", max_items=10)
         assert schema.item_type == "int"
         assert schema.max_items == 10
 
     def test_list_defaults_to_string_item_type(self):
-        """Lista sem item_type deve usar string como default."""
+        """A list without item_type defaults to strings."""
         schema = FieldSchema(type="list")
         assert schema.item_type == "string"
 
@@ -150,10 +150,10 @@ class TestFieldSchema:
 
 
 class TestFrontmatterSchemaConfig:
-    """Testes para modelo Pydantic FrontmatterSchemaConfig."""
+    """Tests for model Pydantic FrontmatterSchemaConfig."""
 
     def test_default_config(self):
-        """Config padrão deve estar desabilitada."""
+        """Config default must be disabled."""
         config = FrontmatterSchemaConfig()
         assert config.enabled is False
         assert config.mode == "lenient"
@@ -161,7 +161,7 @@ class TestFrontmatterSchemaConfig:
         assert config.schema == {}
 
     def test_config_with_schema(self):
-        """Config com schema deve parsear campos."""
+        """A configuration with a schema parses its fields."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             mode="strict",
@@ -177,7 +177,7 @@ class TestFrontmatterSchemaConfig:
         assert config.schema["status"].values == ["draft", "published"]
 
     def test_validation_modes(self):
-        """Todos os modos de validação devem ser válidos."""
+        """Every validation mode must be valid."""
         modes: list[ValidationMode] = ["strict", "lenient", "warn_only"]
         for mode in modes:
             config = FrontmatterSchemaConfig(mode=mode)
@@ -190,36 +190,36 @@ class TestFrontmatterSchemaConfig:
 
 
 class TestCoerceString:
-    """Testes para coerção de string."""
+    """Tests for coercion of string."""
 
     def test_string_passthrough(self):
-        """String passa sem modificação."""
+        """String passes without modification."""
         schema = FieldSchema(type="string")
         result, warning = coerce_string("hello", schema)
         assert result == "hello"
         assert warning is None
 
     def test_int_to_string(self):
-        """Int é convertido para string."""
+        """An integer is converted to a string."""
         schema = FieldSchema(type="string")
         result, warning = coerce_string(42, schema)
         assert result == "42"
-        assert "Convertido" in warning
+        assert "Converted" in warning
 
     def test_min_length_validation(self):
-        """String muito curta deve falhar."""
+        """String very short must fail."""
         schema = FieldSchema(type="string", min_length=5)
-        with pytest.raises(ValueError, match="muito curta"):
+        with pytest.raises(ValueError, match="too short"):
             coerce_string("abc", schema)
 
     def test_max_length_validation(self):
-        """String muito longa deve falhar."""
+        """String very long must fail."""
         schema = FieldSchema(type="string", max_length=5)
-        with pytest.raises(ValueError, match="muito longa"):
+        with pytest.raises(ValueError, match="too long"):
             coerce_string("abcdefgh", schema)
 
     def test_pattern_validation(self):
-        """String deve corresponder ao pattern."""
+        """A string must match the pattern."""
         schema = FieldSchema(type="string", pattern=r"^[A-Z][a-z]+$")
 
         result, _ = coerce_string("Hello", schema)
@@ -230,31 +230,31 @@ class TestCoerceString:
 
 
 class TestCoerceInt:
-    """Testes para coerção de int."""
+    """Tests for coercion of int."""
 
     def test_int_passthrough(self):
-        """Int passa sem modificação."""
+        """Int passes without modification."""
         schema = FieldSchema(type="int")
         result, warning = coerce_int(42, schema)
         assert result == 42
         assert warning is None
 
     def test_float_truncated(self):
-        """Float é truncado para int."""
+        """Float is truncated for int."""
         schema = FieldSchema(type="int")
         result, warning = coerce_int(3.7, schema)
         assert result == 3
-        assert "truncado" in warning.lower()
+        assert "truncated" in warning.lower()
 
     def test_string_to_int(self):
-        """String numérica é convertida."""
+        """String numeric is converted."""
         schema = FieldSchema(type="int")
         result, warning = coerce_int("42", schema)
         assert result == 42
-        # Warning pode ser None se conversão foi direta (int() success)
+        # The warning may be None when int() converts directly.
 
     def test_bool_to_int(self):
-        """Bool é convertido para 0/1."""
+        """A boolean is converted to 0 or 1."""
         schema = FieldSchema(type="int")
         result_true, _ = coerce_int(True, schema)
         result_false, _ = coerce_int(False, schema)
@@ -262,48 +262,48 @@ class TestCoerceInt:
         assert result_false == 0
 
     def test_minimum_validation(self):
-        """Valor abaixo do mínimo deve falhar."""
+        """A value below the minimum is rejected."""
         schema = FieldSchema(type="int", minimum=10)
-        with pytest.raises(ValueError, match="menor que mínimo"):
+        with pytest.raises(ValueError, match="below minimum"):
             coerce_int(5, schema)
 
     def test_maximum_validation(self):
-        """Valor acima do máximo deve falhar."""
+        """A value above the maximum is rejected."""
         schema = FieldSchema(type="int", maximum=100)
-        with pytest.raises(ValueError, match="maior que máximo"):
+        with pytest.raises(ValueError, match="above maximum"):
             coerce_int(150, schema)
 
 
 class TestCoerceFloat:
-    """Testes para coerção de float."""
+    """Tests for coercion of float."""
 
     def test_float_passthrough(self):
-        """Float passa sem modificação."""
+        """Float passes without modification."""
         schema = FieldSchema(type="float")
         result, warning = coerce_float(3.14, schema)
         assert result == 3.14
         assert warning is None
 
     def test_int_to_float(self):
-        """Int é convertido para float."""
+        """An integer is converted to a float."""
         schema = FieldSchema(type="float")
         result, warning = coerce_float(42, schema)
         assert result == 42.0
-        assert warning is None  # Conversão sem perda
+        assert warning is None  # Conversion without loss
 
     def test_string_to_float(self):
-        """String numérica é convertida."""
+        """String numeric is converted."""
         schema = FieldSchema(type="float")
         result, warning = coerce_float("3.14", schema)
         assert result == 3.14
-        assert "convertida" in warning.lower()
+        assert "converted" in warning.lower()
 
 
 class TestCoerceBool:
-    """Testes para coerção de bool."""
+    """Tests for coercion of bool."""
 
     def test_bool_passthrough(self):
-        """Bool passa sem modificação."""
+        """Bool passes without modification."""
         schema = FieldSchema(type="bool")
         result_true, _ = coerce_bool(True, schema)
         result_false, _ = coerce_bool(False, schema)
@@ -311,21 +311,31 @@ class TestCoerceBool:
         assert result_false is False
 
     def test_string_truthy(self):
-        """Strings truthy são convertidas para True."""
+        """Truthy strings are converted to True."""
         schema = FieldSchema(type="bool")
-        for value in ["true", "yes", "1", "on", "sim", "True", "YES"]:
+        for value in ["true", "yes", "1", "on", "True", "YES"]:
             result, _ = coerce_bool(value, schema)
-            assert result is True, f"'{value}' deveria ser True"
+            assert result is True, f"'{value}' should be True"
 
     def test_string_falsy(self):
-        """Strings falsy são convertidas para False."""
+        """Falsy strings are converted to False."""
         schema = FieldSchema(type="bool")
-        for value in ["false", "no", "0", "off", "nao", "não", "falso"]:
+        for value in ["false", "no", "0", "off", "False", "NO"]:
             result, _ = coerce_bool(value, schema)
-            assert result is False, f"'{value}' deveria ser False"
+            assert result is False, f"'{value}' should be False"
+
+    def test_portuguese_boolean_strings_remain_supported(self):
+        """Legacy Portuguese boolean strings preserve their public behavior."""
+        schema = FieldSchema(type="bool")
+        for value in ["sim", "verdadeiro", "SIM"]:
+            result, _ = coerce_bool(value, schema)
+            assert result is True, f"'{value}' should be True"
+        for value in ["não", "nao", "falso", "NÃO"]:
+            result, _ = coerce_bool(value, schema)
+            assert result is False, f"'{value}' should be False"
 
     def test_int_0_1(self):
-        """Int 0/1 são convertidos para bool."""
+        """The integers 0 and 1 are converted to booleans."""
         schema = FieldSchema(type="bool")
         result_1, _ = coerce_bool(1, schema)
         result_0, _ = coerce_bool(0, schema)
@@ -333,184 +343,184 @@ class TestCoerceBool:
         assert result_0 is False
 
     def test_invalid_int(self):
-        """Int diferente de 0/1 deve falhar."""
+        """Integers other than 0 and 1 are rejected."""
         schema = FieldSchema(type="bool")
-        with pytest.raises(ValueError, match="use 0 ou 1"):
+        with pytest.raises(ValueError, match="use 0 or 1"):
             coerce_bool(42, schema)
 
 
 class TestCoerceDate:
-    """Testes para coerção de date."""
+    """Tests for coercion of date."""
 
     def test_date_passthrough(self):
-        """Date é formatado como ISO."""
+        """A date is formatted as ISO."""
         schema = FieldSchema(type="date")
         result, warning = coerce_date(date(2024, 1, 15), schema)
         assert result == "2024-01-15"
         assert warning is None
 
     def test_datetime_truncated(self):
-        """Datetime é truncado para date."""
+        """Datetime is truncated for date."""
         schema = FieldSchema(type="date")
         result, warning = coerce_date(datetime(2024, 1, 15, 10, 30), schema)
         assert result == "2024-01-15"
-        assert "truncado" in warning.lower()
+        assert "truncated" in warning.lower()
 
     def test_string_iso(self):
-        """String ISO é parseada."""
+        """An ISO string is parsed."""
         schema = FieldSchema(type="date")
         result, _ = coerce_date("2024-01-15", schema)
         assert result == "2024-01-15"
 
     def test_invalid_string(self):
-        """String inválida deve falhar."""
+        """An invalid string is rejected."""
         schema = FieldSchema(type="date")
-        with pytest.raises(ValueError, match="data válida"):
+        with pytest.raises(ValueError, match="valid date"):
             coerce_date("not-a-date", schema)
 
 
 class TestCoerceDatetime:
-    """Testes para coerção de datetime."""
+    """Tests for coercion of datetime."""
 
     def test_datetime_passthrough(self):
-        """Datetime é formatado como ISO."""
+        """A datetime is formatted as ISO."""
         schema = FieldSchema(type="datetime")
         result, _ = coerce_datetime(datetime(2024, 1, 15, 10, 30, 45), schema)
         assert result == "2024-01-15T10:30:45"
 
     def test_date_expanded(self):
-        """Date é expandido para datetime com hora 00:00:00."""
+        """A date expands to a datetime at 00:00:00."""
         schema = FieldSchema(type="datetime")
         result, warning = coerce_datetime(date(2024, 1, 15), schema)
         assert result == "2024-01-15T00:00:00"
-        assert "expandido" in warning.lower()
+        assert "expanded" in warning.lower()
 
     def test_string_iso(self):
-        """String ISO é parseada."""
+        """An ISO string is parsed."""
         schema = FieldSchema(type="datetime")
         result, _ = coerce_datetime("2024-01-15T10:30:00", schema)
         assert result == "2024-01-15T10:30:00"
 
 
 class TestCoerceUuid:
-    """Testes para coerção de UUID."""
+    """Tests for coercion of UUID."""
 
     def test_valid_uuid(self):
-        """UUID válido passa."""
+        """UUID valid passes."""
         schema = FieldSchema(type="uuid")
         result, _ = coerce_uuid("550e8400-e29b-41d4-a716-446655440000", schema)
         assert result == "550e8400-e29b-41d4-a716-446655440000"
 
     def test_uuid_normalized(self):
-        """UUID com case diferente é normalizado."""
+        """UUID with case different is normalized."""
         schema = FieldSchema(type="uuid")
         result, warning = coerce_uuid("550E8400-E29B-41D4-A716-446655440000", schema)
         assert result == "550e8400-e29b-41d4-a716-446655440000"
-        # Warning pode ser gerado se valor foi normalizado
+        # Warning can be generated if value was normalized
         if warning:
-            assert "normalizado" in warning.lower()
+            assert "normalized" in warning.lower()
 
     def test_invalid_uuid(self):
-        """UUID inválido deve falhar."""
+        """UUID invalid must fail."""
         schema = FieldSchema(type="uuid")
-        with pytest.raises(ValueError, match="UUID válido"):
+        with pytest.raises(ValueError, match="valid UUID"):
             coerce_uuid("not-a-uuid", schema)
 
 
 class TestCoerceUrl:
-    """Testes para coerção de URL."""
+    """Tests for coercion of URL."""
 
     def test_valid_url(self):
-        """URL válida passa."""
+        """URL valid passes."""
         schema = FieldSchema(type="url")
         result, _ = coerce_url("https://example.com/path", schema)
         assert result == "https://example.com/path"
 
     def test_http_url(self):
-        """HTTP também é válido."""
+        """HTTP also is valid."""
         schema = FieldSchema(type="url")
         result, _ = coerce_url("http://example.com", schema)
         assert result == "http://example.com"
 
     def test_url_without_scheme(self):
-        """URL sem scheme deve falhar."""
+        """URL without scheme must fail."""
         schema = FieldSchema(type="url")
         with pytest.raises(ValueError, match="scheme"):
             coerce_url("example.com", schema)
 
     def test_url_invalid_scheme(self):
-        """URL com scheme inválido deve falhar."""
+        """URL with scheme invalid must fail."""
         schema = FieldSchema(type="url")
-        with pytest.raises(ValueError, match="scheme inválido"):
+        with pytest.raises(ValueError, match="invalid scheme"):
             coerce_url("ftp://example.com", schema)
 
 
 class TestCoerceEnum:
-    """Testes para coerção de enum."""
+    """Tests for coercion of enum."""
 
     def test_exact_match(self):
-        """Valor exato passa."""
+        """Value exact passes."""
         schema = FieldSchema(type="enum", values=["draft", "published"])
         result, _ = coerce_enum("draft", schema)
         assert result == "draft"
 
     def test_case_insensitive(self):
-        """Case insensitive por padrão."""
+        """Case insensitive by default."""
         schema = FieldSchema(type="enum", values=["draft", "published"])
         result, warning = coerce_enum("DRAFT", schema)
         assert result == "draft"
-        assert "normalizado" in warning.lower()
+        assert "normalized" in warning.lower()
 
     def test_case_sensitive(self):
-        """Case sensitive quando configurado."""
+        """Matching is case-sensitive when configured."""
         schema = FieldSchema(type="enum", values=["Draft", "Published"], case_insensitive=False)
 
         result, _ = coerce_enum("Draft", schema)
         assert result == "Draft"
 
-        with pytest.raises(ValueError, match="não está na lista"):
+        with pytest.raises(ValueError, match="not in the allowed value list"):
             coerce_enum("draft", schema)
 
     def test_invalid_value(self):
-        """Valor não na lista deve falhar."""
+        """Value not in the list must fail."""
         schema = FieldSchema(type="enum", values=["draft", "published"])
-        with pytest.raises(ValueError, match="não está na lista"):
+        with pytest.raises(ValueError, match="not in the allowed value list"):
             coerce_enum("archived", schema)
 
 
 class TestCoerceList:
-    """Testes para coerção de lista."""
+    """Tests for coercion of list."""
 
     def test_list_passthrough(self):
-        """Lista passa."""
+        """List passes."""
         schema = FieldSchema(type="list", item_type="string")
         result, _ = coerce_list(["a", "b", "c"], schema)
         assert result == ["a", "b", "c"]
 
     def test_tuple_to_list(self):
-        """Tuple é convertido para lista."""
+        """A tuple is converted to a list."""
         schema = FieldSchema(type="list", item_type="string")
         result, warning = coerce_list(("a", "b"), schema)
         assert result == ["a", "b"]
-        assert "Convertido" in warning
+        assert "Converted" in warning
 
     def test_string_to_list(self):
-        """String separada por vírgula é convertida."""
+        """A comma-separated string is converted."""
         schema = FieldSchema(type="list", item_type="string")
         result, warning = coerce_list("a, b, c", schema)
         assert result == ["a", "b", "c"]
-        assert "convertida" in warning.lower()
+        assert "converted" in warning.lower()
 
     def test_list_item_type_int(self):
-        """Itens são convertidos para int."""
+        """Items are converted to integers."""
         schema = FieldSchema(type="list", item_type="int")
         result, _ = coerce_list(["1", "2", "3"], schema)
         assert result == [1, 2, 3]
 
     def test_max_items_validation(self):
-        """Lista com muitos itens deve falhar."""
+        """A list containing too many items is rejected."""
         schema = FieldSchema(type="list", item_type="string", max_items=3)
-        with pytest.raises(ValueError, match="máximo"):
+        with pytest.raises(ValueError, match="maximum"):
             coerce_list(["a", "b", "c", "d", "e"], schema)
 
 
@@ -520,11 +530,11 @@ class TestCoerceList:
 
 
 class TestFrontmatterValidator:
-    """Testes para FrontmatterValidator."""
+    """Tests for FrontmatterValidator."""
 
     @pytest.fixture
     def basic_config(self) -> FrontmatterSchemaConfig:
-        """Config básica para testes."""
+        """Config basic for tests."""
         return FrontmatterSchemaConfig(
             enabled=True,
             mode="lenient",
@@ -542,7 +552,7 @@ class TestFrontmatterValidator:
 
     @pytest.fixture
     def auto_generate_config(self) -> FrontmatterSchemaConfig:
-        """Config com auto-geração para testes."""
+        """Return a test configuration with automatic generation."""
         return FrontmatterSchemaConfig(
             enabled=True,
             mode="lenient",
@@ -557,7 +567,7 @@ class TestFrontmatterValidator:
         )
 
     def test_disabled_config_passthrough(self):
-        """Config desabilitada passa dados sem modificação."""
+        """Config disabled passes data without modification."""
         config = FrontmatterSchemaConfig(enabled=False)
         validator = FrontmatterValidator(config)
 
@@ -567,7 +577,7 @@ class TestFrontmatterValidator:
         assert result["validated_data"] == {"any": "data"}
 
     def test_required_field_missing(self, basic_config):
-        """Campo obrigatório ausente gera erro."""
+        """Field required missing generates error."""
         validator = FrontmatterValidator(basic_config)
 
         result = validator.validate({"status": "draft"})
@@ -578,7 +588,7 @@ class TestFrontmatterValidator:
         assert result["errors"][0]["code"] == "required_missing"
 
     def test_required_field_present(self, basic_config):
-        """Campo obrigatório presente passa."""
+        """Field required present passes."""
         validator = FrontmatterValidator(basic_config)
 
         result = validator.validate({"title": "My Note", "status": "draft"})
@@ -587,7 +597,7 @@ class TestFrontmatterValidator:
         assert result["validated_data"]["title"] == "My Note"
 
     def test_suggest_generates_suggestion(self, basic_config):
-        """Campo com on_missing=suggest gera sugestão."""
+        """A field with on_missing=suggest generates a suggestion."""
         validator = FrontmatterValidator(basic_config)
 
         result = validator.validate({"title": "My Note"})
@@ -597,7 +607,7 @@ class TestFrontmatterValidator:
         assert result["suggestions"][0]["field"] == "status"
 
     def test_auto_generates_uuid(self, auto_generate_config):
-        """on_missing=auto gera UUID para campo ausente."""
+        """on_missing=auto generates UUID for field missing."""
         validator = FrontmatterValidator(auto_generate_config)
 
         result = validator.validate({})
@@ -605,39 +615,39 @@ class TestFrontmatterValidator:
         assert result["valid"] is True
         assert "id" in result["auto_generated"]
         assert "id" in result["validated_data"]
-        # UUID v7 tem formato específico
+        # UUID v7 has format specific
         uuid = result["auto_generated"]["id"]
-        assert uuid[14] == "7"  # Versão 7
+        assert uuid[14] == "7"  # Version 7
 
     def test_auto_generates_datetime(self, auto_generate_config):
-        """on_missing=auto gera datetime para campo ausente."""
+        """on_missing=auto generates datetime for field missing."""
         validator = FrontmatterValidator(auto_generate_config)
 
         result = validator.validate({})
 
         assert "created_at" in result["auto_generated"]
-        # Deve ser ISO datetime
+        # Must be ISO datetime
         assert "T" in result["auto_generated"]["created_at"]
 
     def test_alias_resolved(self, auto_generate_config):
-        """Alias é resolvido para nome canônico."""
+        """Alias is resolved for name canonical."""
         validator = FrontmatterValidator(auto_generate_config)
 
-        # Usando alias "created" ao invés de "created_at"
+        # Using alias "created" to the instead of "created_at"
         result = validator.validate({"created": "2024-01-15T10:00:00"})
 
         assert result["valid"] is True
         assert "created_at" in result["validated_data"]
         assert result["validated_data"]["created_at"] == "2024-01-15T10:00:00"
-        # Deve ter warning sobre alias
+        # Must have warning about alias
         alias_warnings = [w for w in result["warnings"] if w["code"] == "alias_resolved"]
         assert len(alias_warnings) == 1
 
     def test_coercion_warning(self, basic_config):
-        """Coerção gera warning."""
+        """Coercion generates warning."""
         validator = FrontmatterValidator(basic_config)
 
-        # status com case diferente
+        # status with case different
         result = validator.validate({"title": "Test", "status": "DRAFT"})
 
         assert result["valid"] is True
@@ -646,7 +656,7 @@ class TestFrontmatterValidator:
         assert len(coercion_warnings) == 1
 
     def test_extra_fields_allowed(self, basic_config):
-        """Campos extras são permitidos por padrão."""
+        """Extra fields are allowed by default."""
         validator = FrontmatterValidator(basic_config)
 
         result = validator.validate(
@@ -660,7 +670,7 @@ class TestFrontmatterValidator:
         assert "custom_field" in result["validated_data"]
 
     def test_extra_fields_not_allowed(self):
-        """Campos extras geram erro quando não permitidos."""
+        """Extra fields produce an error when disallowed."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             allow_extra_fields=False,
@@ -681,7 +691,7 @@ class TestFrontmatterValidator:
         assert any(e["code"] == "extra_field_not_allowed" for e in result["errors"])
 
     def test_warn_only_mode(self):
-        """Modo warn_only converte erros em warnings."""
+        """Mode warn_only converts errors in warnings."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             mode="warn_only",
@@ -693,12 +703,12 @@ class TestFrontmatterValidator:
 
         result = validator.validate({})
 
-        assert result["valid"] is True  # Sempre válido em warn_only
+        assert result["valid"] is True  # Always valid in warn_only
         assert len(result["errors"]) == 0
-        assert len(result["warnings"]) >= 1  # Erro virou warning
+        assert len(result["warnings"]) >= 1  # The error became a warning.
 
     def test_merge_auto_generated(self, auto_generate_config):
-        """merge_auto_generated combina corretamente."""
+        """merge_auto_generated combines values correctly."""
         validator = FrontmatterValidator(auto_generate_config)
 
         original = {"title": "Test"}
@@ -706,28 +716,28 @@ class TestFrontmatterValidator:
 
         merged = validator.merge_auto_generated(original, validation_result)
 
-        # Auto-gerados devem estar presentes
+        # Auto-generated must be present
         assert "id" in merged
         assert "created_at" in merged
-        # Original também
+        # Original also
         assert "title" in merged
 
     def test_null_frontmatter(self, basic_config):
-        """Frontmatter None deve ser tratado como dict vazio."""
+        """None frontmatter must be handled as an empty dictionary."""
         validator = FrontmatterValidator(basic_config)
 
         result = validator.validate(None)
 
-        # Deve gerar erro de required missing para title
+        # Must generate error of required missing for title
         assert result["valid"] is False
         assert any(e["field"] == "title" for e in result["errors"])
 
 
 class TestValidationType:
-    """Testes para validação de tipos específicos."""
+    """Tests for validation of types specific."""
 
     def test_int_validation(self):
-        """Validação de int com constraints."""
+        """Validation of int with constraints."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -736,17 +746,17 @@ class TestValidationType:
         )
         validator = FrontmatterValidator(config)
 
-        # Valor válido
+        # Value valid
         result = validator.validate({"priority": 3})
         assert result["valid"] is True
         assert result["validated_data"]["priority"] == 3
 
-        # Valor inválido
+        # Value invalid
         result = validator.validate({"priority": 10})
         assert result["valid"] is False
 
     def test_url_validation(self):
-        """Validação de URL."""
+        """Validation of URL."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -755,11 +765,11 @@ class TestValidationType:
         )
         validator = FrontmatterValidator(config)
 
-        # URL válida
+        # URL valid
         result = validator.validate({"source": "https://example.com"})
         assert result["valid"] is True
 
-        # URL inválida
+        # URL invalid
         result = validator.validate({"source": "not-a-url"})
         assert result["valid"] is False
 
@@ -770,61 +780,61 @@ class TestValidationType:
 
 
 class TestEdgeCases:
-    """Testes para edge cases e cenários limítrofes."""
+    """Tests for edge cases and scenarios boundary."""
 
     def test_coerce_enum_from_int(self):
-        """Enum deve aceitar int convertendo para string."""
+        """An enum accepts an integer converted to a string."""
         schema = FieldSchema(type="enum", values=["1", "2", "3"])
         result, warning = coerce_enum(1, schema)
         assert result == "1"
 
     def test_coerce_list_min_items(self):
-        """Lista com menos itens que mínimo deve falhar."""
+        """A list containing fewer than the minimum number of items is rejected."""
         schema = FieldSchema(type="list", item_type="string", min_items=3)
-        with pytest.raises(ValueError, match="mínimo"):
+        with pytest.raises(ValueError, match="minimum"):
             coerce_list(["a", "b"], schema)
 
     def test_coerce_list_empty_allowed(self):
-        """Lista vazia é permitida se min_items não definido."""
+        """An empty list is allowed when min_items is undefined."""
         schema = FieldSchema(type="list", item_type="string")
         result, _ = coerce_list([], schema)
         assert result == []
 
     def test_coerce_int_from_float_string(self):
-        """String com float deve ser truncada para int."""
+        """A decimal string is truncated when converted to an integer."""
         schema = FieldSchema(type="int")
         result, warning = coerce_int("3.7", schema)
         assert result == 3
         assert warning is not None
 
     def test_coerce_date_from_datetime_string(self):
-        """String datetime completa deve ser truncada para date."""
+        """String datetime complete must be truncated for date."""
         schema = FieldSchema(type="date")
         result, warning = coerce_date("2024-01-15T10:30:00", schema)
         assert result == "2024-01-15"
 
     def test_coerce_datetime_from_date_string(self):
-        """String só com date deve ser expandida para datetime."""
+        """A date-only string expands to a datetime."""
         schema = FieldSchema(type="datetime")
         result, _ = coerce_datetime("2024-01-15", schema)
-        # Python 3.11+ datetime.fromisoformat aceita "YYYY-MM-DD"
+        # Python 3.11+ datetime.fromisoformat accepts "YYYY-MM-DD"
         assert result == "2024-01-15T00:00:00"
 
     def test_coerce_url_without_domain(self):
-        """URL sem domínio deve falhar."""
+        """URL without domain must fail."""
         schema = FieldSchema(type="url")
-        with pytest.raises(ValueError, match="domínio"):
+        with pytest.raises(ValueError, match="domain"):
             coerce_url("http://", schema)
 
-    def test_coerce_float_from_int_no_warning(self):
-        """Int para float não deve gerar warning (conversão sem perda)."""
+    def test_coerce_float_from_int_in_warning(self):
+        """Int for float must not generate warning (conversion without loss)."""
         schema = FieldSchema(type="float")
         result, warning = coerce_float(42, schema)
         assert result == 42.0
         assert warning is None
 
     def test_alias_and_canonical_both_present(self):
-        """Se alias e canônico ambos presentes, usa canônico."""
+        """If alias and canonical both present, uses canonical."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -836,11 +846,11 @@ class TestEdgeCases:
         )
         validator = FrontmatterValidator(config)
 
-        # Ambos presentes - canônico tem prioridade
+        # When both are present, the canonical field has priority.
         result = validator.validate(
             {
                 "created_at": "2024-01-15T10:00:00",
-                "created": "2024-01-01T00:00:00",  # Ignorado
+                "created": "2024-01-01T00:00:00",  # Ignored
             }
         )
 
@@ -848,7 +858,7 @@ class TestEdgeCases:
         assert result["validated_data"]["created_at"] == "2024-01-15T10:00:00"
 
     def test_suggest_with_default_value(self):
-        """Campo suggest com default deve usar default em validated_data."""
+        """Field suggest with default must use default in validated_data."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -866,55 +876,55 @@ class TestEdgeCases:
 
         assert result["valid"] is True
         assert len(result["suggestions"]) == 1
-        # Default é aplicado em validated_data
+        # Default is applied in validated_data
         assert result["validated_data"].get("status") == "draft"
 
     def test_empty_string_coercion(self):
-        """String vazia deve passar validação se min_length não definido."""
+        """An empty string passes when min_length is undefined."""
         schema = FieldSchema(type="string")
         result, _ = coerce_string("", schema)
         assert result == ""
 
     def test_whitespace_string_trimmed(self):
-        """Strings com whitespace devem ser mantidas (só strip em int/float)."""
+        """Strings preserve whitespace; only integer and float coercion strips it."""
         schema = FieldSchema(type="string")
         result, _ = coerce_string("  hello  ", schema)
-        assert result == "  hello  "  # Não faz trim
+        assert result == "  hello  "  # Does not trim
 
     def test_list_from_set_loses_order(self):
-        """Set para lista perde ordem (comportamento esperado)."""
+        """Converting a set to a list loses order as expected."""
         schema = FieldSchema(type="list", item_type="int")
         result, _ = coerce_list({3, 1, 2}, schema)
-        # Ordem não garantida, mas todos presentes
+        # Order is not guaranteed, but every value is present.
         assert sorted(result) == [1, 2, 3]
 
     def test_negative_int_validation(self):
-        """Int negativo deve passar se minimum permite."""
+        """A negative integer must pass when the minimum allows it."""
         schema = FieldSchema(type="int", minimum=-10)
         result, _ = coerce_int(-5, schema)
         assert result == -5
 
     def test_float_nan_rejected(self):
-        """Float NaN deve ser rejeitado para evitar problemas em JSON/busca."""
+        """NaN is rejected to prevent problems in JSON and search."""
         import math
 
         schema = FieldSchema(type="float", minimum=0, maximum=100)
-        # NaN é rejeitado antes de validação de range
-        with pytest.raises(ValueError, match="NaN não é um valor float válido"):
+        # NaN is rejected before of validation of range
+        with pytest.raises(ValueError, match="NaN is not a valid frontmatter float"):
             coerce_float(math.nan, schema)
 
     def test_float_infinity_rejected(self):
-        """Float Infinity deve ser rejeitado."""
+        """Floating-point infinity is rejected."""
         import math
 
         schema = FieldSchema(type="float")
-        with pytest.raises(ValueError, match="Infinity não é um valor float válido"):
+        with pytest.raises(ValueError, match="Infinity is not a valid frontmatter float"):
             coerce_float(math.inf, schema)
-        with pytest.raises(ValueError, match="Infinity não é um valor float válido"):
+        with pytest.raises(ValueError, match="Infinity is not a valid frontmatter float"):
             coerce_float(-math.inf, schema)
 
     def test_pattern_with_multiline(self):
-        """Pattern com ^ e $ deve funcionar corretamente."""
+        """A pattern anchored with ^ and $ is applied correctly."""
         schema = FieldSchema(type="string", pattern=r"^[A-Z][a-z]+$")
         result, _ = coerce_string("Hello", schema)
         assert result == "Hello"
@@ -923,7 +933,7 @@ class TestEdgeCases:
             coerce_string("Hello\nWorld", schema)
 
     def test_multiple_aliases_same_field(self):
-        """Múltiplos aliases devem resolver para mesmo campo."""
+        """Multiple aliases must resolve to the same field."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             schema={
@@ -935,14 +945,14 @@ class TestEdgeCases:
         )
         validator = FrontmatterValidator(config)
 
-        # Qualquer alias funciona
+        # Any alias works
         for alias in ["created", "date", "timestamp"]:
             result = validator.validate({alias: "2024-01-15T10:00:00"})
             assert result["valid"] is True
             assert "created_at" in result["validated_data"]
 
     def test_strict_mode_blocks_on_error(self):
-        """Modo strict deve bloquear se houver erros."""
+        """Mode strict must block if there are errors."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             mode="strict",
@@ -957,7 +967,7 @@ class TestEdgeCases:
         assert len(result["errors"]) > 0
 
     def test_lenient_mode_same_as_strict_for_errors(self):
-        """Modo lenient deve ter mesmo comportamento que strict para erros."""
+        """Mode lenient must have same behavior that strict for errors."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             mode="lenient",
@@ -968,36 +978,36 @@ class TestEdgeCases:
         validator = FrontmatterValidator(config)
 
         result = validator.validate({"priority": 100})
-        assert result["valid"] is False  # Lenient também bloqueia erros
+        assert result["valid"] is False  # Lenient also blocks errors
 
     def test_int_from_very_large_float_rejected(self):
-        """Float que vira infinito deve ser rejeitado."""
+        """A float that becomes infinite must be rejected."""
         schema = FieldSchema(type="int")
-        # float("1e309") = inf, que é rejeitado
-        with pytest.raises(ValueError, match="Infinity não pode ser convertido"):
+        # float("1e309") = inf, that is rejected
+        with pytest.raises(ValueError, match="Infinity cannot be converted"):
             coerce_int(float("1e309"), schema)
 
     def test_int_from_large_number_string_accepted(self):
-        """Python 3 aceita inteiros arbitrariamente grandes de strings."""
+        """Python accepts arbitrarily large integers parsed from strings."""
         schema = FieldSchema(type="int")
-        # Python 3 lida com inteiros grandes
+        # Python handles large integers.
         result, _ = coerce_int("99999999999999999999999", schema)
         assert result == 99999999999999999999999
 
     def test_int_from_nan_string_rejected(self):
-        """String 'nan' para int deve ser rejeitada."""
+        """String 'nan' for int must be rejected."""
         schema = FieldSchema(type="int")
-        with pytest.raises(ValueError, match="NaN não pode ser convertido"):
+        with pytest.raises(ValueError, match="NaN cannot be converted"):
             coerce_int("nan", schema)
 
     def test_int_from_inf_string_rejected(self):
-        """String 'inf' para int deve ser rejeitada."""
+        """String 'inf' for int must be rejected."""
         schema = FieldSchema(type="int")
-        with pytest.raises(ValueError, match="Infinity não pode ser convertido"):
+        with pytest.raises(ValueError, match="Infinity cannot be converted"):
             coerce_int("inf", schema)
 
     def test_alias_conflict_warning(self):
-        """Quando campo canônico e alias ambos presentes, gera warning de conflito."""
+        """A canonical field and its alias together produce a conflict warning."""
         config = FrontmatterSchemaConfig(
             enabled=True,
             mode="lenient",
@@ -1010,7 +1020,7 @@ class TestEdgeCases:
         )
         validator = FrontmatterValidator(config)
 
-        # Ambos presentes: canônico ganha, alias gera warning
+        # When both are present, the canonical field wins and the alias warns.
         result = validator.validate(
             {
                 "created_at": "2024-01-15T10:00:00",
@@ -1020,21 +1030,21 @@ class TestEdgeCases:
         assert result["valid"] is True
         assert result["validated_data"]["created_at"] == "2024-01-15T10:00:00"
 
-        # Deve ter warning de conflito
+        # A conflict warning must be present.
         conflict_warnings = [w for w in result["warnings"] if w["code"] == "alias_conflict"]
         assert len(conflict_warnings) == 1
         assert "created" in conflict_warnings[0]["message"]
 
     def test_date_suffix_truncation_warning(self):
-        """Date com sufixo extra deve gerar warning sobre truncação."""
+        """A date with an extra suffix produces a truncation warning."""
         schema = FieldSchema(type="date")
         result, warning = coerce_date("2024-01-15T10:30:00Z", schema)
         assert result == "2024-01-15"
         assert warning is not None
-        assert "truncado" in warning.lower() or "conteúdo extra" in warning.lower()
+        assert "truncated" in warning.lower() or "extra content" in warning.lower()
 
     def test_enum_from_non_string_preserves_type(self):
-        """Conversão de não-string para enum deve mencionar tipo original."""
+        """Conversion of not-string for enum must mention type original."""
         schema = FieldSchema(type="enum", values=["1", "2", "3"])
         result, warning = coerce_enum(2, schema)
         assert result == "2"

@@ -1,4 +1,4 @@
-"""Tipos compartilhados entre módulos do vault-search-mcp."""
+"""Types shared across vault-search-mcp modules."""
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -7,7 +7,7 @@ from typing import Literal, NotRequired, TypedDict
 
 
 class ParseStatus(StrEnum):
-    """Resultado semântico do parsing de um arquivo."""
+    """Semantic result of parsing a file."""
 
     SUCCESS = "success"
     EMPTY = "empty"
@@ -16,7 +16,7 @@ class ParseStatus(StrEnum):
 
 
 class ReindexStatus(StrEnum):
-    """Estados públicos da reindexação incremental."""
+    """Public states for incremental reindexing."""
 
     UPDATED = "updated"
     EMPTY = "empty"
@@ -29,7 +29,7 @@ class ReindexStatus(StrEnum):
 
 
 class FullReindexStatus(StrEnum):
-    """Estados públicos da reconstrução completa do índice."""
+    """Public states for a complete index rebuild."""
 
     COMPLETED = "completed"
     FAILED = "failed"
@@ -37,7 +37,7 @@ class FullReindexStatus(StrEnum):
 
 
 class ChunkRecord(TypedDict):
-    """Chunk de texto com metadados, pronto para inserção no LanceDB (sem vetor)."""
+    """Text chunk with metadata, ready for insertion into LanceDB without a vector."""
 
     note_path: str
     note_title: str
@@ -46,47 +46,47 @@ class ChunkRecord(TypedDict):
     tags: str
     modified_at: str
     text: str
-    # Campos opcionais do frontmatter
-    id: NotRequired[str]  # UUID v7 único da nota
-    created_at: NotRequired[str]  # data de criação ISO
-    updated_at: NotRequired[str]  # data de última atualização ISO
-    description: NotRequired[str]  # descrição/resumo da nota
+    # Optional frontmatter fields.
+    id: NotRequired[str]  # Unique UUID v7 for the note
+    created_at: NotRequired[str]  # ISO creation date
+    updated_at: NotRequired[str]  # ISO last-update date
+    description: NotRequired[str]  # Note description or summary
     status: NotRequired[str]  # draft, review, published, archived
     note_type: NotRequired[str]  # daily, weekly, monthly, yearly, meeting, idea, task
     category: NotRequired[str]  # work, personal, reference, project
-    project: NotRequired[str]  # nome do projeto associado
-    source: NotRequired[str]  # URL ou referência da fonte
+    project: NotRequired[str]  # Associated project name.
+    source: NotRequired[str]  # Source URL or reference
 
 
 class LinkRecord(TypedDict):
-    """Link extraído de uma nota, pronto para inserção no links_index."""
+    """Link extracted from a note, ready for insertion into ``links_index``."""
 
-    # Origem
-    from_note_path: str  # nota que contém o link
-    from_note_title: str  # título da nota origem
+    # Source note.
+    from_note_path: str  # Note containing the link
+    from_note_title: str  # Source note title
 
-    # Tipo e target
+    # Link type and target.
     link_type: str  # "wikilink" | "markdown" | "embed" | "external"
-    link_target: str  # target original como escrito
-    link_target_normalized: str  # normalizado para matching
+    link_target: str  # Original target as written.
+    link_target_normalized: str  # Normalized for matching
 
-    # Destino (resolvido durante indexação)
-    to_note_path: NotRequired[str]  # path se existir, "" se não
-    is_resolved: NotRequired[bool]  # True se nota destino existe
+    # Destination, resolved during indexing
+    to_note_path: NotRequired[str]  # Path if it exists, otherwise an empty string
+    is_resolved: NotRequired[bool]  # True when the destination note exists
 
-    # Metadados de wikilink
-    alias: NotRequired[str]  # alias se [[Nota|alias]]
-    heading: NotRequired[str]  # heading se [[Nota#Heading]]
-    block_ref: NotRequired[str]  # block ref se [[Nota^block]]
+    # Wikilink metadata.
+    alias: NotRequired[str]  # Alias in [[Note|alias]]
+    heading: NotRequired[str]  # Heading in [[Note#Heading]]
+    block_ref: NotRequired[str]  # Block reference in [[Note^block]]
 
-    # Contexto
-    context: str  # trecho onde o link aparece
-    modified_at: str  # data da nota origem
+    # Context
+    context: str  # Text around the link.
+    modified_at: str  # Source note date
 
 
 @dataclass(slots=True)
 class ParseResult:
-    """Resultado tipado que separa arquivo vazio de falha de parser."""
+    """Typed result that distinguishes an empty file from a parser failure."""
 
     status: ParseStatus
     chunks: list[ChunkRecord] = field(default_factory=list)
@@ -97,20 +97,20 @@ class ParseResult:
     def __iter__(
         self,
     ) -> Iterator[list[ChunkRecord] | list[LinkRecord] | list[str]]:
-        """Mantém unpacking compatível com o contrato histórico de ``parse_file``."""
+        """Keep unpacking compatible with the historical ``parse_file`` contract."""
         yield self.chunks
         yield self.links
         yield self.aliases
 
 
 class ChunkWithVector(ChunkRecord):
-    """Chunk com vetor de embedding anexado."""
+    """Chunk with an attached embedding vector."""
 
     vector: list[float]
 
 
 class AliasRecord(TypedDict):
-    """Alias normalizado persistido na tabela auxiliar."""
+    """Normalized alias persisted in the auxiliary table."""
 
     note_path: str
     alias: str
@@ -118,7 +118,7 @@ class AliasRecord(TypedDict):
 
 
 class SearchRow(TypedDict, total=False):
-    """Linha dinâmica recebida do LanceDB durante uma busca."""
+    """Dynamic row received from LanceDB during a search."""
 
     note_path: str
     note_title: str
@@ -135,7 +135,7 @@ class SearchRow(TypedDict, total=False):
 
 
 class SearchResult(TypedDict):
-    """Resultado de busca retornado ao usuário."""
+    """Search result returned to the user."""
 
     note_path: str
     note_title: str
@@ -147,7 +147,7 @@ class SearchResult(TypedDict):
 
 
 class SimilarNoteResult(TypedDict):
-    """Nota relacionada retornada pela busca de similaridade."""
+    """Related note returned by similarity search."""
 
     note_path: str
     note_title: str
@@ -157,7 +157,7 @@ class SimilarNoteResult(TypedDict):
 
 
 class DuplicateNoteResult(TypedDict):
-    """Identidade pública de uma nota em um grupo duplicado."""
+    """Public identity of a note in a duplicate group."""
 
     note_path: str
     note_title: str
@@ -165,7 +165,7 @@ class DuplicateNoteResult(TypedDict):
 
 
 class DuplicateGroup(TypedDict):
-    """Grupo de notas com embeddings acima do limiar de similaridade."""
+    """Group of notes with embeddings above the similarity threshold."""
 
     notes: list[DuplicateNoteResult]
     count: int
@@ -173,20 +173,20 @@ class DuplicateGroup(TypedDict):
 
 
 class ReindexResult(TypedDict):
-    """Resultado de reindexação incremental."""
+    """Incremental reindexing result."""
 
     chunks_indexed: int
     status: ReindexStatus
-    links_indexed: NotRequired[int]  # links extraídos e indexados
-    aliases_indexed: NotRequired[int]  # aliases do frontmatter indexados
-    id_added: NotRequired[bool]  # True se UUID foi gerado
-    frontmatter_enriched: NotRequired[bool]  # True se IA preencheu required
-    frontmatter_fields_filled: NotRequired[int]  # Quantos campos required foram preenchidos
-    auto_compacted: NotRequired[bool]  # True se compactação automática ocorreu
+    links_indexed: NotRequired[int]  # Links extracted and indexed
+    aliases_indexed: NotRequired[int]  # Indexed frontmatter aliases.
+    id_added: NotRequired[bool]  # Whether a UUID was generated.
+    frontmatter_enriched: NotRequired[bool]  # Whether enrichment filled required fields.
+    frontmatter_fields_filled: NotRequired[int]  # Number of required fields filled.
+    auto_compacted: NotRequired[bool]  # True when automatic compaction occurred
 
 
 class IndexStats(TypedDict):
-    """Estatísticas do índice atual."""
+    """Current index statistics."""
 
     total_chunks: int
     unique_notes: int
@@ -194,7 +194,7 @@ class IndexStats(TypedDict):
 
 
 class FullReindexStats(TypedDict):
-    """Estatísticas de reindexação completa."""
+    """Complete reindexing statistics."""
 
     total_notes: int
     total_chunks: int
@@ -202,15 +202,15 @@ class FullReindexStats(TypedDict):
     status: FullReindexStatus
     parse_errors: NotRequired[int]
     previous_index_preserved: NotRequired[bool]
-    total_links: NotRequired[int]  # links extraídos e indexados
-    total_aliases: NotRequired[int]  # aliases do frontmatter indexados
-    timed_out: NotRequired[bool]  # True se reindex foi interrompido por timeout
-    indices_skipped: NotRequired[bool]  # True se índices foram pulados
-    vector_index_created: NotRequired[bool]  # True se índice vetorial foi criado
+    total_links: NotRequired[int]  # Links extracted and indexed
+    total_aliases: NotRequired[int]  # Indexed frontmatter aliases.
+    timed_out: NotRequired[bool]  # True when reindexing stopped because of a timeout
+    indices_skipped: NotRequired[bool]  # True when indexes were skipped
+    vector_index_created: NotRequired[bool]  # True when the vector index was created
 
 
 class FullReindexPreview(TypedDict):
-    """Preview medido do vault, sem estimativas de chunks ou duração."""
+    """Measured vault preview without chunk or duration estimates."""
 
     dry_run: Literal[True]
     would_index: int
@@ -219,7 +219,7 @@ class FullReindexPreview(TypedDict):
 
 
 class HeaderSection(TypedDict):
-    """Seção extraída do split por headers markdown."""
+    """Section extracted by splitting on Markdown headings."""
 
     headers: list[str]
     content: str

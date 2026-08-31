@@ -1,7 +1,7 @@
 """
-Testes de integração para o sistema de links indexados.
+Integration tests for the indexed-link system.
 
-Testa a extração, indexação e resolução de links durante o reindex.
+Test a extraction, indexing and resolution of links during the reindex.
 """
 
 import pytest
@@ -17,36 +17,36 @@ from vault_search.utils.links import (
 
 
 class TestExtractAliases:
-    """Testes para extração de aliases do frontmatter."""
+    """Tests for extraction of aliases of the frontmatter."""
 
-    def test_aliases_lista(self):
-        fm = {"aliases": ["API Docs", "Documentação"]}
+    def test_aliases_list(self):
+        fm = {"aliases": ["API Docs", "Documentation"]}
         aliases = extract_aliases(fm)
-        assert aliases == ["API Docs", "Documentação"]
+        assert aliases == ["API Docs", "Documentation"]
 
     def test_aliases_string_csv(self):
-        fm = {"aliases": "API Docs, Documentação"}
+        fm = {"aliases": "API Docs, Documentation"}
         aliases = extract_aliases(fm)
-        assert aliases == ["API Docs", "Documentação"]
+        assert aliases == ["API Docs", "Documentation"]
 
     def test_alias_singular(self):
         fm = {"alias": "API Docs"}
         aliases = extract_aliases(fm)
         assert aliases == ["API Docs"]
 
-    def test_alias_singular_lista(self):
+    def test_alias_singular_list(self):
         fm = {"alias": ["A", "B"]}
         aliases = extract_aliases(fm)
         assert aliases == ["A", "B"]
 
-    def test_aliases_e_alias_combinados(self):
+    def test_aliases_and_alias_are_combined(self):
         fm = {"aliases": ["A", "B"], "alias": "C"}
         aliases = extract_aliases(fm)
         assert "A" in aliases
         assert "B" in aliases
         assert "C" in aliases
 
-    def test_aliases_vazio(self):
+    def test_aliases_empty(self):
         fm = {}
         aliases = extract_aliases(fm)
         assert aliases == []
@@ -58,9 +58,9 @@ class TestExtractAliases:
 
 
 class TestParseNoteWithLinks:
-    """Testes para parse_note com extração de links."""
+    """Tests for parse_note with extraction of links."""
 
-    def test_nota_com_wikilinks(self, tmp_path):
+    def test_note_with_wikilinks(self, tmp_path):
         vault = tmp_path / "vault"
         vault.mkdir()
         note = vault / "source.md"
@@ -70,7 +70,7 @@ title: Source
 ---
 # Source
 
-Link para [[Target]] e [[Other|alias]].
+Link for [[Target]] and [[Other|alias]].
 """,
             encoding="utf-8",
         )
@@ -80,12 +80,12 @@ Link para [[Target]] e [[Other|alias]].
         assert len(chunks) > 0
         assert len(links) >= 2
 
-        # Verificar estrutura dos links
+        # Verify structure of the links
         link_targets = [link["link_target"] for link in links]
         assert "Target" in link_targets
         assert "Other" in link_targets
 
-    def test_nota_com_markdown_links(self, tmp_path):
+    def test_note_with_markdown_links(self, tmp_path):
         vault = tmp_path / "vault"
         vault.mkdir()
         note = vault / "source.md"
@@ -95,7 +95,7 @@ title: Source
 ---
 # Source
 
-Veja [documentação](docs/manual.md).
+See [documentation](docs/manual.md).
 """,
             encoding="utf-8",
         )
@@ -107,7 +107,7 @@ Veja [documentação](docs/manual.md).
         assert len(md_links) >= 1
         assert "docs/manual.md" in [link["link_target"] for link in md_links]
 
-    def test_nota_com_embeds(self, tmp_path):
+    def test_note_with_embeds(self, tmp_path):
         vault = tmp_path / "vault"
         vault.mkdir()
         note = vault / "source.md"
@@ -117,7 +117,7 @@ title: Source
 ---
 # Source
 
-Imagem: ![[foto.png]]
+Image: ![[image.png]]
 """,
             encoding="utf-8",
         )
@@ -127,20 +127,20 @@ Imagem: ![[foto.png]]
         assert len(links) >= 1
         embeds = [link for link in links if link["link_type"] == "embed"]
         assert len(embeds) >= 1
-        assert "foto.png" in [link["link_target"] for link in embeds]
+        assert "image.png" in [link["link_target"] for link in embeds]
 
-    def test_nota_com_aliases(self, tmp_path):
+    def test_note_with_aliases(self, tmp_path):
         vault = tmp_path / "vault"
         vault.mkdir()
         note = vault / "api.md"
         note.write_text(
             """---
 title: API Documentation
-aliases: [API Docs, Documentação da API]
+aliases: [API Docs, Documentation of the API]
 ---
 # API
 
-Documentação da API.
+Documentation of the API.
 """,
             encoding="utf-8",
         )
@@ -148,9 +148,9 @@ Documentação da API.
         chunks, links, aliases = parse_note(note, vault)
 
         assert "API Docs" in aliases
-        assert "Documentação da API" in aliases
+        assert "Documentation of the API" in aliases
 
-    def test_link_fields_completos(self, tmp_path):
+    def test_link_fields_are_complete(self, tmp_path):
         vault = tmp_path / "vault"
         vault.mkdir()
         note = vault / "source.md"
@@ -170,7 +170,7 @@ Link: [[Target#Section|alias]]
         assert len(links) >= 1
         link = links[0]
 
-        # Campos obrigatórios
+        # Fields required
         assert "from_note_path" in link
         assert "from_note_title" in link
         assert "link_type" in link
@@ -179,7 +179,7 @@ Link: [[Target#Section|alias]]
         assert "context" in link
         assert "modified_at" in link
 
-        # Valores
+        # Values
         assert link["from_note_path"] == "source.md"
         assert link["from_note_title"] == "Source Note"
         assert link["link_type"] == "wikilink"
@@ -189,19 +189,19 @@ Link: [[Target#Section|alias]]
 
 
 class TestNormalizeLinkTarget:
-    """Testes adicionais para normalize_link_target."""
+    """Additional tests for normalize_link_target."""
 
     @pytest.mark.parametrize(
         "input,expected",
         [
-            ("Meu Projeto", "meu-projeto"),
+            ("My Project", "my-project"),
             ("docs/API.md", "docs/api"),
-            ("  nota  ", "nota"),
+            ("  note  ", "note"),
             ("UPPER CASE", "upper-case"),
-            ("já-normalizado", "já-normalizado"),
-            ("pasta/sub/nota.md", "pasta/sub/nota"),
-            ("imagem.png", "imagem"),
-            ("video.mp4", "video.mp4"),  # não remove extensões não-indexáveis
+            ("already-normalized", "already-normalized"),
+            ("folder/sub/note.md", "folder/sub/note"),
+            ("image.png", "image"),
+            ("video.mp4", "video.mp4"),  # Keep non-indexable extensions.
         ],
     )
     def test_normalization(self, input, expected):
@@ -209,27 +209,27 @@ class TestNormalizeLinkTarget:
 
 
 class TestParseWikilinkParts:
-    """Testes para parsing de wikilinks completos."""
+    """Tests for parsing complete wikilinks."""
 
     @pytest.mark.parametrize(
         "input,expected",
         [
-            ("Nota", {"target": "Nota", "alias": None, "heading": None, "block_ref": None}),
+            ("Note", {"target": "Note", "alias": None, "heading": None, "block_ref": None}),
             (
-                "Nota|alias",
-                {"target": "Nota", "alias": "alias", "heading": None, "block_ref": None},
+                "Note|alias",
+                {"target": "Note", "alias": "alias", "heading": None, "block_ref": None},
             ),
             (
-                "Nota#Seção",
-                {"target": "Nota", "alias": None, "heading": "Seção", "block_ref": None},
+                "Note#Section",
+                {"target": "Note", "alias": None, "heading": "Section", "block_ref": None},
             ),
             (
-                "Nota^block",
-                {"target": "Nota", "alias": None, "heading": None, "block_ref": "block"},
+                "Note^block",
+                {"target": "Note", "alias": None, "heading": None, "block_ref": "block"},
             ),
             (
-                "Nota#Seção|alias",
-                {"target": "Nota", "alias": "alias", "heading": "Seção", "block_ref": None},
+                "Note#Section|alias",
+                {"target": "Note", "alias": "alias", "heading": "Section", "block_ref": None},
             ),
         ],
     )
@@ -239,42 +239,42 @@ class TestParseWikilinkParts:
 
 
 class TestExtractLinkContext:
-    """Testes para extração de contexto de links."""
+    """Tests for extraction of context of links."""
 
-    def test_context_basico(self):
-        content = "Este é um texto com [[link]] no meio."
+    def test_basic_context(self):
+        content = "This is a text with [[link]] in the middle."
         context = extract_link_context(content, "[[link]]")
         assert "[[link]]" in context
-        assert "texto com" in context
+        assert "text with" in context
 
-    def test_context_truncado(self):
+    def test_truncated_context(self):
         content = "A" * 100 + "[[link]]" + "B" * 100
         context = extract_link_context(content, "[[link]]", window=20)
         assert "[[link]]" in context
         assert "..." in context
 
-    def test_link_nao_encontrado(self):
-        content = "Texto sem link."
-        context = extract_link_context(content, "[[inexistente]]")
+    def test_link_not_found(self):
+        content = "Text without link."
+        context = extract_link_context(content, "[[nonexistent]]")
         assert context == ""
 
 
 class TestExtractAllLinksStructure:
-    """Testes para estrutura de retorno de extract_all_links."""
+    """Tests for the return structure of extract_all_links."""
 
     def test_wikilinks_structure(self):
-        text = "Link [[Nota#H1|alias]] aqui."
+        text = "Link [[Note#H1|alias]] here."
         result = extract_all_links(text)
 
         assert len(result["wikilinks"]) == 1
         wl = result["wikilinks"][0]
-        assert wl["target"] == "Nota"
+        assert wl["target"] == "Note"
         assert wl["alias"] == "alias"
         assert wl["heading"] == "H1"
-        assert "[[Nota#H1|alias]]" in wl["raw"]
+        assert "[[Note#H1|alias]]" in wl["raw"]
 
     def test_markdown_links_structure(self):
-        text = "Veja [docs](path/to/file.md) aqui."
+        text = "See [docs](path/to/file.md) here."
         result = extract_all_links(text)
 
         assert len(result["markdown_links"]) == 1
@@ -283,44 +283,44 @@ class TestExtractAllLinksStructure:
         assert ml["text"] == "docs"
 
     def test_embeds_structure(self):
-        text = "Imagem ![[foto.png]] aqui."
+        text = "Image ![[image.png]] here."
         result = extract_all_links(text)
 
         assert len(result["embeds"]) == 1
         emb = result["embeds"][0]
-        assert emb["target"] == "foto.png"
+        assert emb["target"] == "image.png"
 
-    def test_external_urls_quando_habilitado(self):
-        text = "Link https://example.com aqui."
+    def test_external_urls_when_enabled(self):
+        text = "Link https://example.com here."
         result = extract_all_links(text, include_external=True)
 
         assert "external" in result
         assert len(result["external"]) == 1
         assert result["external"][0]["url"] == "https://example.com"
 
-    def test_external_urls_ignoradas_por_padrao(self):
-        text = "Link https://example.com aqui."
+    def test_external_urls_ignored_by_default(self):
+        text = "Link https://example.com here."
         result = extract_all_links(text, include_external=False)
 
         assert "external" not in result or len(result.get("external", [])) == 0
 
 
 class TestIndexerLinksIntegration:
-    """Testes de integração do indexer com links."""
+    """Tests for integration of the indexer with links."""
 
-    def test_full_reindex_indexa_links(self, tmp_path, monkeypatch):
-        """full_reindex deve extrair e indexar links."""
+    def test_full_reindex_indexes_links(self, tmp_path, monkeypatch):
+        """full_reindex must extract and index links."""
         vault = tmp_path / "vault"
         vault.mkdir()
 
-        # Criar notas com links
+        # Create notes with links
         (vault / "source.md").write_text(
             """---
 title: Source
 ---
 # Source
 
-Link para [[target]] e [[other]].
+Link for [[target]] and [[other]].
 """,
             encoding="utf-8",
         )
@@ -331,42 +331,42 @@ title: Target
 ---
 # Target
 
-Conteúdo.
+Content.
 """,
             encoding="utf-8",
         )
 
-        # Monkeypatch no módulo do indexer (onde VAULT_PATH foi importado)
+        # Monkeypatch in the module of the indexer (where VAULT_PATH was imported)
         import vault_search.core.indexer as idx
 
         monkeypatch.setattr(idx, "VAULT_PATH", vault)
         monkeypatch.setattr(idx, "DATA_DIR", tmp_path / "data")
 
-        # Indexar
+        # Index
         indexer = VaultIndexer()
         stats = indexer.full_reindex()
 
         assert stats["total_notes"] >= 2
         assert stats.get("total_links", 0) >= 2
 
-    def test_full_reindex_indexa_aliases(self, tmp_path, monkeypatch):
-        """full_reindex deve extrair e indexar aliases."""
+    def test_full_reindex_indexes_aliases(self, tmp_path, monkeypatch):
+        """full_reindex must extract and index aliases."""
         vault = tmp_path / "vault"
         vault.mkdir()
 
         (vault / "api.md").write_text(
             """---
 title: API Documentation
-aliases: [API Docs, Documentação]
+aliases: [API Docs, Documentation]
 ---
 # API
 
-Conteúdo.
+Content.
 """,
             encoding="utf-8",
         )
 
-        # Monkeypatch no módulo do indexer (onde VAULT_PATH foi importado)
+        # Monkeypatch in the module of the indexer (where VAULT_PATH was imported)
         import vault_search.core.indexer as idx
 
         monkeypatch.setattr(idx, "VAULT_PATH", vault)
@@ -377,17 +377,17 @@ Conteúdo.
 
         assert stats.get("total_aliases", 0) >= 2
 
-    def test_resolve_nao_colapsa_links_distintos(self, tmp_path, monkeypatch):
+    def test_resolve_does_not_collapse_distinct_links(self, tmp_path, monkeypatch):
         """
-        Regression test: resolução de links não deve colapsar links distintos.
+        Regression test: link resolution must not collapse distinct links.
 
-        Bug corrigido: quando dois links (ex: wikilink e markdown) apontavam para
-        o mesmo target normalizado, a resolução deletava ambos e adicionava apenas
-        um, perdendo informação.
+        Bug fixed: when two links (ex: wikilink and markdown) pointed for
+        the same normalized target, resolution deleted both and added only one,
+        losing information.
 
-        Agora usamos (from_note_path, link_type, link_target) como chave única.
+        The unique key is now (from_note_path, link_type, link_target).
         """
-        # Configurar paths temporários
+        # Configure temporary paths.
         import vault_search.core.indexer as idx
         from vault_search.config.embedding import EMBEDDING_DIMENSION
 
@@ -398,7 +398,7 @@ Conteúdo.
 
         indexer = VaultIndexer()
 
-        # Criar tabela de chunks com nota target
+        # Create table of chunks with note target
         indexer._ensure_table(
             data=[
                 {
@@ -442,7 +442,7 @@ Conteúdo.
             ]
         )
 
-        # Indexar dois links DISTINTOS para o mesmo target normalizado
+        # Index two distinct links for the same normalized target.
         links = [
             {
                 "from_note_path": "source.md",
@@ -475,28 +475,28 @@ Conteúdo.
         ]
         indexer._index_links(links)
 
-        # Verificar estado antes da resolução
+        # Verify state before of the resolution
         links_table = indexer._ensure_links_table()
         count_before = links_table.count_rows()
-        assert count_before == 2, f"Esperado 2 links antes, obtido {count_before}"
+        assert count_before == 2, f"Expected 2 links before, obtained {count_before}"
 
-        # Resolver links
+        # Resolve links
         resolved = indexer._resolve_link_targets()
-        assert resolved == 2, f"Esperado 2 resolvidos, obtido {resolved}"
+        assert resolved == 2, f"Expected 2 resolved, obtained {resolved}"
 
-        # CRÍTICO: Verificar que ambos os links ainda existem após resolução
+        # CRITICAL: Verify that both the links still exist after resolution
         count_after = links_table.count_rows()
         assert count_after == 2, (
-            f"BUG: Resolução colapsou links! Esperado 2 links após, obtido {count_after}"
+            f"BUG: Resolution collapsed links! Expected 2 links after, obtained {count_after}"
         )
 
-        # Verificar que ambos os tipos estão presentes
+        # Verify that both the types are present
         rows = links_table.search().limit(10).to_list()
         link_types = set(r["link_type"] for r in rows)
         assert link_types == {"wikilink", "markdown"}, (
-            f"BUG: Faltam tipos após resolução. Obtido: {link_types}"
+            f"BUG: Faltam types after resolution. Obtained: {link_types}"
         )
 
-        # Verificar que ambos foram resolvidos
+        # Verify that both were resolved
         resolved_flags = [r["is_resolved"] for r in rows]
-        assert all(resolved_flags), "Todos os links devem estar resolvidos"
+        assert all(resolved_flags), "All the links must be resolved"

@@ -1,5 +1,5 @@
 """
-Funções de criação de índice FTS e compactação do LanceDB.
+Functions for creating FTS indexes and compacting LanceDB tables.
 """
 
 import logging
@@ -12,13 +12,13 @@ from vault_search.config.search import FTS_LANGUAGE
 
 logger = logging.getLogger(__name__)
 
-# LanceDB combina compactação e limpeza em optimize(). Uma retenção muito longa
-# mantém versões anteriores disponíveis para rollback sem recorrer a APIs legadas.
+# LanceDB combines compaction and cleanup in optimize(). A long retention period
+# keeps earlier versions available for recovery without relying on legacy APIs.
 _RECOVERY_RETENTION = timedelta(days=365_000)
 
 
 class CompactionStats(TypedDict):
-    """Resultado estável da compactação de uma tabela."""
+    """Stable result shape for table compaction."""
 
     compacted: bool
     cleaned: bool
@@ -26,34 +26,34 @@ class CompactionStats(TypedDict):
 
 
 def try_optimize(table: Table) -> None:
-    """Tenta otimizar a tabela LanceDB, logando erros."""
+    """Attempt to optimize a LanceDB table while logging errors."""
     try:
         table.optimize(cleanup_older_than=_RECOVERY_RETENTION)
     except Exception as e:
         logger.warning(
-            "Otimização de tabela falhou (error_type=%s)",
+            "Table optimization failed (error_type=%s)",
             type(e).__name__,
         )
 
 
 def compact_table(table: Table) -> CompactionStats:
     """
-    Compacta a tabela LanceDB para reduzir fragmentação.
+    Compact a LanceDB table to reduce fragmentation.
 
-    Mantém versões anteriores para permitir recuperação após falhas.
+    Retain earlier versions for recovery after failures.
 
-    Retorna:
-        Dict com estatísticas da compactação.
+    Returns:
+        Compaction statistics.
     """
     stats: CompactionStats = {"compacted": False, "cleaned": False, "error": None}
 
     try:
         table.optimize(cleanup_older_than=_RECOVERY_RETENTION)
         stats["compacted"] = True
-        logger.info("Compactação de arquivos concluída")
+        logger.info("File compaction completed")
     except Exception as e:
         logger.warning(
-            "Compactação falhou (error_type=%s)",
+            "Compaction failed (error_type=%s)",
             type(e).__name__,
         )
         stats["error"] = type(e).__name__
@@ -63,13 +63,14 @@ def compact_table(table: Table) -> CompactionStats:
 
 def create_fts_index(table: Table) -> None:
     """
-    Cria índice FTS para busca híbrida.
+    Create an FTS index for hybrid search.
 
-    Usa FTS_LANGUAGE do config para stemming (ex: "Portuguese").
-    Se FTS_LANGUAGE for None, usa tokenizador neutro sem stemming.
+    Use ``FTS_LANGUAGE`` for stemming, for example "English".
+    When ``FTS_LANGUAGE`` is ``None``, disable language-specific stemming and
+    stop-word removal while retaining case and accent normalization.
 
-    Parâmetros:
-        table: tabela LanceDB
+    Parameters:
+        table: LanceDB table.
     """
     try:
         if FTS_LANGUAGE:
@@ -78,12 +79,19 @@ def create_fts_index(table: Table) -> None:
                 language=FTS_LANGUAGE,
                 replace=True,
             )
-            logger.info(f"Índice FTS criado (language={FTS_LANGUAGE}).")
+            logger.info("FTS index created (language=%s)", FTS_LANGUAGE)
         else:
-            table.create_fts_index("text", replace=True)
-            logger.info("Índice FTS criado (sem stemming).")
+            table.create_fts_index(
+                "text",
+                language="English",
+                stem=False,
+                remove_stop_words=False,
+                ascii_folding=True,
+                replace=True,
+            )
+            logger.info("FTS index created with language-neutral analysis")
     except Exception as e:
         logger.warning(
-            "Não foi possível criar índice FTS (error_type=%s)",
+            "Could not create FTS index (error_type=%s)",
             type(e).__name__,
         )

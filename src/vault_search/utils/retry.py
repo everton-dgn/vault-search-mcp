@@ -1,10 +1,10 @@
 """
-Utilitários de retry com exponential backoff para operações falíveis.
+Retry utilities with exponential backoff for fallible operations.
 
-Usa tenacity para retry automático de operações que podem falhar
-por timeout, OOM, ou outros erros transientes.
+Use tenacity to retry operations that may fail because of timeouts,
+out-of-memory conditions, or other transient errors.
 
-Uso:
+Usage:
     from vault_search.utils.retry import retry_embedding, retry_io
 
     @retry_embedding
@@ -34,10 +34,10 @@ from vault_search.core.exceptions import DaemonRequiredError
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# Exceções que disparam retry
+# Exceptions that trigger retries
 # =============================================================================
 
-# Exceções de embedding/ML que são transientes
+# Transient embedding and ML exceptions
 EMBEDDING_RETRY_EXCEPTIONS = (
     RuntimeError,  # CUDA OOM, model loading errors
     MemoryError,  # Python OOM
@@ -45,7 +45,7 @@ EMBEDDING_RETRY_EXCEPTIONS = (
     OSError,  # File descriptor limits, etc
 )
 
-# Exceções de I/O que são transientes
+# Transient I/O exceptions
 IO_RETRY_EXCEPTIONS = (
     IOError,
     OSError,
@@ -53,7 +53,7 @@ IO_RETRY_EXCEPTIONS = (
     ConnectionError,
 )
 
-# Exceções de banco de dados
+# Database exceptions
 DB_RETRY_EXCEPTIONS = (
     IOError,
     OSError,
@@ -62,21 +62,21 @@ DB_RETRY_EXCEPTIONS = (
 
 
 # =============================================================================
-# Configurações de retry
+# Retry settings
 # =============================================================================
 
 
 class RetryConfig:
-    """Configurações centralizadas de retry."""
+    """Centralized retry settings."""
 
-    # Embedding operations (mais tolerante, operações caras)
+    # Embedding operations are expensive and receive a larger retry budget.
     EMBEDDING_MAX_ATTEMPTS = 5
     EMBEDDING_MAX_DELAY_SECONDS = 60
     EMBEDDING_INITIAL_WAIT = 1
     EMBEDDING_MAX_WAIT = 30
     EMBEDDING_JITTER = 2
 
-    # I/O operations (menos tolerante, operações rápidas)
+    # I/O operations are faster and receive a smaller retry budget.
     IO_MAX_ATTEMPTS = 3
     IO_MAX_DELAY_SECONDS = 10
     IO_INITIAL_WAIT = 0.5
@@ -92,15 +92,15 @@ class RetryConfig:
 
 
 # =============================================================================
-# Decoradores de retry
+# Retry decorators
 # =============================================================================
 
 
 def _is_retryable_embedding_exception(exc: BaseException) -> bool:
     """
-    Retorna True apenas para falhas transitórias de embedding.
+    Return ``True`` only for transient embedding failures.
 
-    Erros de configuração (ex: daemon obrigatório indisponível) falham fast.
+    Configuration errors, such as an unavailable required daemon, fail immediately.
     """
     if isinstance(exc, DaemonRequiredError):
         return False
@@ -109,19 +109,19 @@ def _is_retryable_embedding_exception(exc: BaseException) -> bool:
 
 def retry_embedding[T](func: Callable[..., T]) -> Callable[..., T]:
     """
-    Decorator para retry de operações de embedding/ML.
+    Decorate embedding and ML operations with retry behavior.
 
-    Retry automático com exponential backoff + jitter para:
+    Retry automatically with exponential backoff and jitter for:
     - CUDA out of memory
     - Model loading errors
     - Inference timeouts
 
-    Configuração:
-    - Máximo 5 tentativas OU 60 segundos
-    - Backoff exponencial: 1s, 2s, 4s, 8s... (max 30s)
-    - Jitter de até 2s para evitar thundering herd
+    Configuration:
+    - At most 5 attempts or 60 seconds
+    - Exponential backoff of 1s, 2s, 4s, 8s, up to 30s
+    - Up to 2s of jitter to avoid a thundering herd
 
-    Exemplo:
+    Example:
         @retry_embedding
         def encode_batch(texts):
             return model.encode(texts)
@@ -144,19 +144,19 @@ def retry_embedding[T](func: Callable[..., T]) -> Callable[..., T]:
 
 def retry_io[T](func: Callable[..., T]) -> Callable[..., T]:
     """
-    Decorator para retry de operações de I/O.
+    Decorate I/O operations with retry behavior.
 
-    Retry automático para:
+    Retry automatically for:
     - File read/write errors
-    - Permission errors transientes
+    - Transient permission errors
     - Network filesystem timeouts
 
-    Configuração:
-    - Máximo 3 tentativas OU 10 segundos
-    - Backoff exponencial: 0.5s, 1s, 2s... (max 5s)
-    - Jitter de até 1s
+    Configuration:
+    - At most 3 attempts or 10 seconds
+    - Exponential backoff of 0.5s, 1s, 2s, up to 5s
+    - Up to 1s of jitter
 
-    Exemplo:
+    Example:
         @retry_io
         def read_note(path):
             return path.read_text()
@@ -179,19 +179,19 @@ def retry_io[T](func: Callable[..., T]) -> Callable[..., T]:
 
 def retry_db[T](func: Callable[..., T]) -> Callable[..., T]:
     """
-    Decorator para retry de operações de banco de dados.
+    Decorate database operations with retry behavior.
 
-    Retry automático para:
+    Retry automatically for:
     - LanceDB connection errors
     - SQLite busy/locked
     - Disk I/O errors
 
-    Configuração:
-    - Máximo 3 tentativas OU 15 segundos
-    - Backoff exponencial: 0.5s, 1s, 2s... (max 10s)
-    - Jitter de até 1s
+    Configuration:
+    - At most 3 attempts or 15 seconds
+    - Exponential backoff of 0.5s, 1s, 2s, up to 10s
+    - Up to 1s of jitter
 
-    Exemplo:
+    Example:
         @retry_db
         def query_index(vector):
             return table.search(vector).to_list()
@@ -221,19 +221,19 @@ def with_retry[T](
     exceptions: tuple[type[BaseException], ...] = (Exception,),
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
-    Decorator factory para retry customizado.
+    Create a decorator with custom retry behavior.
 
-    Permite configuração granular de retry para casos específicos.
+    Allow per-use-case retry configuration.
 
-    Parâmetros:
-        max_attempts: máximo de tentativas
-        max_delay: máximo de segundos antes de desistir
-        initial_wait: segundos de espera inicial
-        max_wait: máximo de segundos entre tentativas
-        jitter: segundos de jitter aleatório
-        exceptions: tupla de exceções que disparam retry
+    Parameters:
+        max_attempts: Maximum number of attempts.
+        max_delay: Maximum seconds before giving up.
+        initial_wait: Initial wait in seconds.
+        max_wait: Maximum seconds between attempts.
+        jitter: Random jitter in seconds.
+        exceptions: Exception types that trigger a retry.
 
-    Exemplo:
+    Example:
         @with_retry(max_attempts=5, exceptions=(TimeoutError,))
         def slow_operation():
             ...
@@ -262,16 +262,16 @@ def with_retry[T](
 
 def is_retryable_exception(exc: Exception) -> bool:
     """
-    Verifica se uma exceção é retryable.
+    Check whether an exception is retryable.
 
-    Útil para decidir se deve fazer retry manual em contextos
-    onde o decorator não é aplicável.
+    Useful when deciding whether to retry manually in contexts where
+    the decorator cannot be applied.
 
-    Parâmetros:
-        exc: exceção a verificar
+    Parameters:
+        exc: Exception to inspect.
 
-    Retorna:
-        True se a exceção é candidata a retry.
+    Returns:
+        ``True`` when the exception is a retry candidate.
     """
     all_retryable = EMBEDDING_RETRY_EXCEPTIONS + IO_RETRY_EXCEPTIONS + DB_RETRY_EXCEPTIONS
     if isinstance(exc, DaemonRequiredError):

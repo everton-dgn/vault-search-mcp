@@ -1,8 +1,8 @@
 """
-Parser de arquivos MDX (Markdown + JSX).
+Parser for MDX files containing Markdown and JSX.
 
-Remove imports, exports e componentes JSX antes de parsear como markdown.
-Útil para documentação de projetos Next.js, Docusaurus, etc.
+Remove imports, exports, and JSX components before parsing Markdown.
+Useful for Next.js and Docusaurus project documentation.
 """
 
 import logging
@@ -26,7 +26,7 @@ from vault_search.utils.metadata import FileMetadata, extract_file_metadata
 
 logger = logging.getLogger(__name__)
 
-# Regex patterns para limpar MDX
+# Regular expressions used to clean MDX.
 _IMPORT_PATTERN = re.compile(r"^import\s+.+$", re.MULTILINE)
 _EXPORT_PATTERN = re.compile(
     r"^export\s+(?:default\s+)?(?:const\s+|let\s+|var\s+|function\s+|class\s+)?.+$", re.MULTILINE
@@ -37,19 +37,19 @@ _JSX_BLOCK = re.compile(r"<([A-Z][a-zA-Z0-9]*)[^>]*>[\s\S]*?</\1>")
 
 def clean_mdx(content: str) -> str:
     """
-    Remove sintaxe JSX/ESM do conteúdo MDX, preservando markdown.
+    Remove JSX and ESM syntax while preserving Markdown.
 
     Remove:
     - import statements
     - export statements
-    - Componentes JSX self-closing: <Component />
-    - Componentes JSX com children: <Component>...</Component>
+    - Self-closing JSX components: <Component />
+    - JSX components with children: <Component>...</Component>
 
-    Parâmetros:
-        content: conteúdo MDX bruto
+    Parameters:
+        content: Raw MDX content.
 
-    Retorna:
-        Conteúdo limpo (markdown puro).
+    Returns:
+        Clean Markdown content.
     """
     # Remove imports
     content = _IMPORT_PATTERN.sub("", content)
@@ -60,7 +60,7 @@ def clean_mdx(content: str) -> str:
     # Remove JSX self-closing
     content = _JSX_SELF_CLOSING.sub("", content)
 
-    # Remove JSX blocks (pode precisar múltiplas passadas para aninhados)
+    # Nested JSX blocks may require multiple passes.
     prev_len = -1
     while len(content) != prev_len:
         prev_len = len(content)
@@ -76,16 +76,16 @@ def parse_mdx(
     raise_on_error: bool = False,
 ) -> tuple[list[ChunkRecord], list[LinkRecord], list[str]]:
     """
-    Processa um arquivo MDX e retorna chunks, links e aliases.
+    Process an MDX file into chunks, links, and aliases.
 
-    Limpa sintaxe JSX antes de parsear como markdown.
+    Remove JSX syntax before parsing as Markdown.
 
-    Parâmetros:
-        mdx_path: caminho absoluto do arquivo MDX
-        vault_path: caminho raiz do vault
+    Parameters:
+        mdx_path: Absolute MDX file path.
+        vault_path: Vault root path.
 
-    Retorna:
-        Tuple com chunks, links e aliases.
+    Returns:
+        Chunks, links, and aliases.
     """
     try:
         meta = extract_file_metadata(mdx_path, vault_path)
@@ -93,7 +93,7 @@ def parse_mdx(
         if raise_on_error:
             raise
         logger.warning(
-            "Falha ao acessar MDX (error_type=%s)",
+            "Failed to access MDX (error_type=%s)",
             type(e).__name__,
         )
         return [], [], []
@@ -104,12 +104,12 @@ def parse_mdx(
         if raise_on_error:
             raise
         logger.warning(
-            "Falha ao ler MDX (error_type=%s)",
+            "Failed to read MDX (error_type=%s)",
             type(e).__name__,
         )
         return [], [], []
 
-    # Limpar JSX antes de parsear frontmatter/markdown
+    # Remove JSX before parsing frontmatter and Markdown.
     cleaned_content = clean_mdx(content)
 
     frontmatter, body = parse_frontmatter(cleaned_content)
@@ -131,7 +131,7 @@ def parse_mdx(
         title = meta["title"]
     note_meta: FileMetadata = {**meta, "title": title}
 
-    # Extrair links do body
+    # Extract links from the body.
     all_links = extract_all_links(body, include_external=True)
     links: list[LinkRecord] = []
 

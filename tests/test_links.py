@@ -1,5 +1,5 @@
 """
-Testes para utils/links.py — extração e análise de links em markdown.
+Tests for utils/links.py — extraction and analysis of links in markdown.
 """
 
 from vault_search.utils.links import (
@@ -16,256 +16,256 @@ from vault_search.utils.links import (
 
 
 class TestWikilinkPattern:
-    """Testes para o regex WIKILINK_PATTERN."""
+    """Tests for the regex WIKILINK_PATTERN."""
 
-    def test_wikilink_simples(self):
-        text = "Ver [[minha nota]] para detalhes."
+    def test_simple_wikilink(self):
+        text = "See [[my note]] for details."
         matches = WIKILINK_PATTERN.findall(text)
-        assert matches == ["minha nota"]
+        assert matches == ["my note"]
 
-    def test_wikilink_com_alias(self):
-        text = "Ver [[minha nota|alias]] para detalhes."
+    def test_wikilink_with_alias(self):
+        text = "See [[my note|alias]] for details."
         matches = WIKILINK_PATTERN.findall(text)
-        assert matches == ["minha nota"]
+        assert matches == ["my note"]
 
-    def test_wikilink_com_heading(self):
-        text = "Ver [[minha nota#seção]] para detalhes."
+    def test_wikilink_with_heading(self):
+        text = "See [[my note#section]] for details."
         matches = WIKILINK_PATTERN.findall(text)
-        assert matches == ["minha nota"]
+        assert matches == ["my note"]
 
-    def test_wikilink_com_alias_e_heading(self):
-        text = "Ver [[minha nota#seção|alias]] para detalhes."
+    def test_wikilink_with_alias_and_heading(self):
+        text = "See [[my note#section|alias]] for details."
         matches = WIKILINK_PATTERN.findall(text)
-        assert matches == ["minha nota"]
+        assert matches == ["my note"]
 
-    def test_wikilink_com_path(self):
-        text = "Ver [[pasta/subpasta/nota]] aqui."
+    def test_wikilink_with_path(self):
+        text = "See [[folder/subfolder/note]] here."
         matches = WIKILINK_PATTERN.findall(text)
-        assert matches == ["pasta/subpasta/nota"]
+        assert matches == ["folder/subfolder/note"]
 
-    def test_multiplos_wikilinks(self):
-        text = "Ver [[nota1]] e [[nota2]] e [[nota3]]."
+    def test_multiple_wikilinks(self):
+        text = "See [[note1]] and [[note2]] and [[note3]]."
         matches = WIKILINK_PATTERN.findall(text)
-        assert matches == ["nota1", "nota2", "nota3"]
+        assert matches == ["note1", "note2", "note3"]
 
     def test_wikilink_multiline(self):
-        text = "Linha 1 [[nota1]]\nLinha 2 [[nota2]]"
+        text = "Line 1 [[note1]]\nLinha 2 [[note2]]"
         matches = WIKILINK_PATTERN.findall(text)
-        assert matches == ["nota1", "nota2"]
+        assert matches == ["note1", "note2"]
 
-    def test_pattern_nao_captura_embeds(self):
+    def test_pattern_not_captures_embeds(self):
         """
-        Regression test: WIKILINK_PATTERN não deve capturar embeds.
+        Regression test: WIKILINK_PATTERN must not capture embeds.
 
-        Bug corrigido: o pattern [[...]] capturava wikilinks dentro de embeds ![[...]].
-        Solução: usar negative lookbehind (?<!!) para excluir embeds.
+        Bug fixed: the pattern [[...]] captured wikilinks inside of embeds ![[...]].
+        Solution: use negative lookbehind (?<!!) for exclude embeds.
         """
-        text = "Imagem ![[foto.png]] e link [[Nota]]"
+        text = "Image ![[image.png]] and link [[Note]]"
         matches = WIKILINK_PATTERN.findall(text)
-        assert matches == ["Nota"], f"BUG: obtido {matches}, esperado ['Nota']"
+        assert matches == ["Note"], f"BUG: obtained {matches}, expected ['Note']"
 
 
 class TestMarkdownLinkPattern:
-    """Testes para o regex MARKDOWN_LINK_PATTERN."""
+    """Tests for the regex MARKDOWN_LINK_PATTERN."""
 
-    def test_markdown_link_simples(self):
-        text = "Ver [texto](nota.md) para detalhes."
+    def test_simple_markdown_link(self):
+        text = "See [text](note.md) for details."
         matches = MARKDOWN_LINK_PATTERN.findall(text)
-        assert matches == [("texto", "nota.md")]
+        assert matches == [("text", "note.md")]
 
-    def test_markdown_link_sem_extensao(self):
-        text = "Ver [texto](nota) para detalhes."
+    def test_markdown_link_without_extension(self):
+        text = "See [text](note) for details."
         matches = MARKDOWN_LINK_PATTERN.findall(text)
-        assert matches == [("texto", "nota")]
+        assert matches == [("text", "note")]
 
-    def test_markdown_link_com_path(self):
-        text = "Ver [texto](pasta/nota.md) aqui."
+    def test_markdown_link_with_path(self):
+        text = "See [text](folder/note.md) here."
         matches = MARKDOWN_LINK_PATTERN.findall(text)
-        assert matches == [("texto", "pasta/nota.md")]
+        assert matches == [("text", "folder/note.md")]
 
-    def test_ignora_url_http(self):
-        text = "Ver [Google](https://google.com) externo."
-        matches = MARKDOWN_LINK_PATTERN.findall(text)
-        assert matches == []
-
-    def test_ignora_url_http_sem_s(self):
-        text = "Ver [site](http://example.com) externo."
+    def test_ignores_url_http(self):
+        text = "See [Google](https://google.com) external."
         matches = MARKDOWN_LINK_PATTERN.findall(text)
         assert matches == []
 
-    def test_ignora_mailto(self):
-        text = "Contato [email](mailto:test@test.com)."
+    def test_ignores_url_http_without_s(self):
+        text = "See [site](http://example.com) external."
         matches = MARKDOWN_LINK_PATTERN.findall(text)
         assert matches == []
 
-    def test_ignora_ancora(self):
-        text = "Ver [seção](#ancora) aqui."
+    def test_ignores_mailto(self):
+        text = "Contact [email](mailto:test@test.com)."
         matches = MARKDOWN_LINK_PATTERN.findall(text)
         assert matches == []
 
-    def test_multiplos_links(self):
-        text = "[a](nota1.md) e [b](nota2.md)"
+    def test_ignores_anchor(self):
+        text = "See [section](#ancora) here."
         matches = MARKDOWN_LINK_PATTERN.findall(text)
-        assert matches == [("a", "nota1.md"), ("b", "nota2.md")]
+        assert matches == []
+
+    def test_multiple_links(self):
+        text = "[a](note1.md) and [b](note2.md)"
+        matches = MARKDOWN_LINK_PATTERN.findall(text)
+        assert matches == [("a", "note1.md"), ("b", "note2.md")]
 
 
 class TestEmbedPattern:
-    """Testes para o regex EMBED_PATTERN."""
+    """Tests for the regex EMBED_PATTERN."""
 
-    def test_embed_simples(self):
-        text = "Imagem: ![[foto.png]]"
+    def test_simple_embed(self):
+        text = "Image: ![[image.png]]"
         matches = EMBED_PATTERN.findall(text)
-        assert matches == ["foto.png"]
+        assert matches == ["image.png"]
 
-    def test_embed_com_tamanho(self):
-        text = "Imagem: ![[foto.png|500]]"
+    def test_embed_with_size(self):
+        text = "Image: ![[image.png|500]]"
         matches = EMBED_PATTERN.findall(text)
-        assert matches == ["foto.png"]
+        assert matches == ["image.png"]
 
-    def test_embed_nota(self):
-        text = "Conteúdo: ![[minha nota]]"
+    def test_embed_note(self):
+        text = "Content: ![[my note]]"
         matches = EMBED_PATTERN.findall(text)
-        assert matches == ["minha nota"]
+        assert matches == ["my note"]
 
-    def test_embed_com_path(self):
-        text = "![[assets/images/foto.png]]"
+    def test_embed_with_path(self):
+        text = "![[assets/images/image.png]]"
         matches = EMBED_PATTERN.findall(text)
-        assert matches == ["assets/images/foto.png"]
+        assert matches == ["assets/images/image.png"]
 
-    def test_multiplos_embeds(self):
-        text = "![[a.png]] e ![[b.png]]"
+    def test_multiple_embeds(self):
+        text = "![[a.png]] and ![[b.png]]"
         matches = EMBED_PATTERN.findall(text)
         assert matches == ["a.png", "b.png"]
 
 
 class TestExtractWikilinks:
-    """Testes para extract_wikilinks()."""
+    """Tests for extract_wikilinks()."""
 
-    def test_texto_vazio(self):
+    def test_text_empty(self):
         assert extract_wikilinks("") == []
 
     def test_none(self):
         assert extract_wikilinks(None) == []
 
-    def test_sem_links(self):
-        assert extract_wikilinks("Texto sem links.") == []
+    def test_without_links(self):
+        assert extract_wikilinks("Text without links.") == []
 
-    def test_extrai_unicos(self):
-        text = "[[nota]] e [[nota]] e [[NOTA]]"
+    def test_extracts_unique_links(self):
+        text = "[[note]] and [[note]] and [[NOTE]]"
         result = extract_wikilinks(text)
-        # Case-insensitive deduplication, mantém primeira ocorrência
+        # Case-insensitive deduplication, keeps first occurrence
         assert len(result) == 1
-        assert result[0] == "nota"
+        assert result[0] == "note"
 
-    def test_mantem_case_original(self):
-        text = "[[Minha Nota Importante]]"
+    def test_preserves_original_case(self):
+        text = "[[My Note Importante]]"
         result = extract_wikilinks(text)
-        assert result == ["Minha Nota Importante"]
+        assert result == ["My Note Importante"]
 
-    def test_remove_espacos_extras(self):
-        text = "[[  nota  ]]"
+    def test_remove_extra_spaces(self):
+        text = "[[  note  ]]"
         result = extract_wikilinks(text)
-        assert result == ["nota"]
+        assert result == ["note"]
 
-    def test_nao_captura_embeds(self):
+    def test_not_captures_embeds(self):
         """
-        Regression test: embeds (![[...]]) não devem ser capturados como wikilinks.
+        Regression test: embeds (![[...]]) must not be captured as wikilinks.
 
-        Bug corrigido: o regex [[...]] capturava wikilinks dentro de embeds ![[...]].
+        Bug fixed: the regex [[...]] captured wikilinks inside of embeds ![[...]].
         """
-        text = "Imagem ![[foto.png]] e link [[Nota]]"
+        text = "Image ![[image.png]] and link [[Note]]"
         result = extract_wikilinks(text)
 
-        assert "foto.png" not in result, "BUG: foto.png não deve ser capturado como wikilink"
-        assert "Nota" in result, "Nota deve ser capturada como wikilink"
-        assert len(result) == 1, "Deve ter exatamente 1 wikilink"
+        assert "image.png" not in result, "BUG: image.png must not be captured as wikilink"
+        assert "Note" in result, "Note must be captured as wikilink"
+        assert len(result) == 1, "Must have exactly 1 wikilink"
 
 
 class TestExtractMarkdownLinks:
-    """Testes para extract_markdown_links()."""
+    """Tests for extract_markdown_links()."""
 
-    def test_texto_vazio(self):
+    def test_text_empty(self):
         assert extract_markdown_links("") == []
 
     def test_none(self):
         assert extract_markdown_links(None) == []
 
-    def test_sem_links(self):
-        assert extract_markdown_links("Texto sem links.") == []
+    def test_without_links(self):
+        assert extract_markdown_links("Text without links.") == []
 
-    def test_extrai_path(self):
-        text = "[texto](pasta/nota.md)"
+    def test_extracts_path(self):
+        text = "[text](folder/note.md)"
         result = extract_markdown_links(text)
-        assert result == ["pasta/nota.md"]
+        assert result == ["folder/note.md"]
 
-    def test_remove_ancora(self):
-        text = "[texto](nota.md#section)"
+    def test_remove_anchor(self):
+        text = "[text](note.md#section)"
         result = extract_markdown_links(text)
-        assert result == ["nota.md"]
+        assert result == ["note.md"]
 
-    def test_deduplica(self):
-        text = "[a](nota.md) e [b](nota.md)"
+    def test_deduplicates(self):
+        text = "[a](note.md) and [b](note.md)"
         result = extract_markdown_links(text)
         assert len(result) == 1
 
-    def test_ignora_externos(self):
-        text = "[local](nota.md) e [externo](https://google.com)"
+    def test_ignores_external_links(self):
+        text = "[local](note.md) and [external](https://google.com)"
         result = extract_markdown_links(text)
-        assert result == ["nota.md"]
+        assert result == ["note.md"]
 
 
 class TestExtractEmbeds:
-    """Testes para extract_embeds()."""
+    """Tests for extract_embeds()."""
 
-    def test_texto_vazio(self):
+    def test_text_empty(self):
         assert extract_embeds("") == []
 
     def test_none(self):
         assert extract_embeds(None) == []
 
-    def test_sem_embeds(self):
-        assert extract_embeds("Texto sem embeds.") == []
+    def test_without_embeds(self):
+        assert extract_embeds("Text without embeds.") == []
 
-    def test_extrai_embeds(self):
-        text = "![[imagem.png]] e ![[nota]]"
+    def test_extracts_embeds(self):
+        text = "![[image.png]] and ![[note]]"
         result = extract_embeds(text)
-        assert "imagem.png" in result
-        assert "nota" in result
+        assert "image.png" in result
+        assert "note" in result
 
-    def test_deduplica(self):
-        text = "![[img.png]] e ![[IMG.PNG]]"
+    def test_deduplicates(self):
+        text = "![[img.png]] and ![[IMG.PNG]]"
         result = extract_embeds(text)
         assert len(result) == 1
 
 
 class TestExtractAllLinks:
-    """Testes para extract_all_links()."""
+    """Tests for extract_all_links()."""
 
-    def test_texto_vazio(self):
+    def test_text_empty(self):
         result = extract_all_links("")
         assert result == {"wikilinks": [], "markdown_links": [], "embeds": []}
 
-    def test_todos_tipos(self):
+    def test_all_types(self):
         text = """
-        Wikilink: [[nota1]]
-        Markdown: [texto](nota2.md)
-        Embed: ![[imagem.png]]
+        Wikilink: [[note1]]
+        Markdown: [text](note2.md)
+        Embed: ![[image.png]]
         """
         result = extract_all_links(text)
 
-        # Wikilinks agora são dicts com campo 'target'
+        # Wikilinks now are dicts with field 'target'
         wikilink_targets = [w["target"] for w in result["wikilinks"]]
-        assert "nota1" in wikilink_targets
+        assert "note1" in wikilink_targets
 
-        # Markdown links são dicts com campo 'target'
+        # Markdown links are dicts with field 'target'
         markdown_targets = [m["target"] for m in result["markdown_links"]]
-        assert "nota2.md" in markdown_targets
+        assert "note2.md" in markdown_targets
 
-        # Embeds são dicts com campo 'target'
+        # Embeds are dicts with field 'target'
         embed_targets = [e["target"] for e in result["embeds"]]
-        assert "imagem.png" in embed_targets
+        assert "image.png" in embed_targets
 
-    def test_estrutura_retorno(self):
+    def test_return_structure(self):
         result = extract_all_links("test")
         assert "wikilinks" in result
         assert "markdown_links" in result
@@ -275,163 +275,163 @@ class TestExtractAllLinks:
         assert isinstance(result["embeds"], list)
 
     def test_wikilink_dict_structure(self):
-        """Verifica que wikilinks retornam estrutura completa."""
-        result = extract_all_links("Link para [[Nota#Heading|alias]]")
+        """Checks that wikilinks return structure complete."""
+        result = extract_all_links("Link for [[Note#Heading|alias]]")
         assert len(result["wikilinks"]) == 1
         wl = result["wikilinks"][0]
-        assert wl["target"] == "Nota"
+        assert wl["target"] == "Note"
         assert wl["alias"] == "alias"
         assert wl["heading"] == "Heading"
-        assert wl["raw"] == "[[Nota#Heading|alias]]"
+        assert wl["raw"] == "[[Note#Heading|alias]]"
 
     def test_markdown_link_dict_structure(self):
-        """Verifica que markdown links retornam estrutura completa."""
-        result = extract_all_links("[texto do link](path/to/nota.md)")
+        """Checks that markdown links return structure complete."""
+        result = extract_all_links("[text of the link](path/to/note.md)")
         assert len(result["markdown_links"]) == 1
         ml = result["markdown_links"][0]
-        assert ml["target"] == "path/to/nota.md"
-        assert ml["text"] == "texto do link"
+        assert ml["target"] == "path/to/note.md"
+        assert ml["text"] == "text of the link"
 
     def test_embed_dict_structure(self):
-        """Verifica que embeds retornam estrutura completa."""
-        result = extract_all_links("Imagem: ![[foto.png|400]]")
+        """Checks that embeds return structure complete."""
+        result = extract_all_links("Image: ![[image.png|400]]")
         assert len(result["embeds"]) == 1
         emb = result["embeds"][0]
-        # target é extraído sem o tamanho
-        assert emb["target"] == "foto.png"
+        # target is extracted without the size
+        assert emb["target"] == "image.png"
         assert "raw" in emb
 
-    def test_embeds_nao_aparecem_em_wikilinks(self):
+    def test_embeds_not_appear_in_wikilinks(self):
         """
-        Regression test: embeds (![[...]]) não devem aparecer em wikilinks.
+        Regression test: embeds (![[...]]) must not appear in wikilinks.
 
-        Bug corrigido: o regex de wikilinks capturava [[...]] dentro de ![[...]],
-        causando duplicação do target em wikilinks e embeds.
+        Bug fixed: the regex of wikilinks captured [[...]] inside of ![[...]],
+        causing duplication of the target in wikilinks and embeds.
         """
-        text = "Imagem ![[foto.png]] e link [[Nota]]"
+        text = "Image ![[image.png]] and link [[Note]]"
         result = extract_all_links(text)
 
-        # Embeds só devem aparecer em 'embeds', não em 'wikilinks'
+        # Embeds only must appear in 'embeds', not in 'wikilinks'
         embed_targets = [e["target"] for e in result["embeds"]]
         wikilink_targets = [w["target"] for w in result["wikilinks"]]
 
-        assert "foto.png" in embed_targets, "foto.png deve estar em embeds"
-        assert "foto.png" not in wikilink_targets, "BUG: foto.png não deve aparecer em wikilinks"
-        assert "Nota" in wikilink_targets, "Nota deve estar em wikilinks"
-        assert len(result["wikilinks"]) == 1, "Deve ter exatamente 1 wikilink"
-        assert len(result["embeds"]) == 1, "Deve ter exatamente 1 embed"
+        assert "image.png" in embed_targets, "image.png must be in embeds"
+        assert "image.png" not in wikilink_targets, "BUG: image.png must not appear in wikilinks"
+        assert "Note" in wikilink_targets, "Note must be in wikilinks"
+        assert len(result["wikilinks"]) == 1, "Must have exactly 1 wikilink"
+        assert len(result["embeds"]) == 1, "Must have exactly 1 embed"
 
 
 class TestNormalizeLinkTarget:
-    """Testes para normalize_link_target()."""
+    """Tests for normalize_link_target()."""
 
     def test_lowercase(self):
-        assert normalize_link_target("NOTA") == "nota"
+        assert normalize_link_target("NOTE") == "note"
 
-    def test_remove_extensao_md(self):
-        assert normalize_link_target("nota.md") == "nota"
+    def test_remove_extension_md(self):
+        assert normalize_link_target("note.md") == "note"
 
-    def test_remove_extensao_MD_maiuscula(self):
-        assert normalize_link_target("nota.MD") == "nota"
+    def test_remove_extension_MD_uppercase(self):
+        assert normalize_link_target("note.MD") == "note"
 
-    def test_strip_espacos(self):
-        assert normalize_link_target("  nota  ") == "nota"
+    def test_strip_spaces(self):
+        assert normalize_link_target("  note  ") == "note"
 
-    def test_path_com_extensao(self):
-        assert normalize_link_target("pasta/nota.md") == "pasta/nota"
+    def test_path_with_extension(self):
+        assert normalize_link_target("folder/note.md") == "folder/note"
 
-    def test_sem_extensao(self):
-        assert normalize_link_target("nota") == "nota"
+    def test_without_extension(self):
+        assert normalize_link_target("note") == "note"
 
 
 class TestMatchesNote:
-    """Testes para matches_note()."""
+    """Tests for matches_note()."""
 
-    def test_match_exato_nome(self):
-        assert matches_note("minha-nota", "pasta/minha-nota.md") is True
+    def test_exact_name_match(self):
+        assert matches_note("my-note", "folder/my-note.md") is True
 
     def test_match_case_insensitive(self):
-        assert matches_note("Minha-Nota", "pasta/minha-nota.md") is True
+        assert matches_note("My-Note", "folder/my-note.md") is True
 
-    def test_match_com_extensao(self):
-        assert matches_note("minha-nota.md", "pasta/minha-nota.md") is True
+    def test_match_with_extension(self):
+        assert matches_note("my-note.md", "folder/my-note.md") is True
 
-    def test_match_path_completo(self):
-        assert matches_note("pasta/minha-nota", "pasta/minha-nota.md") is True
+    def test_match_complete_path(self):
+        assert matches_note("folder/my-note", "folder/my-note.md") is True
 
-    def test_match_espacos_vs_hifens(self):
-        assert matches_note("minha nota", "pasta/minha-nota.md") is True
+    def test_matches_spaces_to_hyphens(self):
+        assert matches_note("my note", "folder/my-note.md") is True
 
-    def test_match_hifens_vs_espacos(self):
-        assert matches_note("minha-nota", "pasta/minha nota.md") is True
+    def test_matches_hyphens_to_spaces(self):
+        assert matches_note("my-note", "folder/my note.md") is True
 
-    def test_nao_match_diferente(self):
-        assert matches_note("outra-nota", "pasta/minha-nota.md") is False
+    def test_does_not_match_different_text(self):
+        assert matches_note("other-note", "folder/my-note.md") is False
 
-    def test_nao_match_parcial(self):
-        # "nota" não deve dar match em "minha-nota"
-        assert matches_note("nota", "pasta/minha-nota.md") is False
+    def test_not_match_partial(self):
+        # "note" must not give match in "my-note"
+        assert matches_note("note", "folder/my-note.md") is False
 
-    def test_match_nome_arquivo_completo(self):
-        assert matches_note("minha-nota.md", "minha-nota.md") is True
+    def test_match_complete_filename(self):
+        assert matches_note("my-note.md", "my-note.md") is True
 
-    def test_match_subpasta(self):
-        # Match parcial: "sub/nota" corresponde a "pasta/sub/nota.md"
-        # porque o path termina com "/sub/nota"
-        assert matches_note("sub/nota", "pasta/sub/nota.md") is True
-        assert matches_note("pasta/sub/nota", "pasta/sub/nota.md") is True
-        # Mas "outra/nota" não corresponde
-        assert matches_note("outra/nota", "pasta/sub/nota.md") is False
+    def test_match_subfolder(self):
+        # Match partial: "sub/note" corresponds a "folder/sub/note.md"
+        # because the path ends with "/sub/note"
+        assert matches_note("sub/note", "folder/sub/note.md") is True
+        assert matches_note("folder/sub/note", "folder/sub/note.md") is True
+        # But "other/note" not corresponds
+        assert matches_note("other/note", "folder/sub/note.md") is False
 
 
 class TestRealWorldCases:
-    """Testes com casos reais do Obsidian."""
+    """Tests with real-world Obsidian cases."""
 
     def test_obsidian_daily_note(self):
-        text = "Ver [[2024-01-15]] para contexto."
+        text = "See [[2024-01-15]] for context."
         result = extract_wikilinks(text)
         assert result == ["2024-01-15"]
 
     def test_obsidian_heading_link(self):
-        text = "Ver [[Projeto#Requisitos]] para detalhes."
+        text = "See [[Project#Requisitos]] for details."
         result = extract_wikilinks(text)
-        assert result == ["Projeto"]
+        assert result == ["Project"]
 
     def test_obsidian_block_reference(self):
-        text = "Ver [[Nota^abc123]] para referência."
-        # Block references usam ^ antes do ID
-        # Nosso regex deve capturar o nome da nota
+        text = "See [[Note^abc123]] for reference."
+        # Block references use ^ before the ID.
+        # The regex must capture the note name.
         result = WIKILINK_PATTERN.findall(text)
-        # O ^ não está no padrão, então captura "Nota^abc123"
-        # Isso pode precisar de ajuste se quisermos ignorar block refs
+        # The ^ is not in the default, then captures "Note^abc123"
+        # This may need adjustment if block references should be ignored.
         assert len(result) == 1
 
     def test_mixed_links_document(self):
         text = """
-# Meu Documento
+# My Document
 
-Este documento referencia [[Projeto A]] e [[Projeto B|PB]].
+This document references [[Project A]] and [[Project B|PB]].
 
-Para mais informações, veja [documentação](docs/manual.md).
+For more information, see [documentation](docs/manual.md).
 
-Imagens: ![[diagrama.png|500]]
+Images: ![[diagram.png|500]]
 
-Links externos são ignorados: [Google](https://google.com)
+External links are ignored: [Google](https://google.com)
 """
         result = extract_all_links(text)
 
-        # Extrair targets dos wikilinks
+        # Extract targets of the wikilinks
         wikilink_targets = [w["target"] for w in result["wikilinks"]]
-        assert "Projeto A" in wikilink_targets
-        assert "Projeto B" in wikilink_targets
+        assert "Project A" in wikilink_targets
+        assert "Project B" in wikilink_targets
 
-        # Extrair targets dos markdown links
+        # Extract targets of the markdown links
         markdown_targets = [m["target"] for m in result["markdown_links"]]
         assert "docs/manual.md" in markdown_targets
 
-        # Extrair targets dos embeds
+        # Extract targets of the embeds
         embed_targets = [e["target"] for e in result["embeds"]]
-        assert "diagrama.png" in embed_targets
+        assert "diagram.png" in embed_targets
 
-        # Google foi ignorado (é externo)
+        # Google was ignored (is external)
         assert len(result["markdown_links"]) == 1

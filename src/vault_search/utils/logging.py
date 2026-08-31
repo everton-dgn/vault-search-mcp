@@ -1,14 +1,14 @@
 """
-Structured Logging com structlog.
+Structured logging with structlog.
 
-Estado da arte:
-- JSON em produção (parseable por ELK, Loki, Datadog)
-- Console colorido em desenvolvimento
-- Context variables para request_id e metadados
-- orjson para serialização rápida
-- Cache de loggers para performance
+Features:
+- JSON in production, parseable by ELK, Loki, and Datadog
+- Readable colored console output in development
+- Context variables for request IDs and metadata
+- Fast serialization with orjson
+- Logger caching
 
-Referências:
+References:
 - https://www.structlog.org/en/stable/logging-best-practices.html
 - https://betterstack.com/community/guides/logging/structlog/
 """
@@ -24,14 +24,14 @@ from structlog.typing import EventDict, Processor, WrappedLogger
 
 from vault_search.utils.privacy import redact_mapping, redact_text
 
-# Detectar ambiente
+# Detect the environment.
 IS_PRODUCTION = os.environ.get("VAULT_SEARCH_ENV", "development") == "production"
 IS_TTY = sys.stderr.isatty()
 LOG_LEVEL = os.environ.get("VAULT_SEARCH_LOG_LEVEL", "INFO").upper()
 
 
 class _DynamicStderrText:
-    """Encaminha escritas ao stderr atual, inclusive sob captura de testes."""
+    """Forward writes to the current stderr, including during test capture."""
 
     def write(self, value: str) -> int:
         return sys.stderr.write(value)
@@ -41,7 +41,7 @@ class _DynamicStderrText:
 
 
 class _DynamicStderrBytes:
-    """Versão binária do proxy de stderr para o renderer JSON."""
+    """Binary stderr proxy used by the JSON renderer."""
 
     def write(self, value: bytes) -> int:
         return sys.stderr.buffer.write(value)
@@ -51,7 +51,7 @@ class _DynamicStderrBytes:
 
 
 class _DynamicStderrHandler(logging.StreamHandler[TextIO]):
-    """Evita manter referência a um stream de captura já fechado."""
+    """Avoid retaining a reference to an already closed capture stream."""
 
     def emit(self, record: logging.LogRecord) -> None:
         self.stream = sys.stderr
@@ -59,7 +59,7 @@ class _DynamicStderrHandler(logging.StreamHandler[TextIO]):
 
 
 class PrivacyFilter(logging.Filter):
-    """Aplica a mesma política de privacidade aos logs da stdlib."""
+    """Apply the same privacy policy to standard-library logs."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.msg = redact_text(record.msg)
@@ -76,7 +76,7 @@ class PrivacyFilter(logging.Filter):
 
 
 def add_app_context(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
-    """Adiciona contexto da aplicação a todos os logs."""
+    """Add application context to every log event."""
     event_dict["app"] = "vault-search-mcp"
     return event_dict
 
@@ -84,7 +84,7 @@ def add_app_context(logger: WrappedLogger, method_name: str, event_dict: EventDi
 def add_safe_logger_name(
     logger: WrappedLogger, method_name: str, event_dict: EventDict
 ) -> EventDict:
-    """Inclui o nome somente quando a factory oferece esse atributo."""
+    """Include the logger name only when the factory exposes it."""
     name = getattr(logger, "name", None)
     if name:
         event_dict["logger"] = redact_text(name)
@@ -94,7 +94,7 @@ def add_safe_logger_name(
 def censor_sensitive_fields(
     logger: WrappedLogger, method_name: str, event_dict: EventDict
 ) -> EventDict:
-    """Remove recursivamente conteúdo privado e paths dos logs."""
+    """Recursively remove private content and paths from logs."""
     exc_info = event_dict.pop("exc_info", None)
     if exc_info:
         if isinstance(exc_info, tuple) and exc_info:
@@ -113,38 +113,38 @@ def configure_logging(
     level: str | None = None,
 ) -> None:
     """
-    Configura structured logging para a aplicação.
+    Configure structured logging for the application.
 
-    Parâmetros:
-        json_output: forçar JSON (None = auto-detecta baseado em TTY)
-        level: nível de log (DEBUG, INFO, WARNING, ERROR)
+    Parameters:
+        json_output: Force JSON; ``None`` auto-detects from the TTY.
+        level: Log level such as DEBUG, INFO, WARNING, or ERROR.
     """
-    # Auto-detectar formato se não especificado
+    # Auto-detect the format when unspecified.
     if json_output is None:
-        # JSON em produção ou quando não é TTY (ex: Docker, systemd)
+        # Use JSON in production or outside a TTY, such as Docker or systemd.
         json_output = IS_PRODUCTION or not IS_TTY
 
-    # Nível de log
+    # Log level.
     log_level = getattr(logging, level or LOG_LEVEL, logging.INFO)
 
-    # Processors comuns
+    # Shared processors.
     shared_processors: list[Processor] = [
-        # Adiciona contexto de variáveis (request_id, user_id, etc.)
+        # Add context variables such as request_id and user_id.
         structlog.contextvars.merge_contextvars,
-        # Adiciona contexto da app
+        # Add application context.
         add_app_context,
-        # Adiciona nome do logger
+        # Add the logger name.
         add_safe_logger_name,
-        # Adiciona nível do log
+        # Add the log level.
         structlog.stdlib.add_log_level,
-        # Identifica o módulo sem revelar o path do checkout local.
+        # Identify the module without revealing the local checkout path.
         structlog.processors.CallsiteParameterAdder(
             [
                 structlog.processors.CallsiteParameter.MODULE,
                 structlog.processors.CallsiteParameter.LINENO,
             ]
         ),
-        # A redação deve ocorrer depois de todos os campos contextuais.
+        # Redaction must run after all contextual fields have been added.
         censor_sensitive_fields,
         # Timestamp ISO 8601
         structlog.processors.TimeStamper(fmt="iso"),
@@ -153,27 +153,27 @@ def configure_logging(
     factory: Callable[..., WrappedLogger]
 
     if json_output:
-        # Produção: JSON otimizado com orjson
+        # Production: JSON optimized with orjson.
         processors = shared_processors + [
-            # Serializa para JSON com orjson.
+            # Serialize to JSON with orjson.
             structlog.processors.JSONRenderer(serializer=_orjson_dumps),
         ]
-        # Factory de alta performance (escreve bytes direto no stderr).
-        # Em transporte MCP stdio, stdout deve ficar reservado ao protocolo.
+        # High-throughput factory that writes bytes directly to stderr.
+        # MCP stdio transport reserves stdout for the protocol.
         factory = structlog.BytesLoggerFactory(file=cast(BinaryIO, _DynamicStderrBytes()))
     else:
-        # Desenvolvimento: console colorido e legível
+        # Development: readable colored console output.
         processors = shared_processors + [
-            # Cores e formatação bonita
+            # Colors and readable formatting.
             structlog.dev.ConsoleRenderer(
                 colors=True,
                 exception_formatter=structlog.dev.plain_traceback,
             ),
         ]
-        # Manter logs no stderr para evitar poluir stdout.
+        # Keep logs on stderr so stdout remains clean.
         factory = structlog.PrintLoggerFactory(file=cast(TextIO, _DynamicStderrText()))
 
-    # Configurar structlog
+    # Configure structlog.
     structlog.configure(
         processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
@@ -182,7 +182,7 @@ def configure_logging(
         cache_logger_on_first_use=True,
     )
 
-    # Configurar logging stdlib para capturar logs de bibliotecas
+    # Configure standard-library logging to capture dependency logs.
     stdlib_handler = _DynamicStderrHandler()
     stdlib_handler.addFilter(PrivacyFilter())
     logging.basicConfig(
@@ -194,7 +194,7 @@ def configure_logging(
 
 
 def _orjson_dumps(obj: Any, **kwargs: Any) -> bytes:
-    """Serializa para JSON usando orjson (mais rápido)."""
+    """Serialize to JSON with orjson."""
     import orjson
 
     return orjson.dumps(obj, default=str)
@@ -202,20 +202,20 @@ def _orjson_dumps(obj: Any, **kwargs: Any) -> bytes:
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """
-    Obtém um logger estruturado.
+    Get a structured logger.
 
-    Parâmetros:
-        name: nome do logger (opcional, usa módulo chamador se não fornecido)
+    Parameters:
+        name: Optional logger name; uses the caller module when omitted.
 
-    Retorna:
-        Logger estruturado com contexto.
+    Returns:
+        A structured logger with context.
 
-    Uso:
+    Usage:
         logger = get_logger(__name__)
-        logger.info("operação concluída", duration_ms=45.2, results=10)
+        logger.info("operation completed", duration_ms=45.2, results=10)
     """
     return structlog.get_logger(name)
 
 
-# Configurar automaticamente na importação (pode ser reconfigurado depois)
+# Configure automatically on import; callers may reconfigure later.
 configure_logging()

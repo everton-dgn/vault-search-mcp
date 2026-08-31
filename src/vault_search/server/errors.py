@@ -1,4 +1,4 @@
-"""Erros públicos estáveis sem detalhes internos do ambiente."""
+"""Stable public errors that omit internal environment details."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ def public_error(
     error: BaseException,
     *,
     code: str = "internal_error",
-    message: str = "A operação não pôde ser concluída.",
+    message: str = "The operation could not be completed.",
 ) -> str:
-    """Registra metadados mínimos e devolve uma mensagem segura ao cliente."""
+    """Log minimal metadata and return a safe client-facing message."""
     error_id = secrets.token_hex(4)
     logger.error(
         "%s failed error_id=%s error_type=%s",
@@ -23,7 +23,7 @@ def public_error(
         error_id,
         type(error).__name__,
     )
-    return f"Erro [{code}]: {message} Referência: {error_id}."
+    return f"Error [{code}]: {message} Reference: {error_id}."
 
 
 def public_error_dict(
@@ -32,9 +32,9 @@ def public_error_dict(
     error: BaseException,
     *,
     code: str = "internal_error",
-    message: str = "A operação não pôde ser concluída.",
+    message: str = "The operation could not be completed.",
 ) -> dict[str, Any]:
-    """Versão estruturada de :func:`public_error` para resources MCP."""
+    """Return the structured MCP resource form of :func:`public_error`."""
     return {
         "error": public_error(
             logger,

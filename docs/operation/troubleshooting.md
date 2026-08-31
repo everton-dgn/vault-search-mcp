@@ -1,6 +1,6 @@
 # Troubleshooting
 
-## Diagnóstico curto
+## Short diagnostic path
 
 ```bash
 uv --version
@@ -9,91 +9,89 @@ uv sync --locked
 uv run python scripts/check_publication.py
 ```
 
-Depois valide configuração, índice e daemon nessa ordem. Sanitizar qualquer
-saída antes de compartilhá-la.
+Then validate configuration, index, and daemon in that order. Sanitize every
+output before sharing it.
 
-## Configuração não aplicada
+## Configuration is not applied
 
-1. Confirme `VAULT_SEARCH_CONFIG`.
-2. Verifique se o arquivo existe e é YAML válido.
-3. Reinicie MCP e daemon, pois a configuração fica em cache.
-4. Confirme apenas os campos necessários com `get_config()` localmente.
+1. Check `VAULT_SEARCH_CONFIG`.
+2. Verify that the file exists and contains valid YAML.
+3. Restart MCP and daemon processes because configuration is cached.
+4. Inspect only the required fields from `get_config()` locally.
 
-`VAULT_SEARCH_VAULT_PATH` substitui o vault. O alias legado `VAULT_PATH` também
-funciona quando a variável moderna não está definida. `VAULT_SEARCH_DATA_DIR`
-substitui o diretório de dados. Essas variáveis são lidas no primeiro import,
-então reinicie o processo após alterá-las. `VAULT_SEARCH_DB_DIR` não é
-reconhecida.
+`VAULT_SEARCH_VAULT_PATH` overrides the vault. Legacy `VAULT_PATH` applies when
+the modern variable is absent. `VAULT_SEARCH_DATA_DIR` overrides derived data.
+They are captured on first import. `VAULT_SEARCH_DB_DIR` is not recognized.
 
-## Vault não encontrado
+## Vault is missing
 
 ```bash
 uv run python -c "from vault_search.config.paths import VAULT_PATH; print(VAULT_PATH.exists())"
 ```
 
-Não publique o path impresso. Se `False`, ajuste `paths.vault_path` ou
-`VAULT_SEARCH_VAULT_PATH`.
+Do not publish the printed path. If the result is `False`, update
+`paths.vault_path` or `VAULT_SEARCH_VAULT_PATH`.
 
-Para conferir o diretório de dados sem imprimir o path, use:
+Check the data directory without printing it:
 
 ```bash
 uv run python -c "from vault_search.config.paths import DATA_DIR; print(DATA_DIR.exists())"
 ```
 
-## Índice ausente ou vazio
+## Index is missing or empty
 
 ```bash
 uv run python -m vault_search.core.indexer
 ```
 
-Se a reindexação falhar, preserve a geração anterior. Não apague o índice antes
-de entender a exceção. Para descartar um artefato comprovadamente reconstruível,
-mova-o à lixeira e execute novamente:
+Preserve the active generation when a rebuild fails. Do not discard the index
+before understanding the failure. Move a confirmed rebuildable artifact to
+trash before rebuilding:
 
 ```bash
 trash data/vault_chunks.lance
 uv run python -m vault_search.core.indexer
 ```
 
-Confirme o target exato antes do comando. O vault nunca faz parte dessa limpeza.
+Resolve the exact target first. Vault content is never part of this cleanup.
 
-## Daemon indisponível
+## Daemon is unavailable
 
 ```bash
 curl --fail --max-time 5 http://127.0.0.1:9847/health
 ```
 
-Se falhar:
+If it fails:
 
 - macOS: `launchctl print "gui/$(id -u)/com.vault-search.daemon"`;
 - Linux: `systemctl --user status vault-search-daemon`;
-- confirme host e porta no YAML;
-- retire `VAULT_SEARCH_REQUIRE_DAEMON=1` somente se fallback local for aceito.
+- confirm host and port in YAML;
+- remove `VAULT_SEARCH_REQUIRE_DAEMON=1` only when local fallback is acceptable.
 
-Não trate uma porta aberta como prova de que o processo certo está saudável.
+An open port does not prove that the correct service is healthy.
 
-## Busca sem resultado
+## Search returns no result
 
-1. Consulte `vault_stats`.
-2. Confirme que a extensão é `.md`, `.mdx`, `.txt`, `.pdf` ou `.canvas`.
-3. Verifique se a pasta está em `indexing.ignored_folders`.
-4. Execute `sync_vault` em dry run.
-5. Compare busca semântica e híbrida com uma query sintética.
+1. Read `vault_stats`.
+2. Confirm the extension is `.md`, `.mdx`, `.txt`, `.pdf`, or `.canvas`.
+3. Check `indexing.ignored_folders`.
+4. Run `sync_vault` in dry-run mode.
+5. Compare semantic and hybrid search using a synthetic phrase.
 
-## PDF sem texto
+## PDF has no text
 
-Confirme se o documento tem camada de texto. Para imagem escaneada:
+Determine whether the file has a text layer. For a scanned image:
 
 ```bash
 tesseract --version
 tesseract --list-langs
 ```
 
-Instale os idiomas declarados em `pdf.ocr_languages` e reinicie o processo.
+Install every language declared by `pdf.ocr_languages`, then restart.
 
-## MPS ou CUDA falhando
+## MPS or CUDA fails
 
-Troque temporariamente para o padrão portável:
+Temporarily use the portable setting:
 
 ```yaml
 embedding:
@@ -101,42 +99,42 @@ embedding:
   use_fp16: false
 ```
 
-Se CPU funcionar, registre driver, backend, modelo, versão do PyTorch e operação
-que falhou antes de abrir issue.
+If CPU works, record driver, backend, model, PyTorch version, and failing
+operation before opening an issue.
 
-## Tool ou resource ausente
+## Tool or resource is missing
 
 ```bash
 uv run python scripts/check_publication.py
 ```
 
-O registro esperado tem 43 tools e 6 resources. Divergência indica checkout
-incompleto, import interrompido ou documentação desatualizada.
+The expected registry contains 43 tools and 6 resources. Drift indicates an
+incomplete checkout, interrupted import, or stale documentation.
 
-## Erro ao escrever nota
+## A note write fails
 
-Verifique extensão, tamanho, schema e contenção do path. Use uma fixture sintética
-para reproduzir. Não reduza validações de path e não compartilhe conteúdo real.
+Check extension, size, schema, and path containment with a synthetic fixture.
+Do not weaken path validation or share real content.
 
-Se `error_code` for `write_lock_timeout`, outro escritor cooperativo manteve o
-lock além do prazo. Releia a nota antes de tentar novamente. O prazo pode ser
-ajustado entre 0 e 300 segundos com
-`VAULT_SEARCH_WRITE_LOCK_TIMEOUT_SECONDS`; valor inválido volta a 5 segundos.
+`write_lock_timeout` means another cooperative writer held the lock past the
+deadline. Reread before retrying. Set
+`VAULT_SEARCH_WRITE_LOCK_TIMEOUT_SECONDS` from 0 through 300 seconds; invalid
+values use five seconds.
 
-Se `error_code` for `write_conflict`, a revisão observada mudou durante a
-operação. Releia e reconcilie o conteúdo. Em plataformas sem `fcntl`, processos
-distintos não compartilham o lock advisory.
+`write_conflict` means the observed revision changed during the operation.
+Reread and reconcile. On platforms without `fcntl`, separate processes do not
+share the advisory lock.
 
-## Como abrir uma issue útil
+## Opening a useful issue
 
-Inclua:
+Include:
 
-- versão ou commit;
-- sistema operacional e Python;
-- comando exato;
-- erro sanitizado;
-- fixture mínima sintética;
-- daemon ativo ou não;
-- validações já executadas.
+- project version or commit;
+- operating system and Python version;
+- exact command;
+- sanitized error;
+- minimal synthetic fixture;
+- whether the daemon was active;
+- validations already run.
 
-Vulnerabilidades seguem [../../SECURITY.md](../../SECURITY.md) por canal privado.
+Use the private [security process](../../SECURITY.md) for vulnerabilities.

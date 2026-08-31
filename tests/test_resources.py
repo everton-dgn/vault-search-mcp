@@ -1,15 +1,15 @@
 """
-Testes para MCP Resources (vault://...).
+Tests for MCP Resources (vault://...).
 """
 
 from unittest.mock import MagicMock, patch
 
 
 class TestResourceRegistration:
-    """Testes para registro de resources."""
+    """Tests for registration of resources."""
 
     def test_register_resources_creates_six_resources(self):
-        """register_resources deve criar 6 resources."""
+        """register_resources must create 6 resources."""
         from vault_search.server.resource_tools import register_resources
 
         mcp = MagicMock()
@@ -18,11 +18,11 @@ class TestResourceRegistration:
 
         register_resources(mcp, indexer, searcher)
 
-        # Verifica que mcp.resource foi chamado 6 vezes
+        # Verify that mcp.resource was called six times.
         assert mcp.resource.call_count == 6
 
     def test_resource_uris_are_correct(self):
-        """Resources devem ter URIs corretas."""
+        """Resources expose the expected URIs."""
         from vault_search.server.resource_tools import register_resources
 
         mcp = MagicMock()
@@ -31,7 +31,7 @@ class TestResourceRegistration:
 
         register_resources(mcp, indexer, searcher)
 
-        # Coletar URIs registradas
+        # Collect registered URIs.
         uris = [call[0][0] for call in mcp.resource.call_args_list]
 
         assert "vault://stats" in uris
@@ -43,10 +43,10 @@ class TestResourceRegistration:
 
 
 class TestVaultStatsResource:
-    """Testes para vault://stats."""
+    """Tests for vault://stats."""
 
     def test_returns_dict_with_uri_and_type(self):
-        """vault://stats deve retornar dict com uri e type."""
+        """vault://stats must return dict with uri and type."""
         from vault_search.server.resource_tools import register_resources
 
         mcp = MagicMock()
@@ -54,7 +54,7 @@ class TestVaultStatsResource:
         indexer.get_stats.return_value = {"total_chunks": 100, "unique_notes": 10}
         searcher = MagicMock()
 
-        # Capturar a função registrada
+        # Capture a function registered
         captured_func = None
 
         def capture_resource(uri):
@@ -69,7 +69,7 @@ class TestVaultStatsResource:
         mcp.resource = capture_resource
         register_resources(mcp, indexer, searcher)
 
-        # Chamar a função com mock de Context
+        # Call a function with mock of Context
         ctx = MagicMock()
         result = captured_func(ctx)
 
@@ -79,10 +79,10 @@ class TestVaultStatsResource:
 
 
 class TestVaultNotesResource:
-    """Testes para vault://notes/{path*}."""
+    """Tests for vault://notes/{path*}."""
 
     def test_validates_path(self):
-        """vault://notes/{path} deve validar path."""
+        """vault://notes/{path} must validate path."""
         from vault_search.server.resource_tools import register_resources
 
         mcp = MagicMock()
@@ -105,16 +105,16 @@ class TestVaultNotesResource:
 
         ctx = MagicMock()
 
-        # Path traversal deve ser rejeitado pelo resolvedor real.
+        # The real resolver must reject path traversal.
         with patch("vault_search.server.resource_tools.resolve_path") as mock_resolve:
-            mock_resolve.side_effect = ValueError("fora do vault")
+            mock_resolve.side_effect = ValueError("outside of the vault")
             result = captured_func("../../../etc/passwd", ctx)
 
             assert "error" in result
-            assert "inválido" in result["error"]
+            assert "invalid" in result["error"]
 
     def test_rejects_non_readable_extensions(self):
-        """vault://notes/{path} deve rejeitar extensões não legíveis."""
+        """vault://notes/{path} must reject extensions not readable."""
         from vault_search.server.resource_tools import register_resources
 
         mcp = MagicMock()
@@ -138,17 +138,17 @@ class TestVaultNotesResource:
         ctx = MagicMock()
 
         with patch("vault_search.server.resource_tools.resolve_path"):
-            result = captured_func("nota.pdf", ctx)
+            result = captured_func("note.pdf", ctx)
 
             assert "error" in result
             assert ".pdf" in result["error"]
 
 
 class TestVaultNotesListResource:
-    """Testes para vault://notes."""
+    """Tests for vault://notes."""
 
     def test_unpacks_catalog_page_and_preserves_total(self):
-        """O resource deve separar os itens do total retornado pelo catálogo."""
+        """The resource must separate the items of the total returned by the catalog."""
         from vault_search.server.resource_tools import register_resources
 
         mcp = MagicMock()
@@ -198,10 +198,10 @@ class TestVaultNotesListResource:
 
 
 class TestVaultFoldersResource:
-    """Testes para vault://folders."""
+    """Tests for vault://folders."""
 
     def test_builds_tree_structure(self):
-        """vault://folders deve construir árvore de pastas."""
+        """vault://folders must build tree of folders."""
         from vault_search.server.resource_tools import register_resources
 
         mcp = MagicMock()
@@ -239,10 +239,10 @@ class TestVaultFoldersResource:
 
 
 class TestVaultTagsResource:
-    """Testes para vault://tags."""
+    """Tests for vault://tags."""
 
     def test_returns_tag_stats(self):
-        """vault://tags deve retornar estatísticas de tags."""
+        """vault://tags must return statistics of tags."""
         from vault_search.server.resource_tools import register_resources
 
         mcp = MagicMock()
@@ -294,7 +294,7 @@ class TestVaultTagsResource:
 
 
 class TestVaultRecentResource:
-    """Testes para vault://search/recent."""
+    """Tests for vault://search/recent."""
 
     def test_uses_catalog_recent_contract(self):
         from vault_search.server.resource_tools import register_resources

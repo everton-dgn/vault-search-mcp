@@ -1,5 +1,5 @@
 """
-Testes para o módulo de retry com exponential backoff.
+Tests for exponential-backoff retries.
 """
 
 import time
@@ -8,10 +8,10 @@ import pytest
 
 
 class TestRetryDecorators:
-    """Testes para os decorators de retry."""
+    """Tests for the decorators of retry."""
 
     def test_retry_embedding_success_first_try(self):
-        """Função que sucede na primeira tentativa não faz retry."""
+        """Function that succeeds in the first attempt does not retry."""
         from vault_search.utils.retry import retry_embedding
 
         call_count = [0]
@@ -27,7 +27,7 @@ class TestRetryDecorators:
         assert call_count[0] == 1
 
     def test_retry_embedding_retries_on_failure(self):
-        """Retry é executado após falha."""
+        """Retry is executed after failure."""
         from vault_search.utils.retry import retry_embedding
 
         call_count = [0]
@@ -42,22 +42,22 @@ class TestRetryDecorators:
         result = failing_then_success()
 
         assert result == "success"
-        assert call_count[0] == 3  # 2 falhas + 1 sucesso
+        assert call_count[0] == 3  # Two failures and one success.
 
     def test_retry_embedding_raises_after_max_attempts(self):
-        """Exceção é levantada após exceder tentativas máximas."""
+        """Exception is raised after exceed attempts maximums."""
         from vault_search.utils.retry import retry_embedding
 
         @retry_embedding
         def always_fails():
             raise RuntimeError("Always fails")
 
-        # O decorator usa 5 tentativas por padrão
+        # The decorator uses 5 attempts by default
         with pytest.raises(RuntimeError, match="Always fails"):
             always_fails()
 
-    def test_retry_embedding_falha_fast_para_daemon_required(self):
-        """DaemonRequiredError não deve fazer retry (erro não transitório)."""
+    def test_retry_embedding_failure_fast_for_daemon_required(self):
+        """DaemonRequiredError must not perform retry (error not transient)."""
         from vault_search.core.exceptions import DaemonRequiredError
         from vault_search.utils.retry import retry_embedding
 
@@ -74,7 +74,7 @@ class TestRetryDecorators:
         assert call_count[0] == 1
 
     def test_retry_io_fewer_attempts(self):
-        """retry_io usa menos tentativas que retry_embedding."""
+        """retry_io uses less attempts that retry_embedding."""
         from vault_search.utils.retry import retry_io
 
         call_count = [0]
@@ -87,11 +87,11 @@ class TestRetryDecorators:
         with pytest.raises(OSError):
             io_operation()
 
-        # retry_io usa 3 tentativas
+        # retry_io uses 3 attempts
         assert call_count[0] == 3
 
     def test_retry_db_handles_connection_errors(self):
-        """retry_db trata erros de conexão."""
+        """retry_db handles connection errors."""
         from vault_search.utils.retry import retry_db
 
         call_count = [0]
@@ -110,10 +110,10 @@ class TestRetryDecorators:
 
 
 class TestRetryConfig:
-    """Testes para configuração de retry."""
+    """Tests for configuration of retry."""
 
     def test_retry_config_has_embedding_values(self):
-        """RetryConfig tem valores de embedding configurados."""
+        """RetryConfig exposes configured embedding retry values."""
         from vault_search.utils.retry import RetryConfig
 
         assert RetryConfig.EMBEDDING_MAX_ATTEMPTS > 0
@@ -123,41 +123,41 @@ class TestRetryConfig:
         assert RetryConfig.EMBEDDING_JITTER >= 0
 
     def test_retry_config_embedding_more_tolerant(self):
-        """Configuração de embedding é mais tolerante que IO."""
+        """Embedding retries are more tolerant than I/O retries."""
         from vault_search.utils.retry import RetryConfig
 
-        # Embedding deve ter mais tentativas e tempo que IO
+        # Embedding must have more attempts and time that IO
         assert RetryConfig.EMBEDDING_MAX_ATTEMPTS >= RetryConfig.IO_MAX_ATTEMPTS
         assert RetryConfig.EMBEDDING_MAX_DELAY_SECONDS >= RetryConfig.IO_MAX_DELAY_SECONDS
 
 
 class TestIsRetryableException:
-    """Testes para identificação de exceções retryable."""
+    """Tests for identification of exceptions retryable."""
 
     def test_runtime_error_is_retryable(self):
-        """RuntimeError é retryable para embeddings."""
+        """RuntimeError is retryable for embeddings."""
         from vault_search.utils.retry import EMBEDDING_RETRY_EXCEPTIONS
 
         assert RuntimeError in EMBEDDING_RETRY_EXCEPTIONS
 
     def test_memory_error_is_retryable(self):
-        """MemoryError é retryable (CUDA OOM)."""
+        """MemoryError is retryable (CUDA OOM)."""
         from vault_search.utils.retry import EMBEDDING_RETRY_EXCEPTIONS
 
         assert MemoryError in EMBEDDING_RETRY_EXCEPTIONS
 
     def test_timeout_error_is_retryable(self):
-        """TimeoutError é retryable."""
+        """TimeoutError is retryable."""
         from vault_search.utils.retry import EMBEDDING_RETRY_EXCEPTIONS
 
         assert TimeoutError in EMBEDDING_RETRY_EXCEPTIONS
 
 
 class TestWithRetry:
-    """Testes para a factory with_retry."""
+    """Tests for a factory with_retry."""
 
     def test_with_retry_custom_config(self):
-        """with_retry permite configuração customizada."""
+        """with_retry accepts custom configuration."""
         from vault_search.utils.retry import with_retry
 
         call_count = [0]
@@ -170,15 +170,15 @@ class TestWithRetry:
         with pytest.raises(ValueError):
             custom_retry_fn()
 
-        assert call_count[0] == 2  # Apenas 2 tentativas
+        assert call_count[0] == 2  # Only 2 attempts
 
 
 class TestRetryWithRealDelay:
-    """Testes que verificam o delay real (marcados como slow)."""
+    """Tests that verify actual delays and are marked as slow."""
 
     @pytest.mark.slow
     def test_exponential_backoff_timing(self):
-        """Verifica que o backoff exponencial funciona."""
+        """Checks that the backoff exponential works."""
         from vault_search.utils.retry import retry_io
 
         times = []
@@ -195,11 +195,11 @@ class TestRetryWithRealDelay:
         assert result == "success"
         assert len(times) == 3
 
-        # Deve ter algum delay entre tentativas
+        # Must have some delay between attempts
         delay1 = times[1] - times[0]
         delay2 = times[2] - times[1]
 
-        # Com exponential backoff, o segundo delay deve ser maior
-        # (com jitter pode variar, então usamos margem)
+        # With exponential backoff, the second delay must be larger
+        # Jitter can vary, so allow a margin.
         assert delay1 > 0
         assert delay2 > 0

@@ -1,22 +1,22 @@
-# Enriquecimento externo de frontmatter
+# External frontmatter enrichment
 
-Esta integração preenche campos obrigatórios ausentes por meio de um comando
-externo. Ela começa desativada e exige consentimento explícito porque conteúdo
-da nota pode sair do processo principal.
+This integration fills missing required frontmatter fields through an external
+command. It starts disabled and requires explicit consent because note content
+can leave the main process.
 
-## Antes de habilitar
+## Before enabling it
 
-Confirme:
+Confirm:
 
-- qual processo recebe o conteúdo;
-- política de retenção e treinamento do provider;
-- credenciais usadas pelo comando;
-- campos que podem ser enviados;
-- impacto de erro, timeout e saída inválida.
+- which process receives content;
+- the provider's retention and training policy;
+- how the command obtains credentials;
+- which fields may be sent;
+- the effect of timeout, invalid output, and partial output.
 
-Use um vault sintético na primeira validação.
+Use a synthetic vault for first validation.
 
-## Configuração segura
+## Safe configuration
 
 ```yaml
 frontmatter:
@@ -31,7 +31,7 @@ frontmatter:
       - "provider-cli"
       - "--model"
       - "{model}"
-    primary_model: "modelo-principal"
+    primary_model: "primary-model"
     fallback_model: null
     timeout_seconds: 8.0
     max_attempts: 2
@@ -43,66 +43,68 @@ frontmatter:
       max_length: 500
 ```
 
-O template aceita `{model}`. `{prompt}` é rejeitado. O conteúdo viaja por stdin
-para evitar exposição no argv e em diagnósticos de processos.
+The command template accepts `{model}` and rejects `{prompt}`. Note content is
+sent through `stdin`, keeping it out of process arguments and ordinary process
+diagnostics.
 
-## Fluxo
+## Data flow
 
-1. A validação identifica campos `on_missing: require` vazios.
-2. O job limita o corpo a `max_note_chars`.
-3. O comando recebe o modelo no argv e o prompt pelo stdin.
-4. A saída precisa conter um objeto JSON.
-5. Somente campos obrigatórios que estavam ausentes podem ser mesclados.
-6. Falha no modelo principal pode acionar o fallback configurado.
+1. Validation finds empty fields with `on_missing: require`.
+2. The job bounds the note body to `max_note_chars`.
+3. The command receives the model identifier in `argv` and the prompt on
+   `stdin`.
+4. Output must contain one JSON object.
+5. Only required fields that were absent can be merged.
+6. A primary-model failure can trigger the configured fallback.
+7. Generated values pass through frontmatter validation before persistence.
 
-## Tools
+## MCP tools
 
 ### `enrich_frontmatter`
 
-Agenda o processamento de uma ou mais notas. A tool altera frontmatter quando o
-job termina com saída válida. Paths repetidos são deduplicados sem mudar a ordem.
-Cada job aceita no máximo 1.000 paths Markdown. Rejeições estáveis usam
-`too_many_paths`, `queue_full` ou `stopped`.
+Schedules one or more notes. A successful job can update frontmatter. Repeated
+paths are deduplicated without changing order. A job accepts at most 1,000
+Markdown paths. Stable rejection codes are `too_many_paths`, `queue_full`, and
+`stopped`.
 
 ### `enrich_frontmatter_status`
 
-Consulta um job por ID ou lista estados recentes. O retorno público evita
-conteúdo da nota e detalhes internos do processo. Cada job conserva no máximo
-100 resultados detalhados e informa `returned` e `truncated`; os contadores
-`processed`, `succeeded` e `failed` cobrem o job inteiro.
+Reads one job or lists recent state. Public responses omit note content and
+internal process detail. A job retains at most 100 detailed results and reports
+`returned` plus `truncated`; `processed`, `succeeded`, and `failed` cover the
+complete job.
 
-## Limites da fila
+## Queue bounds
 
-- até 200 jobs podem aguardar, além do job em execução;
-- jobs `queued` e `running` não são removidos do histórico;
-- o histórico conserva até 200 jobs terminais;
-- erros de uma nota viram falha controlada e não encerram a worker;
-- durante shutdown, a fila deixa de aceitar entradas e tenta drenar o trabalho
-  dentro do timeout de encerramento.
+- Up to 200 jobs may wait in addition to the running job.
+- `queued` and `running` jobs are never pruned from history.
+- Up to 200 terminal jobs remain in process memory.
+- One-note errors become controlled failures and do not terminate the worker.
+- Shutdown stops accepting work and attempts to drain pending jobs within its
+  deadline.
 
-Esses limites protegem memória e tempo de shutdown. Uma rejeição não significa
-que a nota foi processada; o cliente precisa verificar `accepted` antes de guardar
-o `job_id`.
+A rejected request was not processed. Check `accepted` before retaining its
+`job_id`.
 
-## Erros esperados
+## Expected failures
 
-| Condição | Resultado |
+| Condition | Result |
 |---|---|
-| `enabled: false` | Enriquecimento indisponível |
-| Consentimento ausente | Configuração rejeitada |
-| Provider vazio | Configuração rejeitada |
-| `{prompt}` no comando | Configuração rejeitada |
-| Comando ou modelo principal ausente | Configuração rejeitada |
-| Timeout | Tentativa termina e segue política de retry |
-| Saída sem JSON objeto | Resultado descartado |
-| Mais de 1.000 paths após deduplicação | `too_many_paths` |
-| 200 jobs aguardando | `queue_full` |
-| Shutdown iniciado | `stopped` |
+| `enabled: false` | Enrichment unavailable |
+| Missing consent | Configuration rejected |
+| Empty provider | Configuration rejected |
+| `{prompt}` in command | Configuration rejected |
+| Missing command or primary model | Configuration rejected |
+| Timeout | Attempt ends and bounded retry policy applies |
+| Output without a JSON object | Output discarded |
+| More than 1,000 deduplicated paths | `too_many_paths` |
+| 200 jobs waiting | `queue_full` |
+| Shutdown started | `stopped` |
 
-## Privacidade operacional
+## Operational privacy
 
-- Não coloque token no YAML nem no array `command`.
-- Não registre stdin, stdout integral, corpo da nota ou path absoluto.
-- O provider deve receber apenas o mínimo necessário.
-- Desabilite a integração antes de trocar de vault ou política.
-- Trate texto gerado como não confiável até passar pelo schema.
+- Never put a token in YAML or the `command` array.
+- Never log `stdin`, complete `stdout`, note bodies, or absolute paths.
+- Send only the minimum content required by the provider.
+- Disable enrichment before switching vaults or data policies.
+- Treat generated text as untrusted until schema validation succeeds.

@@ -1,10 +1,10 @@
 """
-Handler de eventos do sistema de arquivos para o watcher.
+Filesystem event normalization and coalescing for vault watchers.
 
-Responsável por:
-- Filtrar arquivos por extensão e pastas ignoradas
-- Enfileirar eventos com coalescência por path
-- Ignorar mudanças auto-geradas (ex: adição de UUID)
+Responsibilities:
+- Filter files by extension and ignored folders
+- Coalesce queued events by path
+- Ignore revisions written internally, such as UUID insertion
 """
 
 import threading
@@ -30,14 +30,14 @@ from watchdog.events import (
 from vault_search.config.paths import VAULT_PATH
 from vault_search.config.search import IGNORED_FOLDERS, INDEXABLE_EXTENSIONS
 
-# Tokens de eventos próprios são curtos e limitados para não reter paths
-# indefinidamente quando o watcher não recebe o evento esperado.
+# Internal event tokens are short-lived and bounded so paths are not retained
+# indefinitely when the watcher misses an expected event.
 IGNORE_TOKEN_TTL_SECONDS = 30.0
 MAX_IGNORE_TOKENS = 2048
 
 
 class PendingEvent(TypedDict):
-    """Evento coalescido aguardando o fim do debounce."""
+    """Coalesced event waiting for its debounce window."""
 
     deleted: bool
     time: float
@@ -45,7 +45,7 @@ class PendingEvent(TypedDict):
 
 @dataclass(frozen=True, slots=True)
 class _FileRevision:
-    """Identidade observável de uma revisão no filesystem."""
+    """Observable identity of a filesystem revision."""
 
     inode: int
     mtime_ns: int
@@ -54,19 +54,19 @@ class _FileRevision:
 
 @dataclass(frozen=True, slots=True)
 class _IgnoreToken:
-    """Revisão própria que pode ser ignorada até um prazo monotônico."""
+    """Internal revision that can be ignored until a monotonic deadline."""
 
     revision: _FileRevision
     expires_at: float
 
 
-# OrderedDict preserva a ordem de criação para expulsão determinística.
+# OrderedDict preserves creation order for deterministic eviction.
 _ignore_next_change: OrderedDict[str, _IgnoreToken] = OrderedDict()
 _ignore_lock = threading.Lock()
 
 
 def _file_revision(path: Path) -> _FileRevision | None:
-    """Lê a revisão comparável de um arquivo, sem propagar falhas transitórias."""
+    """Read a comparable file revision without propagating transient failures."""
     try:
         stat = path.stat()
     except OSError:
@@ -79,7 +79,7 @@ def _file_revision(path: Path) -> _FileRevision | None:
 
 
 def _vault_file(relative_path: str) -> Path | None:
-    """Resolve um path relativo e rejeita escapes do vault."""
+    """Resolve a relative path and reject vault escapes."""
     relative = Path(relative_path)
     if relative.is_absolute():
         return None
@@ -94,7 +94,7 @@ def _vault_file(relative_path: str) -> Path | None:
 
 
 def _purge_ignore_tokens(now: float) -> None:
-    """Remove tokens vencidos. O chamador deve manter ``_ignore_lock``."""
+    """Remove expired tokens while the caller holds ``_ignore_lock``."""
     expired = [path for path, token in _ignore_next_change.items() if token.expires_at <= now]
     for path in expired:
         _ignore_next_change.pop(path, None)
@@ -102,20 +102,19 @@ def _purge_ignore_tokens(now: float) -> None:
 
 def ignore_next_change(relative_path: str) -> bool:
     """
-    Marca um path para ignorar a próxima mudança detectada pelo watcher.
+    Mark the current revision so the watcher can ignore its next event.
 
-    Usado quando o sistema modifica um arquivo (ex: adiciona UUID) e não
-    quer que o watcher dispare uma reindexação desnecessária.
+    Use this after an internal file mutation, such as adding a UUID, when a
+    second reindex would be redundant.
 
-    O token só é criado quando a revisão gravada pode ser lida. Assim, uma
-    edição posterior com o mesmo path nunca é ignorada por uma flag antiga.
+    A token is created only when the written revision can be read. A later
+    edit to the same path therefore cannot match a stale token.
 
-    Parâmetros:
-        relative_path: caminho relativo ao vault
+    Parameters:
+        relative_path: path relative to the vault
 
-    Retorna:
-        True quando a revisão foi registrada; False quando o arquivo não pôde
-        ser lido ou o path escapava do vault.
+    Returns:
+        True when the revision was recorded, otherwise false.
     """
     path = _vault_file(relative_path)
     revision = _file_revision(path) if path is not None else None
@@ -137,12 +136,11 @@ def ignore_next_change(relative_path: str) -> bool:
 
 def _check_and_clear_ignore(relative_path: str, absolute_path: Path | None = None) -> bool:
     """
-    Consome o token e compara sua revisão com o estado atual do arquivo.
+    Consume a token and compare its revision with the current file.
 
-    Retorna:
-        True apenas quando o token existe, está válido e representa exatamente
-        a revisão atual. Tokens divergentes também são removidos, mas o evento
-        continua para que uma edição posterior do usuário seja processada.
+    Returns:
+        True only when an unexpired token exactly matches the current revision.
+        Mismatched tokens are removed while the event continues normally.
     """
     path = absolute_path or _vault_file(relative_path)
     revision = _file_revision(path) if path is not None else None
@@ -155,17 +153,17 @@ def _check_and_clear_ignore(relative_path: str, absolute_path: Path | None = Non
 
 class VaultEventHandler(FileSystemEventHandler):
     """
-    Handler para eventos do sistema de arquivos no vault.
+    Handle filesystem events inside the vault.
 
-    Enfileira eventos num dict compartilhado (coalescente por path).
-    O worker thread processa a fila periodicamente.
+    Events are coalesced by path in a shared dictionary and processed by one
+    worker thread.
     """
 
     def __init__(self, pending: dict[str, PendingEvent], lock: threading.Lock):
         """
-        Parâmetros:
-            pending: dict compartilhado {relative_path: {"deleted": bool, "time": float}}
-            lock: lock compartilhado para acesso ao pending
+        Parameters:
+            pending: shared {relative_path: {"deleted": bool, "time": float}} map
+            lock: lock protecting pending
         """
         super().__init__()
         self._pending = pending
@@ -174,16 +172,16 @@ class VaultEventHandler(FileSystemEventHandler):
     @staticmethod
     def _get_vault_root() -> Path:
         """
-        Retorna root normalizado do vault.
+        Return the normalized vault root.
 
-        Resolve symlinks para suportar eventos vindos do caminho real.
+        Resolve symlinks so events from the real path remain supported.
         """
         return VAULT_PATH.expanduser().resolve(strict=False)
 
     def _should_process(self, path: bytes | str) -> bool:
-        """Verifica se o arquivo deve ser processado."""
+        """Return whether a file should be processed."""
         p = Path(fsdecode(path))
-        # Extensão case-insensitive
+        # Extensions are case-insensitive.
         if p.suffix.lower() not in INDEXABLE_EXTENSIONS:
             return False
         if any(ignored in p.parts for ignored in IGNORED_FOLDERS):
@@ -192,16 +190,15 @@ class VaultEventHandler(FileSystemEventHandler):
 
     def _enqueue(self, abs_path: bytes | str, deleted: bool = False) -> None:
         """
-        Enfileira evento para processamento com debounce coalescente.
+        Enqueue an event with coalescing debounce.
 
-        Se já existe evento pendente para o mesmo path, sobrescreve
-        (última edição vence).
+        A newer event for the same path replaces the pending event.
 
-        Ignora mudanças marcadas com ignore_next_change() (ex: UUID auto-gerado).
+        Revisions registered by ignore_next_change are ignored exactly once.
 
-        Parâmetros:
-            abs_path: caminho absoluto da nota
-            deleted: se True, a nota foi deletada
+        Parameters:
+            abs_path: absolute note path
+            deleted: whether the note was deleted
         """
         p = Path(fsdecode(abs_path)).expanduser().resolve(strict=False)
         try:
@@ -209,7 +206,7 @@ class VaultEventHandler(FileSystemEventHandler):
         except ValueError:
             return
 
-        # Ignorar somente a revisão que o próprio processo acabou de gravar.
+        # Ignore only the exact revision written by this process.
         if _check_and_clear_ignore(relative, p):
             return
 

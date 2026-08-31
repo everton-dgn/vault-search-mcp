@@ -1,9 +1,9 @@
 """
-Parser de notas markdown do vault Obsidian.
+Parser for Markdown notes in an Obsidian vault.
 
-Responsável por:
-- Dividir corpo por headers markdown
-- Processar nota completa em chunks com metadados
+Responsibilities:
+- Split the body by Markdown headings
+- Process a complete note into chunks with metadata
 """
 
 import logging
@@ -30,15 +30,14 @@ logger = logging.getLogger(__name__)
 
 def split_by_headers(body: str) -> list[HeaderSection]:
     """
-    Divide o corpo do markdown por headers, preservando a hierarquia.
-    O texto de cada header é incluído no conteúdo da seção para
-    melhorar a qualidade dos embeddings de busca.
+    Split a Markdown body by headings while preserving hierarchy. Include each
+    heading in its section content to improve search embeddings.
 
-    Parâmetros:
-        body: corpo do markdown (sem frontmatter)
+    Parameters:
+        body: Markdown body without frontmatter.
 
-    Retorna:
-        Lista de HeaderSection com 'headers' (hierarquia) e 'content' (inclui header).
+    Returns:
+        ``HeaderSection`` entries with hierarchy and heading-inclusive content.
     """
     pattern = re.compile(
         r"^(#{1," + str(MARKDOWN_HEADER_LEVELS) + r"})\s+(.+)$",
@@ -50,7 +49,7 @@ def split_by_headers(body: str) -> list[HeaderSection]:
     last_end = 0
 
     for match in pattern.finditer(body):
-        # Salvar seção anterior (texto entre último header e este)
+        # Save the section between the previous heading and this one.
         if last_end < match.start():
             text = body[last_end : match.start()].strip()
             if text:
@@ -65,7 +64,7 @@ def split_by_headers(body: str) -> list[HeaderSection]:
             if lv > level:
                 del current_headers[lv]
 
-        # Incluir a linha do header no início do conteúdo da próxima seção
+        # Include the heading line at the start of the next section.
         last_end = match.start()
 
     remaining = body[last_end:].strip()
@@ -81,29 +80,29 @@ def split_by_headers(body: str) -> list[HeaderSection]:
 
 def extract_aliases(frontmatter: dict[str, object]) -> list[str]:
     """
-    Extrai aliases do frontmatter.
+    Extract aliases from frontmatter.
 
-    Suporta:
+    Supports:
     - aliases: [a, b, c]
     - aliases: "a, b, c"
     - alias: "single"
 
-    Parâmetros:
-        frontmatter: dicionário do frontmatter
+    Parameters:
+        frontmatter: Frontmatter dictionary.
 
-    Retorna:
-        Lista de aliases.
+    Returns:
+        List of aliases.
     """
     aliases = []
 
-    # Campo 'aliases' (lista ou string)
+    # The aliases field may be a list or string.
     raw_aliases = frontmatter.get("aliases", [])
     if isinstance(raw_aliases, str):
         aliases.extend([a.strip() for a in raw_aliases.split(",") if a.strip()])
     elif isinstance(raw_aliases, list):
         aliases.extend([str(a) for a in raw_aliases if a])
 
-    # Campo 'alias' (singular)
+    # Singular alias field.
     single_alias = frontmatter.get("alias")
     if single_alias:
         if isinstance(single_alias, str):
@@ -121,26 +120,23 @@ def parse_note(
     raise_on_error: bool = False,
 ) -> tuple[list[ChunkRecord], list[LinkRecord], list[str]]:
     """
-    Processa uma nota markdown e retorna chunks, links e aliases.
+    Process a Markdown note into chunks, links, and aliases.
 
-    Parâmetros:
-        note_path: caminho absoluto da nota
-        vault_path: caminho raiz do vault
+    Parameters:
+        note_path: Absolute note path.
+        vault_path: Vault root path.
 
-    Retorna:
-        Tuple com:
-        - Lista de ChunkRecord prontos para inserção no LanceDB
-        - Lista de LinkRecord para inserção no links_index
-        - Lista de aliases do frontmatter
+    Returns:
+        Chunks ready for LanceDB, links ready for ``links_index``, and aliases.
     """
-    # Extrair metadados do filesystem primeiro (valida existência)
+    # Read filesystem metadata first to validate existence.
     try:
         meta = extract_file_metadata(note_path, vault_path)
     except (OSError, ValueError) as e:
         if raise_on_error:
             raise
         logger.warning(
-            "Falha ao acessar nota (error_type=%s)",
+            "Failed to access note (error_type=%s)",
             type(e).__name__,
         )
         return [], [], []
@@ -151,24 +147,24 @@ def parse_note(
         if raise_on_error:
             raise
         logger.warning(
-            "Falha ao ler nota (error_type=%s)",
+            "Failed to read note (error_type=%s)",
             type(e).__name__,
         )
         return [], [], []
 
     frontmatter, body = parse_frontmatter(content)
 
-    # Tags do frontmatter
+    # Frontmatter tags.
     tags = extract_tags(frontmatter)
     tags_str = ", ".join(tags) if tags else ""
 
-    # Campos estruturados do frontmatter
+    # Structured frontmatter fields.
     fm_fields = extract_frontmatter_fields(frontmatter)
 
-    # Aliases do frontmatter
+    # Frontmatter aliases.
     aliases = extract_aliases(frontmatter)
 
-    # Título: frontmatter sobrescreve stem do arquivo
+    # Frontmatter title overrides the file stem.
     raw_title = frontmatter.get("title", meta["title"])
     if isinstance(raw_title, str):
         title = raw_title
@@ -181,11 +177,11 @@ def parse_note(
         title = meta["title"]
     note_meta: FileMetadata = {**meta, "title": title}
 
-    # Extrair links do body completo
+    # Extract links from the complete body.
     all_links = extract_all_links(body, include_external=True)
     links: list[LinkRecord] = []
 
-    # Processar wikilinks
+    # Process wikilinks.
     for wl in all_links["wikilinks"]:
         links.append(
             {
@@ -204,7 +200,7 @@ def parse_note(
             }
         )
 
-    # Processar markdown links
+    # Process Markdown links.
     for ml in all_links["markdown_links"]:
         links.append(
             {
@@ -223,7 +219,7 @@ def parse_note(
             }
         )
 
-    # Processar embeds
+    # Process embeds.
     for embed in all_links["embeds"]:
         links.append(
             {
@@ -242,7 +238,7 @@ def parse_note(
             }
         )
 
-    # Processar URLs externas
+    # Process external URLs.
     for ext in all_links.get("external", []):
         links.append(
             {
@@ -250,9 +246,9 @@ def parse_note(
                 "from_note_title": title,
                 "link_type": "external",
                 "link_target": ext["url"],
-                "link_target_normalized": "",  # URLs não precisam normalização
+                "link_target_normalized": "",  # URLs do not require normalization
                 "to_note_path": "",
-                "is_resolved": True,  # URLs externas são sempre "resolvidas"
+                "is_resolved": True,  # External URLs are always considered resolved
                 "alias": "",
                 "heading": "",
                 "block_ref": "",
@@ -261,7 +257,7 @@ def parse_note(
             }
         )
 
-    # Processar chunks
+    # Process chunks.
     sections = split_by_headers(body)
     chunks: list[ChunkRecord] = []
 

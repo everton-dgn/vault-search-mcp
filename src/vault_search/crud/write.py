@@ -1,5 +1,5 @@
 """
-Operações de escrita para notas do vault.
+Write operations for vault notes.
 """
 
 import logging
@@ -32,17 +32,17 @@ from vault_search.frontmatter import (
     get_required_schema_fields,
 )
 from vault_search.parsers.frontmatter import parse_frontmatter
-from vault_search.server.event_handler import ignore_next_change
 from vault_search.utils.uuid import generate_uuid7
+from vault_search.watching.event_handler import ignore_next_change
 
 logger = logging.getLogger(__name__)
 
 
 def _write_conflict(relative_path: str) -> OperationResult:
-    """Retorna conflito seguro quando a revisão observada mudou."""
+    """Return a safe conflict when the observed revision changed."""
     return error_result(
         relative_path,
-        "Conflito de escrita: a nota foi alterada durante a operação. Tente novamente.",
+        "Write conflict: the note changed during the operation. Try again.",
         error_code="write_conflict",
     )
 
@@ -51,13 +51,13 @@ def _read_locked_text(
     file_path: Path,
     relative_path: str,
 ) -> tuple[str | None, OperationResult | None]:
-    """Lê uma revisão estável enquanto escritores cooperativos aguardam."""
+    """Read a stable revision while cooperative writers wait."""
     with advisory_path_lock(file_path):
         revision = file_revision(file_path)
         if revision is None:
             return None, error_result(
                 relative_path,
-                f"Nota não encontrada: {relative_path}",
+                f"Note not found: {relative_path}",
             )
         content, read_error = safe_read_text(file_path, relative_path)
         if read_error:
@@ -74,11 +74,11 @@ def _persist_generated_frontmatter(
     generated_fields: dict[str, Any],
     validate_schema: bool,
 ) -> OperationResult:
-    """Recarrega, mescla e persiste o enriquecimento sob o mesmo lock."""
+    """Reload, merge, and persist enrichment under one lock."""
     with advisory_path_lock(file_path):
         revision = file_revision(file_path)
         if revision is None:
-            return error_result(relative_path, f"Nota não encontrada: {relative_path}")
+            return error_result(relative_path, f"Note not found: {relative_path}")
 
         current_content, read_error = safe_read_text(file_path, relative_path)
         if read_error:
@@ -96,7 +96,7 @@ def _persist_generated_frontmatter(
         if not still_missing:
             result = success_result(
                 relative_path,
-                "Campos preenchidos manualmente durante processamento da IA",
+                "Fields were filled manually while enrichment was running",
             )
             result["frontmatter_enriched"] = False
             result["frontmatter_fields_filled"] = 0
@@ -110,7 +110,7 @@ def _persist_generated_frontmatter(
         if not new_values:
             return error_result(
                 relative_path,
-                "IA não retornou campos obrigatórios suficientes para enriquecimento",
+                "The enrichment provider did not return every required field",
                 error_code="required_missing",
             )
 
@@ -122,7 +122,7 @@ def _persist_generated_frontmatter(
             except ValueError as exc:
                 error_message = str(exc)
                 is_required_missing = (
-                    "obrigatório" in error_message.lower()
+                    "required" in error_message.lower()
                     or "required_missing" in error_message.lower()
                 )
                 if not (is_required_missing and new_values):
@@ -135,8 +135,8 @@ def _persist_generated_frontmatter(
                     {
                         "field": "_schema",
                         "message": (
-                            "Validação strict manteve campos obrigatórios faltantes; "
-                            "enriquecimento parcial foi salvo"
+                            "Strict validation still found required fields missing; "
+                            "the partial enrichment was saved"
                         ),
                         "code": "required_missing_partial",
                         "value": None,
@@ -160,7 +160,7 @@ def _persist_generated_frontmatter(
             return write_error
 
     ignore_next_change(relative_path)
-    result = success_result(relative_path, f"Frontmatter enriquecido: {relative_path}")
+    result = success_result(relative_path, f"Frontmatter enriched: {relative_path}")
     result["frontmatter_enriched"] = True
     result["frontmatter_fields_filled"] = len(new_values)
     if warnings:
@@ -171,7 +171,7 @@ def _persist_generated_frontmatter(
 
 
 def is_ai_enrichment_enabled() -> bool:
-    """Confirma schema, consentimento externo e transporte configurado."""
+    """Confirm schema, external consent, and configured transport."""
     frontmatter = get_config().frontmatter
     ai = frontmatter.ai
     return bool(
@@ -185,7 +185,7 @@ def is_ai_enrichment_enabled() -> bool:
 
 
 def _is_empty_value(value: Any) -> bool:
-    """Verifica se um valor de frontmatter é considerado vazio."""
+    """Return whether a frontmatter value is empty."""
     if value is None:
         return True
     if isinstance(value, str) and value.strip() == "":
@@ -196,22 +196,22 @@ def _is_empty_value(value: Any) -> bool:
 
 
 def _is_field_missing_or_empty(frontmatter: dict[str, Any], field_name: str) -> bool:
-    """Verifica se campo está ausente OU tem valor vazio."""
+    """Return whether a field is missing or empty."""
     if field_name not in frontmatter:
         return True
     return _is_empty_value(frontmatter[field_name])
 
 
 def _format_validation_errors(errors: list[dict[str, Any]]) -> str:
-    """Formata erros de validação em mensagem única."""
-    return "Validação de frontmatter falhou: " + "; ".join(
+    """Format validation errors as one message."""
+    return "Frontmatter validation failed: " + "; ".join(
         f"{error['field']}: {error['message']}" for error in errors
     )
 
 
 def _can_defer_required_missing(errors: list[dict[str, Any]]) -> bool:
     """
-    Retorna True se todos os erros forem `required_missing` e defer estiver habilitado.
+    Return true when every error is `required_missing` and deferral is enabled.
     """
     if not errors:
         return False
@@ -233,24 +233,23 @@ def create_note(
     validate_schema: bool = True,
 ) -> OperationResult:
     """
-    Cria uma nova nota markdown. Erro se já existir.
+    Create a Markdown note and fail if it already exists.
 
-    Apenas .md é suportado (Canvas é JSON, não markdown).
+    Only .md is supported because Canvas uses JSON.
 
-    Parâmetros:
-        relative_path: caminho relativo no vault (ex: 'pasta/nova-nota.md')
-        content: conteúdo da nota (corpo, sem frontmatter)
-        frontmatter: metadados YAML opcionais (ex: {"title": "Minha Nota", "tags": ["tag1"]})
-        validate_schema: se True, valida frontmatter contra schema configurado
+    Parameters:
+        relative_path: vault-relative path, such as 'folder/new-note.md'
+        content: note body without frontmatter
+        frontmatter: optional YAML metadata
+        validate_schema: validate against the configured schema when true
 
-    Retorna:
-        OperationResult indicando sucesso ou falha.
-        Inclui _validation_warnings e _validation_suggestions se houver.
+    Returns:
+        OperationResult with optional validation warnings and suggestions.
     """
-    # Garantir que frontmatter é um dict mutável
+    # Work with a mutable frontmatter dictionary.
     frontmatter = dict(frontmatter) if frontmatter else {}
 
-    # Validar schema (pode gerar campos automáticos como 'id')
+    # Validate the schema, which may generate fields such as id.
     validation_warnings = []
     validation_suggestions = []
 
@@ -265,7 +264,7 @@ def create_note(
                 validation_warnings.append(
                     {
                         "field": "_schema",
-                        "message": "Campos obrigatórios ausentes deferidos para enriquecimento no reindex",
+                        "message": "Missing required fields deferred to reindex enrichment",
                         "code": "required_missing_deferred",
                         "value": None,
                     }
@@ -276,15 +275,15 @@ def create_note(
                     _format_validation_errors(validation_result["errors"]),
                 )
 
-    # Gerar UUID v7 automaticamente se não fornecido (fallback se schema não habilitado)
+    # Generate UUIDv7 when the schema did not provide an id.
     if "id" not in frontmatter:
         frontmatter["id"] = generate_uuid7()
 
-    # Montar conteúdo final
+    # Assemble the final note.
     fm_str = serialize_frontmatter(frontmatter or {})
     full_content = fm_str + content
 
-    # Validar tamanho final (conteúdo + frontmatter serializado)
+    # Validate the serialized frontmatter and content together.
     validate_content_size(full_content)
 
     file_path = validate_for_write(relative_path, content, frontmatter)
@@ -293,7 +292,7 @@ def create_note(
         if file_revision(file_path) is not None:
             return error_result(
                 relative_path,
-                f"Nota já existe: {relative_path}. Use write_note para sobrescrever.",
+                f"Note already exists: {relative_path}. Use write_note to overwrite it.",
             )
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -307,9 +306,9 @@ def create_note(
             return write_error
 
     logger.info("create_note completed")
-    result = success_result(relative_path, f"Nota criada: {relative_path}")
+    result = success_result(relative_path, f"Note created: {relative_path}")
 
-    # Adicionar warnings e suggestions ao resultado
+    # Add warnings and suggestions to the result.
     if validation_warnings:
         result["_validation_warnings"] = validation_warnings
     if validation_suggestions:
@@ -321,18 +320,17 @@ def create_note(
 @return_write_lock_timeout
 def write_note(relative_path: str, content: str) -> OperationResult:
     """
-    Sobrescreve ou cria nota markdown com conteúdo completo.
+    Overwrite or create a Markdown note from complete content.
 
-    Apenas .md é suportado (Canvas é JSON, não markdown).
-    Use esta função quando você já tem o conteúdo completo
-    (incluindo frontmatter, se houver).
+    Use this when the caller already has the complete note, including any
+    frontmatter. Only .md is supported because Canvas uses JSON.
 
-    Parâmetros:
-        relative_path: caminho relativo no vault (ex: 'pasta/nota.md')
-        content: conteúdo completo da nota
+    Parameters:
+        relative_path: vault-relative path, such as 'folder/note.md'
+        content: complete note content
 
-    Retorna:
-        OperationResult indicando sucesso ou falha.
+    Returns:
+        OperationResult describing success or failure.
     """
     file_path = validate_for_write(relative_path, content)
     with advisory_path_lock(file_path):
@@ -350,9 +348,9 @@ def write_note(relative_path: str, content: str) -> OperationResult:
         ):
             return write_error
 
-    action = "atualizada" if existed else "criada"
+    action = "updated" if existed else "created"
     logger.info("write_note completed action=%s", action)
-    return success_result(relative_path, f"Nota {action}: {relative_path}")
+    return success_result(relative_path, f"Note {action}: {relative_path}")
 
 
 @return_write_lock_timeout
@@ -362,17 +360,17 @@ def append_note(
     separator: str = "\n\n",
 ) -> OperationResult:
     """
-    Adiciona conteúdo ao final de uma nota markdown existente.
+    Append content to an existing Markdown note.
 
-    Apenas .md é suportado (Canvas é JSON, não markdown).
+    Only .md is supported because Canvas uses JSON.
 
-    Parâmetros:
-        relative_path: caminho relativo no vault
-        content: conteúdo a adicionar
-        separator: separador entre conteúdo existente e novo (default: duas quebras de linha)
+    Parameters:
+        relative_path: path relative to the vault
+        content: content to append
+        separator: separator between existing and appended content
 
-    Retorna:
-        OperationResult indicando sucesso ou falha.
+    Returns:
+        OperationResult describing success or failure.
     """
     file_path = validate_for_write(relative_path, content)
     with advisory_path_lock(file_path):
@@ -381,7 +379,7 @@ def append_note(
         if revision is None:
             return error_result(
                 relative_path,
-                f"Nota não encontrada: {relative_path}. Use create_note ou write_note.",
+                f"Note not found: {relative_path}. Use create_note or write_note.",
             )
 
         existing, read_error = safe_read_text(file_path, relative_path)
@@ -391,13 +389,13 @@ def append_note(
         if file_revision(file_path) != revision:
             return _write_conflict(relative_path)
 
-        # Adicionar separador apenas se não termina com ele
+        # Add the separator only when it is not already present.
         if existing.endswith(separator):
             new_content = existing + content
         else:
             new_content = existing + separator + content
 
-        # Valida resultado final antes de escrever
+        # Validate the final result before writing.
         validate_content_size(new_content)
 
         if write_error := safe_write_text(
@@ -410,7 +408,7 @@ def append_note(
             return write_error
 
     logger.info("append_note completed")
-    return success_result(relative_path, f"Conteúdo adicionado: {relative_path}")
+    return success_result(relative_path, f"Content appended: {relative_path}")
 
 
 @return_write_lock_timeout
@@ -421,31 +419,30 @@ def update_frontmatter(
     validate_schema: bool = True,
 ) -> OperationResult:
     """
-    Atualiza frontmatter YAML de uma nota markdown existente.
+    Update YAML frontmatter on an existing Markdown note.
 
-    Apenas .md é suportado (Canvas é JSON, não markdown).
-    IMPORTANTE: Merge é shallow (1 nível). Arrays/objetos são substituídos, não mesclados.
+    Only .md is supported because Canvas uses JSON. Merge is shallow: arrays
+    and objects are replaced instead of recursively merged.
 
-    Parâmetros:
-        relative_path: caminho relativo no vault
-        metadata: novos metadados
-        merge: se True, mescla shallow com existente; se False, substitui completamente
-        validate_schema: se True, valida frontmatter resultante contra schema configurado
+    Parameters:
+        relative_path: path relative to the vault
+        metadata: new metadata
+        merge: shallow-merge when true, otherwise replace all frontmatter
+        validate_schema: validate resulting frontmatter against the schema when true
 
-    Retorna:
-        OperationResult indicando sucesso ou falha.
-        Inclui _validation_warnings e _validation_suggestions se houver.
+    Returns:
+        OperationResult with optional validation warnings and suggestions.
     """
-    # Validar tipo de metadata (deve ser dict)
+    # Require a metadata dictionary.
     if not isinstance(metadata, dict):
-        raise ValueError(f"metadata deve ser um dicionário, recebido: {type(metadata).__name__}")
+        raise ValueError(f"metadata must be a dictionary, got {type(metadata).__name__}")
 
     file_path = validate_for_write(relative_path, frontmatter=metadata)
     with advisory_path_lock(file_path):
         file_path = validate_for_write(relative_path, frontmatter=metadata)
         revision = file_revision(file_path)
         if revision is None:
-            return error_result(relative_path, f"Nota não encontrada: {relative_path}")
+            return error_result(relative_path, f"Note not found: {relative_path}")
 
         content, read_error = safe_read_text(file_path, relative_path)
         if read_error:
@@ -461,7 +458,7 @@ def update_frontmatter(
         else:
             new_fm = metadata
 
-        # Validar schema (pode aplicar coerções)
+        # Validate the schema and apply configured coercions.
         validation_warnings = []
         validation_suggestions = []
 
@@ -474,7 +471,7 @@ def update_frontmatter(
             except ValueError as e:
                 return error_result(relative_path, str(e))
 
-        # Valida tamanho final
+        # Validate the final size.
         validate_frontmatter_size(new_fm)
 
         fm_str = serialize_frontmatter(new_fm)
@@ -489,11 +486,11 @@ def update_frontmatter(
         ):
             return write_error
 
-    action = "mesclado" if merge else "substituído"
+    action = "merged" if merge else "replaced"
     logger.info("update_frontmatter completed action=%s", action)
     result = success_result(relative_path, f"Frontmatter {action}: {relative_path}")
 
-    # Adicionar warnings e suggestions ao resultado
+    # Add warnings and suggestions to the result.
     if validation_warnings:
         result["_validation_warnings"] = validation_warnings
     if validation_suggestions:
@@ -508,13 +505,13 @@ def enrich_note_frontmatter_required(
     validate_schema: bool = True,
 ) -> OperationResult:
     """
-    Enriquece campos obrigatórios ausentes do frontmatter via IA.
+    Enrich missing required frontmatter fields through the configured provider.
 
-    Esta função é usada no fluxo assíncrono do reindex_note (watcher),
-    e nunca sobrescreve campos já existentes.
+    The asynchronous reindex_note watcher flow uses this function. Existing
+    fields are never overwritten.
     """
     if not relative_path.lower().endswith(".md"):
-        return success_result(relative_path, "Skip enriquecimento: extensão não suportada")
+        return success_result(relative_path, "Enrichment skipped: unsupported extension")
 
     file_path = resolve_path(relative_path)
     content, read_error = _read_locked_text(file_path, relative_path)
@@ -524,17 +521,17 @@ def enrich_note_frontmatter_required(
 
     existing_fm, body = parse_frontmatter(content)
 
-    # Sem schema habilitado, não há conceito de required para enriquecer.
+    # A disabled schema has no required-field contract to enrich.
     validator = get_frontmatter_validator()
     if not validator.config.enabled:
-        result = success_result(relative_path, "Schema de frontmatter desabilitado")
+        result = success_result(relative_path, "Frontmatter schema is disabled")
         result["frontmatter_enriched"] = False
         result["frontmatter_fields_filled"] = 0
         return result
 
     required_schema_fields = get_required_schema_fields(validator.config.schema)
     if not required_schema_fields:
-        result = success_result(relative_path, "Sem campos obrigatórios no schema")
+        result = success_result(relative_path, "Schema has no required fields")
         result["frontmatter_enriched"] = False
         result["frontmatter_fields_filled"] = 0
         return result
@@ -545,7 +542,7 @@ def enrich_note_frontmatter_required(
         if _is_field_missing_or_empty(existing_fm, field_name)
     ]
     if not missing_required:
-        result = success_result(relative_path, "Frontmatter já contém campos obrigatórios")
+        result = success_result(relative_path, "Frontmatter already contains every required field")
         result["frontmatter_enriched"] = False
         result["frontmatter_fields_filled"] = 0
         return result
@@ -579,9 +576,9 @@ def ensure_note_id(
     relative_path: str,
     validate_schema: bool = True,
 ) -> OperationResult:
-    """Garante ID sob lock por path durante toda a operação read-modify-write."""
+    """Ensure an id while holding the path lock for the full read-modify-write."""
     if not relative_path.lower().endswith(".md"):
-        return error_result(relative_path, "Apenas .md é suportado")
+        return error_result(relative_path, "Only .md is supported")
     file_path = resolve_path(relative_path)
     with advisory_path_lock(file_path):
         return _ensure_note_id_locked(relative_path, validate_schema)
@@ -592,29 +589,28 @@ def _ensure_note_id_locked(
     validate_schema: bool = True,
 ) -> OperationResult:
     """
-    Garante que uma nota tenha um ID único no frontmatter.
+    Ensure a note has a unique frontmatter id.
 
-    Se a nota já tem 'id' no frontmatter, não faz nada.
-    Se não tem, gera UUID v7 e adiciona.
-    Opcionalmente valida o frontmatter completo contra o schema.
+    Existing ids are preserved. Otherwise, generate and add a UUIDv7. The
+    complete frontmatter can optionally be validated against the schema.
 
-    Parâmetros:
-        relative_path: caminho relativo no vault
-        validate_schema: se True, valida frontmatter contra schema configurado
+    Parameters:
+        relative_path: path relative to the vault
+        validate_schema: validate against the configured schema when true
 
-    Retorna:
-        OperationResult com 'id_added': True/False indicando se foi adicionado.
-        Inclui _validation_warnings e _validation_suggestions se houver.
+    Returns:
+        OperationResult with id_added indicating whether an id was added.
+        Includes validation warnings and suggestions when present.
     """
-    # Verificar extensão primeiro (antes de resolver path)
+    # Validate the extension before resolving the path.
     if not relative_path.lower().endswith(".md"):
-        return error_result(relative_path, "Apenas .md é suportado")
+        return error_result(relative_path, "Only .md is supported")
 
     file_path = resolve_path(relative_path)
 
     revision = file_revision(file_path)
     if revision is None:
-        return error_result(relative_path, f"Nota não encontrada: {relative_path}")
+        return error_result(relative_path, f"Note not found: {relative_path}")
 
     content, read_error = safe_read_text(file_path, relative_path)
     if read_error:
@@ -625,13 +621,13 @@ def _ensure_note_id_locked(
 
     existing_fm, body = parse_frontmatter(content)
 
-    # Já tem ID, não fazer nada (mas ainda pode validar schema)
+    # Preserve an existing id while optionally validating the schema.
     if "id" in existing_fm:
-        result = success_result(relative_path, f"Nota já tem ID: {relative_path}")
+        result = success_result(relative_path, f"Note already has an id: {relative_path}")
         result["id_added"] = False
         result["id"] = existing_fm["id"]
 
-        # Validar schema mesmo se já tem ID (para reportar warnings/suggestions)
+        # Validate existing frontmatter to report warnings and suggestions.
         if validate_schema:
             try:
                 _, _, warnings, suggestions = validate_frontmatter_schema(existing_fm)
@@ -640,18 +636,18 @@ def _ensure_note_id_locked(
                 if suggestions:
                     result["_validation_suggestions"] = suggestions
             except ValueError:
-                pass  # Ignora erros de validação em notas existentes com ID
+                pass  # Preserve existing notes even when schema validation fails.
 
         return result
 
-    # Validar schema e obter ID auto-gerado se configurado
+    # Validate the schema and obtain a generated id when configured.
     validation_warnings = []
     validation_suggestions = []
 
     if validate_schema:
         try:
             validated_data, errors, warnings, suggestions = validate_frontmatter_schema(existing_fm)
-            # Se o schema gerou um ID, usar esse
+            # Use an id generated by the schema when available.
             if "id" in validated_data and "id" not in existing_fm:
                 new_fm = {
                     "id": validated_data["id"],
@@ -661,7 +657,7 @@ def _ensure_note_id_locked(
                     {k: v for k, v in validated_data.items() if k != "id" and k not in existing_fm}
                 )
             else:
-                # Gerar ID manualmente
+                # Generate an id directly.
                 new_id = generate_uuid7()
                 new_fm = {"id": new_id, **existing_fm}
             validation_warnings = warnings
@@ -669,9 +665,9 @@ def _ensure_note_id_locked(
         except ValueError as e:
             return error_result(relative_path, str(e))
     else:
-        # Gerar e adicionar ID sem validação
+        # Generate and add an id without schema validation.
         new_id = generate_uuid7()
-        new_fm = {"id": new_id, **existing_fm}  # ID primeiro para ficar no topo
+        new_fm = {"id": new_id, **existing_fm}  # Keep id first in serialized YAML.
 
     fm_str = serialize_frontmatter(new_fm)
     new_content = fm_str + body
@@ -685,16 +681,15 @@ def _ensure_note_id_locked(
     ):
         return write_error
 
-    # Marcar para watcher ignorar esta mudança APÓS escrita bem-sucedida
-    # (evita reindexação desnecessária)
+    # Let the watcher ignore this successfully persisted internal change.
     ignore_next_change(relative_path)
 
     logger.info("ensure_note_id completed")
-    result = success_result(relative_path, f"ID adicionado: {relative_path}")
+    result = success_result(relative_path, f"ID added: {relative_path}")
     result["id_added"] = True
     result["id"] = new_fm["id"]
 
-    # Adicionar warnings e suggestions ao resultado
+    # Add warnings and suggestions to the result.
     if validation_warnings:
         result["_validation_warnings"] = validation_warnings
     if validation_suggestions:

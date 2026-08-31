@@ -1,5 +1,5 @@
 name: Feature request
-description: Proponha um contrato ou caso de uso verificável.
+description: Propose a verifiable contract or use case.
 title: "feat: "
 labels:
   - enhancement
@@ -7,25 +7,25 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: Problema
-      description: Qual tarefa não pode ser concluída hoje?
+      label: Problem
+      description: Which task cannot be completed today?
     validations:
       required: true
   - type: textarea
     id: contract
     attributes:
-      label: Contrato desejado
-      description: Entrada, saída e efeitos colaterais esperados.
+      label: Desired contract
+      description: Expected input, output, and side effects.
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternativas consideradas
+      label: Alternatives considered
   - type: textarea
     id: risks
     attributes:
-      label: Riscos
-      description: Privacidade, compatibilidade, dados, recursos e reversão.
+      label: Risks
+      description: Privacy, compatibility, data, resources, and reversibility.
     validations:
       required: true

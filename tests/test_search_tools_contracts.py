@@ -1,4 +1,4 @@
-"""Regressões dos contratos públicos de navegação e links."""
+"""Regressions of the contracts public of navigation and links."""
 
 from __future__ import annotations
 

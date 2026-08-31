@@ -1,12 +1,12 @@
 """
-Exceções de domínio para core do vault-search.
+Domain exceptions for the vault-search core.
 """
 
 
 class DaemonRequiredError(RuntimeError):
     """
-    Erro levantado quando o daemon é obrigatório e não está disponível.
+    Raised when the daemon is required but unavailable.
 
-    Usado para diferenciar erro de configuração (não retryable) de falhas
-    transientes de inferência (retryable).
+    Distinguishes a non-retryable configuration error from transient,
+    retryable inference failures.
     """
