@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import stat
 import subprocess
@@ -277,6 +278,14 @@ def check_repository_history(root: Path) -> list[Finding]:
     if not git_path.exists():
         return []
 
+    revision = "HEAD"
+    if (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+        and os.environ.get("GITHUB_REF", "").startswith("refs/pull/")
+    ):
+        revision = "HEAD^@"
+
     try:
         completed = subprocess.run(
             [
@@ -284,7 +293,7 @@ def check_repository_history(root: Path) -> list[Finding]:
                 "-C",
                 str(root),
                 "log",
-                "HEAD",
+                revision,
                 "--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x1e",
             ],
             check=True,

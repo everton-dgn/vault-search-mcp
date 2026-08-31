@@ -53,6 +53,8 @@ assumption.
 
 ### Fixed
 
+- Publication auditing excludes the ephemeral GitHub pull-request merge
+  identity while continuing to inspect both persistent parent histories.
 - Release tags are published only after independent builds, reproducibility
   checks, and artifact validation succeed. Attestations are bound to the exact
   commit approved by CI, and privileged publication checks out a fully qualified

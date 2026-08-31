@@ -1,4 +1,4 @@
-"""Regressions of the gate that protects a surface public of the repository."""
+"""Regression tests for the gate that protects the repository public surface."""
 
 from __future__ import annotations
 
@@ -97,6 +97,31 @@ def test_repository_history_accepts_generic_noreply_and_bot_identities(tmp_path:
     monkeypatch.setattr(publication.subprocess, "run", fake_run)
 
     assert publication.check_repository_history(tmp_path) == []
+
+
+def test_repository_history_uses_parent_histories_for_github_pr_merge(tmp_path: Path, monkeypatch):
+    """A GitHub PR audit excludes only the ephemeral test-merge identity."""
+    (tmp_path / ".git").mkdir()
+    output = _git_history_record(
+        "a" * 40,
+        "Vault Search MCP Maintainers",
+        "noreply@vault-search.invalid",
+        "Vault Search MCP Maintainers",
+        "noreply@vault-search.invalid",
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        commands.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout=output)
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_REF", "refs/pull/1/merge")
+    monkeypatch.setattr(publication.subprocess, "run", fake_run)
+
+    assert publication.check_repository_history(tmp_path) == []
+    assert commands[0][4] == "HEAD^@"
 
 
 def test_repository_history_rejects_personal_email_without_leaking_it(tmp_path: Path, monkeypatch):
