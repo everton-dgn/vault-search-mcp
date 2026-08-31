@@ -1,0 +1,53 @@
+# Python e ferramentas
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.venv/
+venv/
+.eggs/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Configuração local
+.env
+.env.*
+!.env.example
+/config.yaml
+/config.yml
+/config.local.yaml
+/config.local.yml
+
+# Dados do usuário e artefatos de índice
+data/
+vaults/*
+!vaults/.gitkeep
+*.lance/
+*.npy
+*.sqlite
+*.sqlite3
+
+# Logs e perfis
+*.log
+*.prof
+*.trace
+
+# Arquivos gerados pelos instaladores do daemon
+scripts/*.plist
+scripts/*.service
+
+# Editores e sistema operacional
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

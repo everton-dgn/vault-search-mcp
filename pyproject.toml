@@ -1,0 +1,136 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vault-search-mcp"
+version = "0.1.0"
+description = "Local MCP search layer for Markdown knowledge bases and Obsidian vaults"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["mcp", "obsidian", "semantic-search", "knowledge-management", "rag"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Text Processing :: Indexing",
+]
+dependencies = [
+    "fastmcp>=3.2.0,<4.0.0",
+    "pydantic>=2.0.0",
+    "lancedb>=0.29.2,<0.30.0",
+    "pyarrow>=23.0.1",
+    "sentence-transformers>=5.7.0,<6.0.0",
+    "torch>=2.9.0,<3.0.0",
+    "transformers>=5.5.0,<6.0.0",
+    "pyyaml>=6.0",
+    "pymupdf>=1.25.0",
+    "watchdog>=4.0.0",
+    "structlog>=25.5.0",
+    "orjson>=3.11.7",
+    "tenacity>=8.2.0",
+    "psutil>=5.9.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/everton-dgn/vault-search-mcp"
+Repository = "https://github.com/everton-dgn/vault-search-mcp.git"
+Documentation = "https://github.com/everton-dgn/vault-search-mcp/tree/main/docs"
+Issues = "https://github.com/everton-dgn/vault-search-mcp/issues"
+Changelog = "https://github.com/everton-dgn/vault-search-mcp/blob/main/CHANGELOG.md"
+
+[project.scripts]
+vault-search = "vault_search.cli:mcp_main"
+vault-search-daemon = "vault_search.cli:daemon_main"
+vault-search-config = "vault_search.cli:config_main"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.151.6",
+    "mypy>=1.19.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.0",
+    "types-psutil>=7.2.2.20260827",
+    "types-pyyaml>=6.0.12.20250915",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vault_search"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.editorconfig",
+    "/.github",
+    "/.python-version",
+    "/AGENTS.md",
+    "/CLAUDE.md",
+    "/vaults",
+    "/vaults/**",
+]
+
+[tool.pytest.ini_options]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "slow: testes que carregam modelos ou executam operações de longa duração",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["vault_search"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["B", "E4", "E7", "E9", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B017"]
+
+[tool.mypy]
+python_version = "3.14"
+check_untyped_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+pretty = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = [
+    "lancedb.*",
+    "pyarrow.*",
+    "pymupdf",
+    "sentence_transformers.*",
+    "watchdog.*",
+]
+ignore_missing_imports = true

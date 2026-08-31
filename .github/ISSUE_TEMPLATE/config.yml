@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Dúvidas e suporte
+    url: https://github.com/everton-dgn/vault-search-mcp/discussions/new?category=q-a
+    about: Peça ajuda sem transformar dúvidas de uso em bugs.
+  - name: Relato privado de vulnerabilidade
+    url: https://github.com/everton-dgn/vault-search-mcp/security/advisories/new
+    about: Envie detalhes sensíveis somente pelo canal privado.

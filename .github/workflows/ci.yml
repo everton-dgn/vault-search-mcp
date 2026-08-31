@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Audit public surface
+        run: python scripts/check_publication.py
+
+      - name: Check daemon scripts
+        run: bash -n scripts/*.sh && shellcheck scripts/*.sh
+
+      - name: Install locked environment
+        run: uv sync --locked
+
+      - name: Lint source, tests, and scripts
+        run: uv run ruff check src tests scripts
+
+      - name: Check formatting
+        run: uv run ruff format --check src tests scripts
+
+      - name: Check typed contracts
+        run: uv run mypy src/vault_search
+
+      - name: Run tests without models
+        env:
+          VAULT_SEARCH_ENV: test
+        run: >-
+          uv run pytest -m "not slow"
+          --cov=vault_search
+          --cov-report=term
+          --cov-fail-under=65
+
+      - name: Build wheel and source archive
+        run: uv build
+
+      - name: Inspect release artifacts
+        run: python scripts/check_publication.py --require-dist

@@ -1,0 +1,57 @@
+name: Bug report
+description: Relate uma falha reproduzível com dados sintéticos.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Não inclua notas reais, segredos, caminhos absolutos ou logs sem sanitização.
+        Vulnerabilidades seguem SECURITY.md por canal privado.
+  - type: input
+    id: version
+    attributes:
+      label: Versão ou commit
+      placeholder: 0.1.0 ou hash do commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Ambiente
+      description: Sistema operacional, Python, device e daemon ativo ou não.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reprodução mínima
+      description: Use fixture e query sintéticas.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Resultado observado
+      description: Remova conteúdo privado e paths da máquina.
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Validações executadas
+      description: Comandos e resultados materiais.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacidade
+      options:
+        - label: Confirmei que o relato não contém dados privados ou credenciais.
+          required: true
