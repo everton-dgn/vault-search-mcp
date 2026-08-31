@@ -49,7 +49,18 @@ SENSITIVE_NAMES = {
     "secrets.json",
 }
 SENSITIVE_SUFFIXES = {".crt", ".key", ".p12", ".pem", ".pfx"}
-ALLOWED_EMAIL_DOMAINS = {"example.com", "example.net", "example.org", "test.com"}
+ALLOWED_EMAIL_DOMAINS = {
+    "example.com",
+    "example.net",
+    "example.org",
+    "github.com",
+    "test.com",
+    "users.noreply.github.com",
+    "vault-search.invalid",
+}
+GENERIC_GIT_IDENTITIES = {
+    ("vault search mcp maintainers", "noreply@vault-search.invalid"),
+}
 SYNTHETIC_FIXTURE_MARKER = "publication-check: synthetic-fixture"
 ALLOWED_TRACKED_LOCAL_PATHS = {
     Path(".github/ISSUE_TEMPLATE/config.yml"),
@@ -249,6 +260,92 @@ def check_repository_inventory(root: Path) -> list[Finding]:
         if raw
     ]
     return check_repository_paths(root, tracked_paths)
+
+
+def _is_allowed_git_identity(name: str, email: str) -> bool:
+    """Aceita identidades genéricas e endereços no-reply, nunca e-mail pessoal."""
+    normalized = (name.strip().casefold(), email.strip().casefold())
+    normalized_email = normalized[1]
+    return (
+        normalized in GENERIC_GIT_IDENTITIES
+        or normalized_email == "noreply@github.com"
+        or normalized_email.endswith("@users.noreply.github.com")
+    )
+
+
+def check_repository_history(root: Path) -> list[Finding]:
+    """Rejeita e-mails pessoais nos autores e committers dos refs Git locais."""
+    git_path = root / ".git"
+    if not git_path.exists():
+        return []
+
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "log",
+                "--all",
+                "--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x1e",
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        return [
+            Finding(
+                "GIT_HISTORY",
+                git_path,
+                None,
+                f"não foi possível inspecionar o histórico ({type(error).__name__})",
+            )
+        ]
+
+    findings: list[Finding] = []
+    for raw_record in completed.stdout.split(b"\x1e"):
+        fields = raw_record.strip(b"\r\n").split(b"\0")
+        if fields == [b""]:
+            continue
+        if len(fields) != 5:
+            findings.append(
+                Finding(
+                    "GIT_HISTORY",
+                    git_path,
+                    None,
+                    "registro de identidade Git inválido",
+                )
+            )
+            continue
+
+        raw_commit, raw_author_name, raw_author_email, raw_committer_name, raw_committer_email = (
+            fields
+        )
+        commit = raw_commit.decode("ascii", errors="replace")[:12]
+        identities = (
+            (
+                "autor",
+                raw_author_name.decode("utf-8", errors="replace"),
+                raw_author_email.decode("utf-8", errors="replace"),
+            ),
+            (
+                "committer",
+                raw_committer_name.decode("utf-8", errors="replace"),
+                raw_committer_email.decode("utf-8", errors="replace"),
+            ),
+        )
+        for role, name, email in identities:
+            if not _is_allowed_git_identity(name, email):
+                findings.append(
+                    Finding(
+                        "GIT_HISTORY_IDENTITY",
+                        git_path,
+                        None,
+                        f"commit {commit}: {role} usa e-mail público não permitido",
+                    )
+                )
+
+    return findings
 
 
 def _archive_member_is_public(name: str) -> bool:
@@ -808,6 +905,7 @@ def main() -> int:
     findings.extend(scan_content(public_files))
     findings.extend(check_markdown_links(root, public_files))
     findings.extend(check_repository_inventory(root))
+    findings.extend(check_repository_history(root))
     findings.extend(check_mcp_contract(root))
     findings.extend(check_public_contracts(root))
     findings.extend(check_distribution_archives(root, require_dist=args.require_dist))

@@ -40,6 +40,9 @@ fix(indexer): preserve the active index during rebuild
 docs(config): document environment precedence
 ```
 
+Configure o Git com um nome público escolhido e um endereço no-reply. O gate de
+publicação rejeita e-mails pessoais nos metadados de autor e committer.
+
 Evite misturar refatoração ampla com uma correção funcional. Não inclua
 artefatos gerados, conteúdo de vault ou configuração local.
 

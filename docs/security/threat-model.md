@@ -97,8 +97,10 @@ passam pelos mesmos gates.
 - Índices, bancos SQLite, embeddings gerados e logs.
 - Caminhos de usuário ou nomes de máquina em exemplos.
 
-O script `scripts/check_publication.py` é uma barreira adicional. Ele não
-substitui revisão humana nem análise de histórico Git.
+O script `scripts/check_publication.py` é uma barreira adicional. Ele verifica
+os refs Git disponíveis localmente e rejeita e-mails pessoais nos metadados dos
+commits, mas não enxerga refs que o clone não recebeu nem substitui revisão
+humana.
 
 ## Fora do escopo atual
 

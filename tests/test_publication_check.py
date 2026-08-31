@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import subprocess
 import sys
 import tarfile
 import zipfile
@@ -49,6 +50,80 @@ def test_repository_inventory_rejects_tracked_local_payloads(tmp_path: Path):
         "TRACKED_LOCAL_CONFIG",
         "TRACKED_LOCAL_DATA",
     }
+
+
+def _git_history_record(
+    commit: str,
+    author_name: str,
+    author_email: str,
+    committer_name: str,
+    committer_email: str,
+) -> bytes:
+    fields = (commit, author_name, author_email, committer_name, committer_email)
+    return b"\0".join(field.encode() for field in fields) + b"\x1e\n"
+
+
+def test_repository_history_accepts_generic_noreply_and_bot_identities(tmp_path: Path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    output = b"".join(
+        (
+            _git_history_record(
+                "a" * 40,
+                "Vault Search MCP Maintainers",
+                "noreply@vault-search.invalid",
+                "Vault Search MCP Maintainers",
+                "noreply@vault-search.invalid",
+            ),
+            _git_history_record(
+                "b" * 40,
+                "Contributor Alias",
+                "123+contributor@users.noreply.github.com",
+                "GitHub",
+                "noreply@github.com",
+            ),
+            _git_history_record(
+                "c" * 40,
+                "dependabot[bot]",
+                "49699333+dependabot[bot]@users.noreply.github.com",
+                "GitHub",
+                "noreply@github.com",
+            ),
+        )
+    )
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 0, stdout=output)
+
+    monkeypatch.setattr(publication.subprocess, "run", fake_run)
+
+    assert publication.check_repository_history(tmp_path) == []
+
+
+def test_repository_history_rejects_personal_email_without_leaking_it(tmp_path: Path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    private_email = "person@private.invalid"  # publication-check: synthetic-fixture
+    output = _git_history_record(
+        "d" * 40,
+        "Private Person",
+        private_email,
+        "Private Person",
+        private_email,
+    )
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 0, stdout=output)
+
+    monkeypatch.setattr(publication.subprocess, "run", fake_run)
+
+    findings = publication.check_repository_history(tmp_path)
+    rendered = "\n".join(finding.detail for finding in findings)
+
+    assert [finding.code for finding in findings] == [
+        "GIT_HISTORY_IDENTITY",
+        "GIT_HISTORY_IDENTITY",
+    ]
+    assert private_email not in rendered
+    assert "Private Person" not in rendered
 
 
 def test_distribution_check_requires_built_artifacts_when_requested(tmp_path: Path):
