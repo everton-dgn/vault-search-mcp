@@ -11,7 +11,7 @@
 
 - [ ] `scripts/check_publication.py` termina com sucesso.
 - [ ] Diff não contém vault, índice, log, configuração local ou caminho pessoal.
-- [ ] Histórico Git disponível não expõe e-mail pessoal de autor ou committer.
+- [ ] Histórico alcançável por `HEAD` não expõe e-mail pessoal de autor ou committer.
 - [ ] Dependências e actions foram revisadas.
 - [ ] Modelo de ameaças cobre novas fronteiras.
 - [ ] Relatos privados resolvidos foram coordenados antes da divulgação.

@@ -286,7 +286,7 @@ def check_repository_history(root: Path) -> list[Finding]:
                 "-C",
                 str(root),
                 "log",
-                "--all",
+                "HEAD",
                 "--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x1e",
             ],
             check=True,

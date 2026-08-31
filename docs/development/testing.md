@@ -33,10 +33,11 @@ linha que contém um padrão sintético deliberado. O marcador nunca deve acompa
 um token, caminho ou endereço real.
 
 Quando existe um repositório Git, o gate também inspeciona a árvore rastreada e
-os refs disponíveis. Ele rejeita config local, dados de vault, artefatos gerados
-e e-mails pessoais nos metadados dos commits. Identidades genéricas do projeto,
-bots e endereços no-reply do GitHub são aceitos. Com `--require-dist`, o gate
-exige wheel e sdist e valida seus membros sem extrair os arquivos.
+o histórico alcançável por `HEAD`. Ele rejeita config local, dados de vault,
+artefatos gerados e e-mails pessoais nos metadados dos commits. Identidades
+genéricas do projeto, bots e endereços no-reply do GitHub são aceitos. Com
+`--require-dist`, o gate exige wheel e sdist e valida seus membros sem extrair
+os arquivos.
 
 ```bash
 uv run pytest -m "not slow" --cov=vault_search --cov-report=term --cov-fail-under=65
