@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.util
 import io
-import subprocess
 import sys
 import tarfile
 import zipfile
