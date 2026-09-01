@@ -257,8 +257,7 @@ def check_repository_inventory(root: Path) -> list[Finding]:
     return check_repository_paths(root, tracked_paths)
 
 
-def _is_allowed_git_identity(name: str, email: str) -> bool:
-    """Allow generic identities and no-reply adddef check_repository_history(_root: Path) -> list[Finding]:
+def check_repository_history(_root: Path) -> list[Finding]:
     """Exclude standard Git author metadata from the publication payload audit."""
     return []
 
