@@ -1,37 +1,37 @@
 """
-Testes para ferramentas de análise de grafo.
+Tests for graph-analysis tools.
 
-Testa graph_data, suggest_links, find_link_clusters, find_bridge_notes.
+Test graph_data, suggest_links, find_link_clusters, find_bridge_notes.
 """
 
 from unittest.mock import MagicMock, patch
 
 
 class TestGraphData:
-    """Testes para graph_data()."""
+    """Tests for graph_data()."""
 
     def test_returns_nodes_and_edges(self):
-        """Deve retornar estrutura com nodes e edges."""
+        """Must return structure with nodes and edges."""
         from vault_search.server.graph_tools import register_graph_tools
 
         mcp = MagicMock()
         indexer = MagicMock()
         searcher = MagicMock()
 
-        # Simular tabela de links
+        # Simulate table of links
         mock_table = MagicMock()
         mock_query = MagicMock()
         mock_query.to_list.return_value = [
             {
-                "from_note_path": "nota-a.md",
-                "from_note_title": "Nota A",
-                "to_note_path": "nota-b.md",
+                "from_note_path": "note-a.md",
+                "from_note_title": "Note A",
+                "to_note_path": "note-b.md",
                 "is_resolved": True,
             },
             {
-                "from_note_path": "nota-b.md",
-                "from_note_title": "Nota B",
-                "to_note_path": "nota-a.md",
+                "from_note_path": "note-b.md",
+                "from_note_title": "Note B",
+                "to_note_path": "note-a.md",
                 "is_resolved": True,
             },
         ]
@@ -40,7 +40,7 @@ class TestGraphData:
         )
         indexer._ensure_links_table.return_value = mock_table
 
-        # Capturar a função registrada
+        # Capture a function registered
         registered_tools = {}
 
         def capture_tool():
@@ -66,14 +66,14 @@ class TestGraphData:
         assert len(result["edges"]) == 2
 
     def test_includes_orphans_when_requested(self):
-        """Deve incluir notas órfãs quando solicitado."""
+        """Must include notes orphaned when requested."""
         from vault_search.server.graph_tools import register_graph_tools
 
         mcp = MagicMock()
         indexer = MagicMock()
         searcher = MagicMock()
 
-        # Simular tabela de links vazia
+        # Simulate table of links empty
         mock_table = MagicMock()
         mock_query = MagicMock()
         mock_query.to_list.return_value = []
@@ -94,9 +94,9 @@ class TestGraphData:
         mcp.tool = capture_tool
 
         with patch("vault_search.server.graph_tools.get_catalog") as mock_catalog:
-            # Simular nota órfã
+            # Simulate note orphaned
             mock_catalog.return_value.list_notes.return_value = (
-                [{"path": "orfa.md", "title": "Nota Órfã"}],
+                [{"path": "orphan.md", "title": "Orphaned Note"}],
                 1,
             )
             register_graph_tools(mcp, indexer, searcher)
@@ -109,23 +109,23 @@ class TestGraphData:
 
 
 class TestSuggestLinks:
-    """Testes para suggest_links()."""
+    """Tests for suggest_links()."""
 
     def test_suggests_similar_unlinked(self):
-        """Deve sugerir notas similares não linkadas."""
+        """The tool must suggest similar unlinked notes."""
         from vault_search.server.graph_tools import register_graph_tools
 
         mcp = MagicMock()
         indexer = MagicMock()
         searcher = MagicMock()
 
-        # Simular notas similares
+        # Simulate similar notes.
         searcher.find_similar.return_value = [
             {"note_path": "similar-1.md", "note_title": "Similar 1", "similarity_score": 0.85},
             {"note_path": "similar-2.md", "note_title": "Similar 2", "similarity_score": 0.75},
         ]
 
-        # Simular tabela de links (sem links)
+        # Simulate table of links (without links)
         mock_table = MagicMock()
         mock_query = MagicMock()
         mock_query.to_list.return_value = []
@@ -147,21 +147,21 @@ class TestSuggestLinks:
         register_graph_tools(mcp, indexer, searcher)
 
         suggest_links = registered_tools["suggest_links"]
-        result = suggest_links("nota.md")
+        result = suggest_links("note.md")
 
         assert len(result) == 2
         assert result[0]["path"] == "similar-1.md"
         assert result[0]["similarity"] == 0.85
 
     def test_excludes_already_linked(self):
-        """Deve excluir notas já linkadas."""
+        """The tool must exclude notes that are already linked."""
         from vault_search.server.graph_tools import register_graph_tools
 
         mcp = MagicMock()
         indexer = MagicMock()
         searcher = MagicMock()
 
-        # Simular notas similares
+        # Simulate similar notes.
         searcher.find_similar.return_value = [
             {
                 "note_path": "already-linked.md",
@@ -171,7 +171,7 @@ class TestSuggestLinks:
             {"note_path": "not-linked.md", "note_title": "Not Linked", "similarity_score": 0.8},
         ]
 
-        # Simular tabela de links (já linka para already-linked.md)
+        # Simulate a link table that already links to already-linked.md.
         mock_table = MagicMock()
         mock_query = MagicMock()
         mock_query.to_list.return_value = [
@@ -195,14 +195,14 @@ class TestSuggestLinks:
         register_graph_tools(mcp, indexer, searcher)
 
         suggest_links = registered_tools["suggest_links"]
-        result = suggest_links("nota.md")
+        result = suggest_links("note.md")
 
-        # Só deve sugerir not-linked.md
+        # Only not-linked.md should be suggested.
         assert len(result) == 1
         assert result[0]["path"] == "not-linked.md"
 
     def test_respects_min_similarity(self):
-        """Deve respeitar similaridade mínima."""
+        """The tool must respect the minimum similarity."""
         from vault_search.server.graph_tools import register_graph_tools
 
         mcp = MagicMock()
@@ -235,25 +235,25 @@ class TestSuggestLinks:
         register_graph_tools(mcp, indexer, searcher)
 
         suggest_links = registered_tools["suggest_links"]
-        result = suggest_links("nota.md", min_similarity=0.7)
+        result = suggest_links("note.md", min_similarity=0.7)
 
-        # Só deve sugerir high.md (score 0.9 >= 0.7)
+        # Only high.md should be suggested because its score is 0.9 >= 0.7.
         assert len(result) == 1
         assert result[0]["path"] == "high.md"
 
 
 class TestFindLinkClusters:
-    """Testes para find_link_clusters()."""
+    """Tests for find_link_clusters()."""
 
     def test_finds_clusters(self):
-        """Deve encontrar clusters de notas conectadas."""
+        """The tool must find clusters of connected notes."""
         from vault_search.server.graph_tools import register_graph_tools
 
         mcp = MagicMock()
         indexer = MagicMock()
         searcher = MagicMock()
 
-        # Criar grafo com 2 clusters: {a,b,c} e {d,e}
+        # Create a graph with two clusters: {a,b,c} and {d,e}.
         mock_table = MagicMock()
         mock_query = MagicMock()
         mock_query.to_list.return_value = [
@@ -280,11 +280,11 @@ class TestFindLinkClusters:
             {
                 "from_note_path": "d.md",
                 "from_note_title": "D",
-                "to_note_path": "e.md",
+                "to_note_path": "and.md",
                 "is_resolved": True,
             },
             {
-                "from_note_path": "e.md",
+                "from_note_path": "and.md",
                 "from_note_title": "E",
                 "to_note_path": "d.md",
                 "is_resolved": True,
@@ -318,14 +318,14 @@ class TestFindLinkClusters:
         assert result["clusters"][0]["density"] == 1.0
 
     def test_respects_min_size(self):
-        """Deve respeitar tamanho mínimo de cluster."""
+        """The tool must respect the minimum cluster size."""
         from vault_search.server.graph_tools import register_graph_tools
 
         mcp = MagicMock()
         indexer = MagicMock()
         searcher = MagicMock()
 
-        # Criar grafo com cluster de 2 notas
+        # Create a graph with a two-note cluster.
         mock_table = MagicMock()
         mock_query = MagicMock()
         mock_query.to_list.return_value = [
@@ -358,31 +358,31 @@ class TestFindLinkClusters:
 
             find_link_clusters = registered_tools["find_link_clusters"]
 
-            # Com min_size=2, deve encontrar o cluster
+            # With min_size=2, must find the cluster
             result = find_link_clusters(min_cluster_size=2)
             assert result["total_clusters"] == 1
 
-            # Com min_size=5, não deve encontrar
+            # With min_size=5, must not find
             result = find_link_clusters(min_cluster_size=5)
             assert result["total_clusters"] == 0
 
 
 class TestFindBridgeNotes:
-    """Testes para find_bridge_notes()."""
+    """Tests for find_bridge_notes()."""
 
     def test_finds_bridges(self):
-        """Deve encontrar notas ponte entre clusters."""
+        """Find bridge notes between clusters."""
         from vault_search.server.graph_tools import register_graph_tools
 
         mcp = MagicMock()
         indexer = MagicMock()
         searcher = MagicMock()
 
-        # Criar grafo onde 'bridge.md' conecta dois grupos
+        # Create a graph where bridge.md connects two groups.
         mock_table = MagicMock()
         mock_query = MagicMock()
         mock_query.to_list.return_value = [
-            # Grupo A conectado à bridge
+            # Group A connected to the bridge.
             {
                 "from_note_path": "a1.md",
                 "from_note_title": "A1",
@@ -395,7 +395,7 @@ class TestFindBridgeNotes:
                 "to_note_path": "bridge.md",
                 "is_resolved": True,
             },
-            # Grupo B conectado à bridge
+            # Group B connected to the bridge.
             {
                 "from_note_path": "bridge.md",
                 "from_note_title": "Bridge",
@@ -432,22 +432,22 @@ class TestFindBridgeNotes:
             find_bridge_notes = registered_tools["find_bridge_notes"]
             result = find_bridge_notes()
 
-        # Bridge deve ter maior score
+        # Bridge must have larger score
         assert result["total_bridge_notes"] > 0
-        # bridge.md deve estar no topo
+        # bridge.md must be in the top
         bridge_note = next((n for n in result["notes"] if "bridge" in n["path"].lower()), None)
         assert bridge_note is not None
         assert bridge_note["bridge_score"] > 0
 
-    def test_no_bridges_in_fully_connected(self):
-        """Não deve encontrar bridges em grafo totalmente conectado."""
+    def test_in_bridges_in_fully_connected(self):
+        """Find no bridges in a fully connected graph."""
         from vault_search.server.graph_tools import register_graph_tools
 
         mcp = MagicMock()
         indexer = MagicMock()
         searcher = MagicMock()
 
-        # Criar grafo totalmente conectado (clique)
+        # Create a fully connected graph, or clique.
         mock_table = MagicMock()
         mock_query = MagicMock()
         mock_query.to_list.return_value = [
@@ -511,5 +511,5 @@ class TestFindBridgeNotes:
         find_bridge_notes = registered_tools["find_bridge_notes"]
         result = find_bridge_notes()
 
-        # Em clique, todos os vizinhos estão conectados, então bridge_score = 0
+        # In a clique, every neighbor is connected, so bridge_score is 0.
         assert result["total_bridge_notes"] == 0

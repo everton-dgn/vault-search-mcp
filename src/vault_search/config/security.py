@@ -1,7 +1,7 @@
 """
-Configuração de limites técnicos para operação local.
+Technical limits for local operation.
 
-Mantém constantes de compatibilidade e limites de robustez do runtime.
+Keeps compatibility constants and runtime safety limits.
 """
 
 from enum import StrEnum
@@ -12,21 +12,21 @@ _config = get_config().security
 
 
 class RiskLevel(StrEnum):
-    """Compatibilidade legada."""
+    """Legacy compatibility alias."""
 
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
 
 
-# Limites de input (mantidos por robustez técnica)
+# Input limits retained for runtime safety
 MAX_QUERY_LENGTH = _config.max_query_length
 MAX_CONTENT_SIZE = _config.max_content_size
 MAX_PATH_LENGTH = _config.max_path_length
 MAX_FRONTMATTER_KEYS = _config.max_frontmatter_keys
 
-# Utilitário matemático
+# Mathematical helper
 NORM_EPSILON = 1e-9
 
-# Mensagem mantida por compatibilidade
-INDEX_NOT_FOUND_ERROR = "Índice não encontrado. Execute 'reindex_vault()' primeiro."
+# Message retained for compatibility
+INDEX_NOT_FOUND_ERROR = "Index not found. Run 'reindex_vault()' first."

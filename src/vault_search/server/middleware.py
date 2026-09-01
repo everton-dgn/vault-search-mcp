@@ -1,4 +1,4 @@
-"""Middlewares MCP que preservam privacidade em erros e telemetria."""
+"""MCP middleware that preserves privacy in errors and telemetry."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from vault_search.utils.privacy import redact_text
 
 
 class SafeErrorMiddleware(Middleware):
-    """Converte toda exceção em código e mensagem estáveis."""
+    """Convert every exception to a stable code and message."""
 
     def __init__(self, logger: logging.Logger | None = None):
         self.logger = logger or logging.getLogger("vault_search.mcp.errors")
@@ -66,7 +66,7 @@ class SafeErrorMiddleware(Middleware):
 
 
 class SafeTimingMiddleware(Middleware):
-    """Mede requests sem interpolar exceções ou parâmetros."""
+    """Measure requests without interpolating exceptions or parameters."""
 
     def __init__(self, logger: logging.Logger | None = None):
         self.logger = logger or logging.getLogger("vault_search.mcp.timing")

@@ -1,6 +1,6 @@
-# Diagramas de recursos e operação
+# Feature and operation diagrams
 
-## Cache em camadas
+## Layered caches
 
 ```mermaid
 flowchart TB
@@ -24,8 +24,8 @@ flowchart TB
     L2Store --> L3{SQLite Catalog}
     L2Hit --> L3
 
-    L3 -->|available| SQL[Consulta SQLite indexada]
-    L3 -->|unavailable| Scan[Varredura do vault]
+    L3 -->|available| SQL[Indexed SQLite query]
+    L3 -->|unavailable| Scan[Scan the vault]
 
     SQL --> Response([Response])
     Scan --> Response
@@ -33,25 +33,25 @@ flowchart TB
 
 ---
 
-## Escopo de confiança dos dados
+## Data trust boundary
 
 ```mermaid
 flowchart TB
-    User[Usuário administra o vault] --> Source[Arquivos do vault]
+    User[Operator manages the vault] --> Source[Vault files]
     Source --> Parse[Parser + Chunking]
-    Parse --> Index[Indexação]
-    Index --> Search[Busca]
-    Search --> Output[Resultado fiel ao texto]
+    Parse --> Index[Indexing]
+    Index --> Search[Search]
+    Search --> Output[Text-faithful result]
 
-    Note1[Sem análise de risco em runtime]
-    Note2[Sem rate limiting por tool]
+    Note1[No runtime instruction-risk analysis]
+    Note2[No per-tool rate limiting]
     Search -.-> Note1
     Search -.-> Note2
 ```
 
 ---
 
-## File watcher com debounce
+## Debounced filesystem watcher
 
 ```mermaid
 sequenceDiagram
@@ -82,7 +82,7 @@ sequenceDiagram
 
 ---
 
-## Reconciliação do catálogo
+## Catalog reconciliation
 
 ```mermaid
 flowchart TB
@@ -106,7 +106,7 @@ flowchart TB
 
 ---
 
-## Pipeline de parsing
+## Parsing pipeline
 
 ```mermaid
 flowchart TB
@@ -147,7 +147,7 @@ flowchart TB
 
 ---
 
-## Chunking recursivo
+## Recursive chunking
 
 ```mermaid
 flowchart TB
@@ -179,7 +179,7 @@ flowchart TB
 
 ---
 
-## Inicialização do servidor com prewarm
+## Server startup with prewarming
 
 ```mermaid
 sequenceDiagram
@@ -190,7 +190,7 @@ sequenceDiagram
     participant S as Searcher
     participant L as LanceDB
 
-    M->>M: Criar instâncias (indexer, searcher, watcher)
+    M->>M: Create indexer, searcher, and watcher
 
     par Background Threads
         M->>C: Thread: _init_catalog()
@@ -207,7 +207,7 @@ sequenceDiagram
             S->>S: check_memory()
             alt RAM OK
                 S->>L: prewarm_index(name)
-                Note over L: Index loaded to RAM
+        Note over L: Index loaded into RAM
             else RAM insufficient
                 Note over S: Skip prewarm
             end
@@ -223,7 +223,7 @@ sequenceDiagram
 
 ---
 
-## Decisão de prewarm
+## Prewarm decision
 
 ```mermaid
 flowchart TB
@@ -262,26 +262,26 @@ flowchart TB
 
 ---
 
-## Links indexados
+## Indexed links
 
 ```mermaid
 flowchart TB
-    subgraph Indexing["Indexação de Links"]
-        Parse[parse_note] --> Extract[Extrair links]
+    subgraph Indexing["Link indexing"]
+        Parse[parse_note] --> Extract[Extract links]
         Extract --> Wiki[Wikilinks]
         Extract --> MD[Markdown links]
         Extract --> Embed[Embeds]
         Extract --> Ext[External URLs]
 
-        Wiki --> Normalize[Normalizar targets]
+        Wiki --> Normalize[Normalize targets]
         MD --> Normalize
         Embed --> Normalize
 
-        Normalize --> Resolve[Resolver para note_path]
+        Normalize --> Resolve[Resolve to note_path]
         Resolve --> Store[(links_index)]
     end
 
-    subgraph Tables["Tabelas LanceDB"]
+    subgraph Tables["LanceDB tables"]
         Store --> LinksTable[(links_index)]
         Aliases[(note_aliases)]
         LinksTable -.-> Resolve
@@ -291,7 +291,7 @@ flowchart TB
 
 ---
 
-## Fluxo de get_backlinks
+## `get_backlinks` flow
 
 ```mermaid
 sequenceDiagram
@@ -300,24 +300,24 @@ sequenceDiagram
     participant L as links_index
     participant R as Result
 
-    C->>T: get_backlinks("nota.md")
-    T->>T: normalize_link_target("nota.md")
-    T->>L: WHERE to_note_path = 'nota.md'
+    C->>T: get_backlinks("note.md")
+    T->>T: normalize_link_target("note.md")
+    T->>L: WHERE to_note_path = 'note.md'
     L-->>T: List[LinkRecord]
-    T->>T: Filtrar self-references
-    T->>T: Incluir context se solicitado
+    T->>T: Filter self-references
+    T->>T: Include context when requested
     T-->>C: List[BacklinkResult]
 
-    Note over T,L: Consulta usa índice de links
+    Note over T,L: Query uses the link index
 ```
 
 ---
 
-## Análise de grafo
+## Graph analysis
 
 ```mermaid
 flowchart TB
-    subgraph Tools["Ferramentas de Grafo"]
+    subgraph Tools["Graph tools"]
         GD[graph_data]
         SL[suggest_links]
         FC[find_link_clusters]
@@ -325,55 +325,55 @@ flowchart TB
     end
 
     subgraph GraphData["graph_data()"]
-        GD --> Nodes[Construir nodes]
-        GD --> Edges[Construir edges]
-        Nodes --> Stats[Calcular stats]
+        GD --> Nodes[Build nodes]
+        GD --> Edges[Build edges]
+        Nodes --> Stats[Calculate statistics]
         Edges --> Stats
-        Stats --> JSON[Retornar JSON D3.js]
+        Stats --> JSON[Return D3.js-compatible JSON]
     end
 
     subgraph Clusters["find_link_clusters()"]
-        FC --> Adjacency[Construir adjacência]
-        Adjacency --> BFS[BFS componentes conexos]
-        BFS --> Density[Calcular densidade]
-        Density --> Rank[Ordenar por tamanho]
+        FC --> Adjacency[Build adjacency]
+        Adjacency --> BFS[BFS connected components]
+        BFS --> Density[Calculate density]
+        Density --> Rank[Sort by size]
     end
 
     subgraph Bridges["find_bridge_notes()"]
-        FB --> Undirected[Grafo simples não direcionado]
-        Undirected --> Tarjan[Tarjan iterativo O(V + E)]
-        Tarjan --> Points[Pontos de articulação]
-        Points --> TopK[Ordenar por separated_branches]
+        FB --> Undirected[Undirected simple graph]
+        Undirected --> Tarjan[Iterative Tarjan O(V + E)]
+        Tarjan --> Points[Articulation points]
+        Points --> TopK[Sort by separated_branches]
     end
 ```
 
 ---
 
-## Resolução de links
+## Link resolution
 
 ```mermaid
 flowchart TB
-    Link([Link Target]) --> Norm[Normalizar]
+    Link([Link target]) --> Norm[Normalize]
 
-    Norm --> Match1{Match exato?}
-    Match1 -->|sim| Found1[note_path encontrado]
+    Norm --> Match1{Exact match?}
+    Match1 -->|yes| Found1[note_path found]
 
-    Match1 -->|não| Match2{Match por stem?}
-    Match2 -->|sim| Found2[note_path encontrado]
+    Match1 -->|no| Match2{Stem match?}
+    Match2 -->|yes| Found2[note_path found]
 
-    Match2 -->|não| Match3{Match por alias?}
-    Match3 -->|sim| Found3[note_path via alias]
+    Match2 -->|no| Match3{Alias match?}
+    Match3 -->|yes| Found3[note_path through alias]
 
-    Match3 -->|não| Unresolved[is_resolved = false]
+    Match3 -->|no| Unresolved[is_resolved = false]
 
     Found1 --> Resolved[is_resolved = true]
     Found2 --> Resolved
     Found3 --> Resolved
 
-    subgraph Normalization["Normalização"]
+    subgraph Normalization["Normalization"]
         Norm --> Lower[lowercase]
         Lower --> NoExt[remove .md]
         NoExt --> Trim[strip spaces]
-        Trim --> Hyphen[spaces → hyphens]
+        Trim --> Hyphen[spaces to hyphens]
     end
 ```

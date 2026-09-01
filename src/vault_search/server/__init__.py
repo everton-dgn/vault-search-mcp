@@ -1,7 +1,7 @@
 """
-Server MCP e file watcher.
+MCP server, tools, resources, and lifecycle.
 
-Imports diretos:
-    from vault_search.server.watcher import VaultWatcher
+Direct imports:
+    from vault_search.watching.watcher import VaultWatcher
     from vault_search.server.helpers import clamp_top_k, execute_search
 """

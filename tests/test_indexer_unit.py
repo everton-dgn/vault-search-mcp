@@ -1,9 +1,9 @@
 """
-Testes unitários para indexer.py — classe VaultIndexer.
+Unit tests for the VaultIndexer class.
 
-Testes rápidos que NÃO precisam de modelos ML nem LanceDB.
-Testes de parsing, chunking e scanning estão em test_parser.py,
-test_chunker.py e test_scanner.py respectivamente.
+Fast tests that do not require ML models or LanceDB.
+Tests for parsing, chunking and scanning are in test_parser.py,
+test_chunker.py and test_scanner.py respectively.
 """
 
 import threading
@@ -13,45 +13,45 @@ from vault_search.core.indexer import VaultIndexer
 
 
 class TestVaultIndexerClass:
-    def test_write_lock_existe(self):
+    def test_write_lock_exists(self):
         assert hasattr(VaultIndexer, "_write_lock")
         assert isinstance(VaultIndexer._write_lock, type(threading.Lock()))
 
-    def test_reindex_note_rejeita_extensao_invalida(self):
+    def test_reindex_note_rejects_extension_invalid(self):
         indexer = VaultIndexer()
-        result = indexer.reindex_note("arquivo.jpg")
+        result = indexer.reindex_note("file.jpg")
         assert result["status"] == "rejected_extension"
 
-    def test_reindex_note_aceita_extensao_maiuscula(self):
-        """Extensão .MD deve ser aceita (case-insensitive)."""
+    def test_reindex_note_accepts_extension_uppercase(self):
+        """The .MD extension is accepted case-insensitively."""
         indexer = VaultIndexer()
-        result = indexer.reindex_note("nota.MD")
+        result = indexer.reindex_note("note.MD")
         assert result["status"] != "rejected_extension"
 
-    def test_reindex_note_aceita_pdf(self):
-        """Extensão .pdf deve ser aceita."""
+    def test_reindex_note_accepts_pdf(self):
+        """The .pdf extension is accepted."""
         indexer = VaultIndexer()
         result = indexer.reindex_note("doc.pdf")
         assert result["status"] != "rejected_extension"
 
-    def test_reindex_note_aceita_canvas(self):
-        """Extensão .canvas deve ser aceita."""
+    def test_reindex_note_accepts_canvas(self):
+        """The .canvas extension is accepted."""
         indexer = VaultIndexer()
         result = indexer.reindex_note("diagram.canvas")
         assert result["status"] != "rejected_extension"
 
-    def test_reindex_note_aceita_pdf_maiuscula(self):
-        """Extensão .PDF deve ser aceita (case-insensitive)."""
+    def test_reindex_note_accepts_pdf_uppercase(self):
+        """The .PDF extension is accepted case-insensitively."""
         indexer = VaultIndexer()
         result = indexer.reindex_note("doc.PDF")
         assert result["status"] != "rejected_extension"
 
 
 class TestCreateFtsIndex:
-    """Testes para create_fts_index com FTS_LANGUAGE configurável."""
+    """Tests for create_fts_index with FTS_LANGUAGE configurable."""
 
-    def test_fts_com_language(self):
-        """FTS com language deve usar stemming."""
+    def test_fts_with_language(self):
+        """FTS with language must use stemming."""
         from unittest.mock import MagicMock, patch
 
         mock_table = MagicMock()
@@ -63,8 +63,8 @@ class TestCreateFtsIndex:
             "text", language="Portuguese", replace=True
         )
 
-    def test_fts_sem_language(self):
-        """FTS sem language (None) deve usar tokenizador neutro."""
+    def test_fts_without_language(self):
+        """FTS without a language uses the neutral tokenizer."""
         from unittest.mock import MagicMock, patch
 
         mock_table = MagicMock()
@@ -72,39 +72,46 @@ class TestCreateFtsIndex:
         with patch("vault_search.core.fts_builder.FTS_LANGUAGE", None):
             create_fts_index(mock_table)
 
-        mock_table.create_fts_index.assert_called_once_with("text", replace=True)
+        mock_table.create_fts_index.assert_called_once_with(
+            "text",
+            language="English",
+            stem=False,
+            remove_stop_words=False,
+            ascii_folding=True,
+            replace=True,
+        )
 
-    def test_fts_erro_nao_crasheia(self):
-        """Erro ao criar FTS deve logar warning, não crashear."""
+    def test_fts_error_not_crashes(self):
+        """An FTS creation error logs a warning without crashing."""
         from unittest.mock import MagicMock, patch
 
         mock_table = MagicMock()
         mock_table.create_fts_index.side_effect = RuntimeError("FTS error")
 
         with patch("vault_search.core.fts_builder.FTS_LANGUAGE", "Portuguese"):
-            # Não deve levantar exceção
+            # Must not raise exception
             create_fts_index(mock_table)
 
 
 class TestVectorIndexConfig:
-    """Testes para configuração dinâmica de índices vetoriais."""
+    """Tests for dynamic vector-index configuration."""
 
     def test_config_none_below_threshold(self):
-        """Abaixo do threshold deve retornar None."""
+        """A total below the threshold returns None."""
         from vault_search.config.search import get_vector_index_config
 
-        config = get_vector_index_config(1000)  # Bem abaixo do threshold
+        config = get_vector_index_config(1000)  # Well below the threshold.
         assert config is None
 
     def test_config_none_at_threshold_minus_one(self):
-        """Logo abaixo do threshold deve retornar None."""
+        """A total immediately below the threshold returns None."""
         from vault_search.config.search import VECTOR_INDEX_MIN_CHUNKS, get_vector_index_config
 
         config = get_vector_index_config(VECTOR_INDEX_MIN_CHUNKS - 1)
         assert config is None
 
     def test_config_valid_at_threshold(self):
-        """No threshold exato deve retornar config válida."""
+        """The exact threshold returns a valid configuration."""
         from vault_search.config.search import VECTOR_INDEX_MIN_CHUNKS, get_vector_index_config
 
         config = get_vector_index_config(VECTOR_INDEX_MIN_CHUNKS)
@@ -114,7 +121,7 @@ class TestVectorIndexConfig:
         assert "distance_type" in config
 
     def test_config_valid_above_threshold(self):
-        """Acima do threshold deve retornar config válida."""
+        """A total above the threshold returns a valid configuration."""
         from vault_search.config.search import get_vector_index_config
 
         config = get_vector_index_config(10000)
@@ -122,7 +129,7 @@ class TestVectorIndexConfig:
         assert config["index_type"] in ("IVF_PQ", "IVF_HNSW_SQ")
 
     def test_partitions_scale_with_size(self):
-        """Partições devem escalar com tamanho do dataset."""
+        """The partition count scales with dataset size."""
         from vault_search.config.search import get_vector_index_config
 
         config_small = get_vector_index_config(5000)
@@ -130,11 +137,11 @@ class TestVectorIndexConfig:
 
         assert config_small is not None
         assert config_large is not None
-        # Dataset maior deve ter mais partições
+        # Dataset larger must have more partitions
         assert config_large["num_partitions"] >= config_small["num_partitions"]
 
     def test_partitions_min_is_one(self):
-        """Partições mínimas devem ser 1."""
+        """Partitions minimums must be 1."""
         from vault_search.config.search import get_vector_index_config
 
         config = get_vector_index_config(5000)
@@ -142,7 +149,7 @@ class TestVectorIndexConfig:
         assert config["num_partitions"] >= 1
 
     def test_partitions_max_is_256(self):
-        """Partições máximas devem ser 256."""
+        """Partitions maximums must be 256."""
         from vault_search.config.search import get_vector_index_config
 
         # 256 * 8192 = 2M+ chunks
@@ -151,7 +158,7 @@ class TestVectorIndexConfig:
         assert config["num_partitions"] <= 256
 
     def test_distance_type_is_cosine(self):
-        """Distância padrão deve ser cosine (para BGE-M3 normalizado)."""
+        """Distance default must be cosine (for BGE-M3 normalized)."""
         from vault_search.config.search import get_vector_index_config
 
         config = get_vector_index_config(10000)
@@ -159,7 +166,7 @@ class TestVectorIndexConfig:
         assert config["distance_type"] == "cosine"
 
     def test_num_sub_vectors_divide_embedding_dimension(self):
-        """IVF_PQ exige que a dimensão seja divisível pelo número de subvectors."""
+        """IVF_PQ requires that a dimension be divisible by the number of subvectors."""
         from vault_search.config.embedding import EMBEDDING_DIMENSION
         from vault_search.config.search import get_vector_index_config
 
@@ -169,7 +176,7 @@ class TestVectorIndexConfig:
         assert EMBEDDING_DIMENSION % config["num_sub_vectors"] == 0
 
     def test_config_disabled_returns_none(self):
-        """Com auto-create desabilitado deve retornar None."""
+        """With auto-create disabled must return None."""
         from types import SimpleNamespace
         from unittest.mock import patch
 
@@ -183,7 +190,7 @@ class TestVectorIndexConfig:
             assert config is None
 
     def test_runtime_config_drives_ann_parameters(self):
-        """O objeto carregado do YAML deve alimentar toda a configuração ANN."""
+        """The YAML runtime object populates the complete ANN configuration."""
         from types import SimpleNamespace
         from unittest.mock import patch
 
@@ -210,16 +217,16 @@ class TestVectorIndexConfig:
 
 
 class TestVectorIndexMethods:
-    """Testes para métodos de índice vetorial do VaultIndexer."""
+    """Tests for methods of index vector of the VaultIndexer."""
 
-    def test_has_vector_index_no_table(self):
-        """Sem tabela deve retornar False."""
+    def test_has_vector_index_in_table(self):
+        """Without table must return False."""
         indexer = VaultIndexer()
         indexer._table = None
         assert indexer._has_vector_index() is False
 
     def test_has_vector_index_with_mock(self):
-        """Com tabela mock sem índice deve retornar False."""
+        """With table mock without index must return False."""
         from unittest.mock import MagicMock
 
         indexer = VaultIndexer()
@@ -230,7 +237,7 @@ class TestVectorIndexMethods:
         assert indexer._has_vector_index() is False
 
     def test_has_vector_index_exists(self):
-        """Com índice vetorial deve retornar True."""
+        """With index vector must return True."""
         from unittest.mock import MagicMock
 
         indexer = VaultIndexer()
@@ -240,8 +247,8 @@ class TestVectorIndexMethods:
 
         assert indexer._has_vector_index() is True
 
-    def test_maybe_create_no_table(self):
-        """Sem tabela deve retornar não criado."""
+    def test_maybe_create_in_table(self):
+        """Without table must return not created."""
         indexer = VaultIndexer()
         indexer._table = None
         result = indexer._maybe_create_vector_index()
@@ -249,12 +256,12 @@ class TestVectorIndexMethods:
         assert "table_not_initialized" in result["reason"]
 
     def test_maybe_create_below_threshold(self):
-        """Abaixo do threshold deve retornar não criado."""
+        """A total below the threshold does not create an index."""
         from unittest.mock import MagicMock
 
         indexer = VaultIndexer()
         mock_table = MagicMock()
-        mock_table.count_rows.return_value = 100  # Bem abaixo
+        mock_table.count_rows.return_value = 100  # Well below
         mock_table.list_indices.return_value = []
         indexer._table = mock_table
 
@@ -263,7 +270,7 @@ class TestVectorIndexMethods:
         assert "below_threshold" in result["reason"]
 
     def test_maybe_create_already_exists(self):
-        """Com índice existente deve retornar não criado."""
+        """With index existing must return not created."""
         from unittest.mock import MagicMock
 
         from vault_search.config.search import VECTOR_INDEX_MIN_CHUNKS
@@ -279,7 +286,7 @@ class TestVectorIndexMethods:
         assert "already_exists" in result["reason"]
 
     def test_get_vector_index_status_structure(self):
-        """Status deve ter estrutura esperada."""
+        """Status has the expected structure."""
         from unittest.mock import MagicMock
 
         indexer = VaultIndexer()
@@ -298,7 +305,7 @@ class TestVectorIndexMethods:
         assert isinstance(status["threshold"], int)
 
     def test_maybe_create_vector_index_uses_lancedb_029_sync_contract(self):
-        """A API síncrona 0.29.2 recebe configuração por kwargs legados."""
+        """A API synchronous 0.29.2 receives configuration by kwargs legacy."""
         from unittest.mock import MagicMock
 
         from vault_search.config.search import VECTOR_INDEX_MIN_CHUNKS
@@ -321,10 +328,10 @@ class TestVectorIndexMethods:
 
 
 class TestReindexIntegrity:
-    """Regressões de preservação do índice incremental."""
+    """Regressions of preservation of the index incremental."""
 
     def test_missing_staging_tables_use_create_mode(self):
-        """Staging ausente não usa overwrite, que expõe o path no Lance stderr."""
+        """Staging missing not uses overwrite, that exposes the path in the Lance stderr."""
         from types import SimpleNamespace
         from unittest.mock import MagicMock
 
@@ -342,7 +349,7 @@ class TestReindexIntegrity:
         ]
 
     def test_full_reindex_dry_run_reports_only_observed_counts(self, tmp_path):
-        """Preview não publica estimativas sem medição."""
+        """Preview does not publish estimates without measurements."""
         from unittest.mock import patch
 
         notes = [tmp_path / "one.md", tmp_path / "two.pdf"]
@@ -361,7 +368,7 @@ class TestReindexIntegrity:
         from vault_search.type_defs import ParseResult, ParseStatus
 
         note = tmp_path / "note.md"
-        note.write_text("conteúdo", encoding="utf-8")
+        note.write_text("content", encoding="utf-8")
         table = MagicMock()
         indexer = VaultIndexer()
 
@@ -383,7 +390,7 @@ class TestReindexIntegrity:
         from vault_search.type_defs import ParseResult, ParseStatus
 
         note = tmp_path / "note.md"
-        note.write_text("conteúdo", encoding="utf-8")
+        note.write_text("content", encoding="utf-8")
         chunk = {
             "note_path": "note.md",
             "note_title": "note",
@@ -391,7 +398,7 @@ class TestReindexIntegrity:
             "headers": "",
             "tags": "",
             "modified_at": "2026-01-01T00:00:00",
-            "text": "conteúdo",
+            "text": "content",
         }
         table = MagicMock()
         table.version = 7
@@ -424,7 +431,7 @@ class TestReindexIntegrity:
         from vault_search.type_defs import ParseResult, ParseStatus
 
         note = tmp_path / "note.md"
-        note.write_text("conteúdo", encoding="utf-8")
+        note.write_text("content", encoding="utf-8")
         parsed = ParseResult(
             status=ParseStatus.SUCCESS,
             chunks=[
@@ -435,7 +442,7 @@ class TestReindexIntegrity:
                     "headers": "",
                     "tags": "",
                     "modified_at": "2026-01-01T00:00:00",
-                    "text": "conteúdo",
+                    "text": "content",
                 }
             ],
         )
@@ -466,7 +473,7 @@ class TestReindexIntegrity:
         vault = tmp_path / "vault"
         data_dir = tmp_path / "data"
         vault.mkdir()
-        (vault / "note.md").write_text("# título\n\nconteúdo estável", encoding="utf-8")
+        (vault / "note.md").write_text("# title\n\ncontent stable", encoding="utf-8")
 
         indexer = VaultIndexer()
         indexer._models = MagicMock()

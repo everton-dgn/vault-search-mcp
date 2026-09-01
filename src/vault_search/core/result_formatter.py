@@ -1,5 +1,5 @@
 """
-Formatação de resultados de busca.
+Search-result formatting.
 """
 
 from collections.abc import Sequence
@@ -10,13 +10,13 @@ from vault_search.utils.math import distance_to_score
 
 def format_search_results(rows: Sequence[SearchRow]) -> list[SearchResult]:
     """
-    Formata resultados do LanceDB para retorno padronizado.
+    Format LanceDB results into the public response shape.
 
-    Parâmetros:
-        rows: resultados do reranking
+    Parameters:
+        rows: Reranked rows.
 
-    Retorna:
-        Lista de dicts com campos padronizados.
+    Returns:
+        Dictionaries with standardized fields.
     """
     if not rows:
         return []

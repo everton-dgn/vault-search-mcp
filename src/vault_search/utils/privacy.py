@@ -1,4 +1,4 @@
-"""Redação de dados privados para logs e diagnósticos."""
+"""Private-data redaction for logs and diagnostics."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ _FILE_URI = re.compile(r"(?i)file://[^\s]+")
 
 
 def redact_text(value: Any) -> str:
-    """Remove caminhos absolutos e caracteres de controle de um valor textual."""
+    """Remove absolute paths and control characters from a text value."""
     text = str(value).replace("\r", " ").replace("\n", " ")
     text = _QUOTED_PATH.sub(
         lambda match: f"{match.group('quote')}[REDACTED_PATH]{match.group('quote')}",
@@ -28,12 +28,12 @@ def redact_text(value: Any) -> str:
 
 
 def relative_module_path(pathname: Any) -> str:
-    """Retorna apenas o nome do módulo, sem revelar o checkout local."""
+    """Return only the module name without revealing the local checkout."""
     return Path(str(pathname)).name
 
 
 def redact_mapping(value: Any) -> Any:
-    """Redige recursivamente campos sensíveis e caminhos em estruturas de log."""
+    """Recursively redact sensitive fields and paths in log structures."""
     sensitive_keys = {
         "authorization",
         "content",

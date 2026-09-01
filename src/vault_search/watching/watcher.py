@@ -1,14 +1,11 @@
 """
-File watcher para reindexação automática do vault.
+Filesystem watcher for automatic vault reindexing.
 
-Monitora o vault Obsidian e reindexar notas quando são
-criadas, modificadas ou deletadas.
+Watches the configured vault and reindexes notes after filesystem changes.
 
-Usa uma ÚNICA thread worker com fila coalescente ao invés de
-uma thread Timer por arquivo, evitando exaustão de recursos
-em bursts de edições (ex: rename de pasta com 100 notas).
+Uses one worker with a coalescing queue instead of one timer thread per file.
 
-Também mantém o catálogo SQLite atualizado para list_notes().
+Also keeps the SQLite catalog synchronized for list_notes.
 """
 
 import logging
@@ -27,22 +24,20 @@ from vault_search.config.watcher import (
 )
 from vault_search.core.indexer import VaultIndexer
 from vault_search.crud.catalog import get_catalog
-from vault_search.server.event_handler import PendingEvent, VaultEventHandler
 from vault_search.utils.logging import configure_logging
 from vault_search.utils.shutdown import shutdown_requested
+from vault_search.watching.event_handler import PendingEvent, VaultEventHandler
 
 logger = logging.getLogger(__name__)
 
 
 class VaultWatcher:
     """
-    Monitora o vault e reindexar notas automaticamente.
+    Watch a vault and reindex notes automatically.
 
-    Usa uma única worker thread com fila coalescente para debounce.
-    Evita criar uma thread Timer por arquivo (que causaria exaustão
-    de threads em bursts como rename de pastas).
+    One worker thread debounces a path-coalescing event queue.
 
-    Uso:
+    Example:
         watcher = VaultWatcher(indexer, on_reindex=searcher.invalidate_cache)
         watcher.start()
         watcher.stop()
@@ -54,9 +49,9 @@ class VaultWatcher:
         on_reindex: Callable[[], None] | None = None,
     ):
         """
-        Parâmetros:
-            indexer: instância do indexer
-            on_reindex: callback pós-reindexação (ex: searcher.invalidate_cache)
+        Parameters:
+            indexer: vault indexer
+            on_reindex: callback after a successful reindex
         """
         self._indexer = indexer
         self._on_reindex = on_reindex
@@ -68,7 +63,7 @@ class VaultWatcher:
         self._lifecycle_lock = threading.Lock()
 
     def start(self) -> bool:
-        """Inicia monitoramento, se nenhuma geração anterior ainda estiver viva."""
+        """Start watching if no previous generation is still alive."""
         with self._lifecycle_lock:
             observer_alive = self._observer is not None and self._observer.is_alive()
             worker_alive = self._worker is not None and self._worker.is_alive()
@@ -76,7 +71,7 @@ class VaultWatcher:
                 logger.warning("watcher_start_rejected reason=previous_generation_alive")
                 return False
 
-            # Referências mortas podem sobrar após um stop que expirou.
+            # Dead references may remain after a stop timeout.
             self._observer = None
             self._worker = None
             with self._lock:
@@ -84,25 +79,25 @@ class VaultWatcher:
 
             vault_root = VAULT_PATH.expanduser().resolve(strict=False)
 
-            # Validar que o vault existe
+            # Validate the vault root.
             if not vault_root.exists():
                 logger.error("watcher_start_failed reason=vault_not_found")
-                raise FileNotFoundError("Vault não encontrado")
+                raise FileNotFoundError("Vault was not found")
 
             if not vault_root.is_dir():
                 logger.error("watcher_start_failed reason=vault_not_directory")
-                raise NotADirectoryError("VAULT_PATH não é um diretório")
+                raise NotADirectoryError("VAULT_PATH is not a directory")
 
             handler = VaultEventHandler(self._pending, self._lock)
             observer = Observer()
             observer.schedule(handler, str(vault_root), recursive=True)
             observer.daemon = True
 
-            # Worker thread única para processar fila
+            # One worker processes the queue.
             self._stop_event.clear()
             worker = threading.Thread(target=self._worker_loop, daemon=True)
-            # Publicar referências antes de iniciar: uma falha parcial ainda
-            # pode deixar recursos vivos que precisam bloquear novo start.
+            # Publish references before starting so partial failure retains any
+            # live resources that must block a second start.
             self._observer = observer
             self._worker = worker
             try:
@@ -124,16 +119,15 @@ class VaultWatcher:
 
     def _worker_loop(self) -> None:
         """
-        Loop do worker que processa eventos pendentes com debounce.
+        Process pending events after their debounce window.
 
-        Acorda a cada WATCHER_DEBOUNCE/WATCHER_POLL_FACTOR segundos e
-        processa eventos que já passaram do tempo de debounce.
+        Poll at WATCHER_DEBOUNCE/WATCHER_POLL_FACTOR intervals.
         """
         poll_interval = WATCHER_DEBOUNCE / WATCHER_POLL_FACTOR
         while not self._stop_event.is_set() and not shutdown_requested():
             self._stop_event.wait(timeout=poll_interval)
 
-            # Coletar eventos prontos (que passaram do debounce)
+            # Collect events whose debounce window has elapsed.
             now = time.monotonic()
             ready: dict[str, PendingEvent] = {}
             with self._lock:
@@ -143,7 +137,7 @@ class VaultWatcher:
                 for k in expired_keys:
                     ready[k] = self._pending.pop(k)
 
-            # Processar fora do lock
+            # Process events outside the lock.
             for relative_path, info in ready.items():
                 try:
                     if info["deleted"]:
@@ -151,10 +145,10 @@ class VaultWatcher:
                     else:
                         logger.info("watcher_reindex event=changed")
 
-                    # Atualizar índice vetorial
+                    # Update the search index.
                     self._indexer.reindex_note(relative_path)
 
-                    # Atualizar catálogo SQLite
+                    # Update the SQLite catalog.
                     try:
                         catalog = get_catalog()
                         if info["deleted"]:
@@ -176,12 +170,12 @@ class VaultWatcher:
                     )
 
     def stop(self) -> bool:
-        """Solicita parada e informa se todos os recursos terminaram no prazo."""
+        """Request shutdown and report whether every resource met the deadline."""
         with self._lifecycle_lock:
             observer = self._observer
             worker = self._worker
 
-            # Parar o produtor antes de sinalizar a worker.
+            # Stop the producer before signaling the worker.
             if observer is not None:
                 observer.stop()
             self._stop_event.set()
@@ -194,7 +188,7 @@ class VaultWatcher:
             observer_alive = observer is not None and observer.is_alive()
             worker_alive = worker is not None and worker.is_alive()
 
-            # Nunca perca a referência de uma geração que ainda pode executar.
+            # Retain references to any generation that may still execute.
             self._observer = observer if observer_alive else None
             self._worker = worker if worker_alive else None
             stopped = not observer_alive and not worker_alive
@@ -211,7 +205,7 @@ class VaultWatcher:
 
     @property
     def is_running(self) -> bool:
-        """Retorna True se o watcher está ativo."""
+        """Return whether the watcher is active."""
         with self._lifecycle_lock:
             observer_alive = self._observer is not None and self._observer.is_alive()
             worker_alive = self._worker is not None and self._worker.is_alive()

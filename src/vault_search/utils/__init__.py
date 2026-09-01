@@ -1,7 +1,7 @@
 """
-Funções utilitárias do vault-search.
+vault-search utility functions.
 
-Imports diretos:
+Direct imports:
     from vault_search.utils.math import normalize_embeddings, distance_to_score
     from vault_search.utils.metadata import extract_file_metadata, is_empty_text
     from vault_search.utils.security import escape_sql_string, validate_relative_path

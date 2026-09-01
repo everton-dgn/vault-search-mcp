@@ -1,4 +1,4 @@
-"""Fila coalescente e limitada para atualização assíncrona do índice."""
+"""Bounded coalescing queue for asynchronous index updates."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 
 class ReindexQueue:
-    """Executa uma reindexação por vez e coalesce alterações do mesmo path."""
+    """Run one reindex at a time and coalesce changes to the same path."""
 
     _SYNC_KEY = "\0sync"
 
@@ -35,11 +35,11 @@ class ReindexQueue:
         self._accepting = True
 
     def enqueue(self, path: str) -> str:
-        """Agenda um path e devolve um estado fechado para a API pública."""
+        """Schedule one path and return a stable public status."""
         return self._enqueue_key(path)
 
     def enqueue_sync(self) -> str:
-        """Agenda uma única reconciliação completa, útil após mutações em lote."""
+        """Schedule one full reconciliation after a batch mutation."""
         return self._enqueue_key(self._SYNC_KEY)
 
     def _enqueue_key(self, key: str) -> str:
@@ -116,7 +116,7 @@ class ReindexQueue:
         return int(worker is not None and worker.is_alive())
 
     def stop(self) -> None:
-        """Para de aceitar itens e drena a fila dentro de um prazo."""
+        """Stop accepting items and drain the queue within a deadline."""
         with self._lock:
             self._accepting = False
             worker = self._worker

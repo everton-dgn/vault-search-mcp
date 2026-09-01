@@ -1,19 +1,19 @@
 """
-Configurações de chunking de documentos.
+Document chunking settings.
 """
 
 from vault_search.config.loader import get_config
 
 _config = get_config().chunking
 
-# Tamanho máximo de cada chunk em caracteres
+# Maximum size of each chunk in characters
 CHUNK_SIZE = _config.size
 
-# Sobreposição entre chunks em caracteres para manter contexto
+# Overlap between chunks in characters to preserve context
 CHUNK_OVERLAP = _config.overlap
 
-# Headers markdown usados para split estrutural
+# Markdown headings used for structural splitting
 MARKDOWN_HEADER_LEVELS = _config.header_levels
 
-# Separadores hierárquicos para chunking (ordem de preferência)
+# Hierarchical chunking separators in preference order
 CHUNK_SEPARATORS = list(_config.separators)

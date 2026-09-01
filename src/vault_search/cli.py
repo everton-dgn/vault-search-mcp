@@ -1,4 +1,4 @@
-"""Bootstraps mínimos que impedem traceback e valores privados no startup."""
+"""Minimal bootstraps that prevent tracebacks and private values during startup."""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ from collections.abc import Callable
 
 
 def _validate_startup_config() -> None:
-    """Valida a configuração antes de importar runtimes e dependências pesadas."""
+    """Validate configuration before importing runtimes and heavy dependencies."""
     from vault_search.config.loader import get_config
 
     get_config()
 
 
 def _run(module_name: str, *, prepare: Callable[[], None] | None = None) -> int:
-    """Carrega o runtime dentro de uma fronteira de erro sanitizada."""
+    """Load the runtime inside a sanitized error boundary."""
     try:
         if prepare is not None:
             prepare()
@@ -44,12 +44,12 @@ def _run(module_name: str, *, prepare: Callable[[], None] | None = None) -> int:
 
 
 def mcp_main() -> int:
-    """Inicia o servidor MCP após instalar a fronteira de erro."""
+    """Start the MCP server after installing the error boundary."""
     return _run("vault_search.server.mcp")
 
 
 def daemon_main() -> int:
-    """Inicia o daemon local sem permitir auto-conexão do ModelManager."""
+    """Start the local daemon without allowing ModelManager auto-connection."""
 
     def prepare() -> None:
         os.environ["VAULT_SEARCH_RUNNING_AS_DAEMON"] = "1"
@@ -58,7 +58,7 @@ def daemon_main() -> int:
 
 
 def config_main() -> int:
-    """Valida a configuração sem imprimir paths ou valores resolvidos."""
+    """Validate configuration without printing paths or resolved values."""
     try:
         _validate_startup_config()
     except KeyboardInterrupt:

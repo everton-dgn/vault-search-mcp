@@ -1,12 +1,12 @@
 """
-Módulo de validação de frontmatter com schema Pydantic.
+Frontmatter validation with a Pydantic schema.
 
 Exports:
-    - FrontmatterValidator: validador principal
-    - FieldSchema: schema de campo individual
-    - FrontmatterSchemaConfig: configuração do schema
-    - ValidationResult: resultado da validação
-    - ValidationError: erro de validação
+    - FrontmatterValidator: primary validator
+    - FieldSchema: schema for an individual field
+    - FrontmatterSchemaConfig: schema configuration
+    - ValidationResult: complete validation result
+    - ValidationError: validation error or warning
 """
 
 from vault_search.frontmatter.enrichment import (

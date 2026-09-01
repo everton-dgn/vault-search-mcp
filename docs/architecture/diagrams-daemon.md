@@ -1,19 +1,19 @@
-# Diagramas do daemon local
+# Local daemon diagrams
 
-## Arquitetura do daemon
+## Daemon architecture
 
 ```mermaid
 flowchart TB
-    subgraph Daemon["Daemon opcional (HTTP em loopback)"]
+    subgraph Daemon["Optional daemon (loopback HTTP)"]
         direction TB
-        BGE["BGE-M3<br/>residente"]
-        RR["Reranker<br/>residente"]
+        BGE["BGE-M3<br/>resident"]
+        RR["Reranker<br/>resident"]
         HTTP[HTTP Server]
         BGE --> HTTP
         RR --> HTTP
     end
 
-    subgraph MCP["MCP Server (iniciado pelo cliente)"]
+    subgraph MCP["MCP server (started by the client)"]
         direction TB
         MM[ModelManager]
         SE[Searcher]
@@ -24,9 +24,9 @@ flowchart TB
 
     HTTP -->|"POST /embed/queries<br/>POST /embed/corpus<br/>POST /rerank"| MM
 
-    subgraph Fallback["Fallback (se daemon não disponível)"]
-        LocalBGE["BGE-M3 local<br/>carregado no processo"]
-        LocalRR["Reranker local"]
+    subgraph Fallback["Fallback (when the daemon is unavailable)"]
+        LocalBGE["Local BGE-M3<br/>loaded in the process"]
+        LocalRR["Local reranker"]
     end
 
     MM -.->|"_check_daemon() = false"| LocalBGE
@@ -35,11 +35,11 @@ flowchart TB
 
 ---
 
-## Sequência de inicialização
+## Startup sequence
 
 ```mermaid
 sequenceDiagram
-    participant OS as Sistema (launchd/systemd)
+    participant OS as Service manager (launchd/systemd)
     participant D as Daemon Server
     participant MM as ModelManager
     participant BGE as BGE-M3
@@ -47,24 +47,24 @@ sequenceDiagram
     participant HTTP as HTTP Server
     participant P as Probe local
 
-    OS->>D: Iniciar daemon (boot)
+    OS->>D: Start daemon
     D->>HTTP: bind(host, port)
-    HTTP-->>D: socket em loopback
+    HTTP-->>D: loopback socket
     D->>MM: warmup() em thread
     P->>HTTP: GET /health
     HTTP-->>P: 503, status starting
 
-    par Carregar modelos
+    par Load models
         MM->>BGE: SentenceTransformer()
-        Note over BGE: carrega conforme backend e cache
-        BGE-->>MM: Modelo pronto
+        Note over BGE: load according to backend and cache
+        BGE-->>MM: Model ready
 
         MM->>RR: FlagReranker()
-        Note over RR: carrega conforme backend e cache
-        RR-->>MM: Modelo pronto
+        Note over RR: load according to backend and cache
+        RR-->>MM: Model ready
     end
 
-    MM-->>D: Modelos carregados
+    MM-->>D: Models loaded
     D->>D: status ready
     P->>HTTP: GET /health
     HTTP-->>P: 200, status ready
@@ -72,11 +72,11 @@ sequenceDiagram
 
 ---
 
-## Comunicação entre MCP e daemon
+## MCP-to-daemon communication
 
 ```mermaid
 sequenceDiagram
-    participant CC as Cliente MCP
+    participant CC as MCP client
     participant MCP as MCP Server
     participant MM as ModelManager
     participant DC as DaemonClient
@@ -87,14 +87,14 @@ sequenceDiagram
 
     MM->>MM: _check_daemon()
 
-    alt Health ready e modelos carregados
+    alt Health ready and models loaded
         MM->>DC: embed_queries(texts)
         DC->>DS: POST /embed/queries
         DS-->>DC: {"embeddings": [[...]]}
         DC-->>MM: embeddings
-    else Daemon ausente ou fora de ready
+    else Daemon absent or not ready
         MM->>MM: _get_embed_model()
-        Note over MM: Carrega BGE-M3 localmente
+        Note over MM: Load BGE-M3 locally
         MM-->>MM: embeddings
     end
 
@@ -104,7 +104,7 @@ sequenceDiagram
 
 ---
 
-## API HTTP do daemon
+## Daemon HTTP API
 
 ```mermaid
 flowchart LR
@@ -117,8 +117,8 @@ flowchart LR
     end
 
     subgraph Responses
-        H --> |"200 se ready"| HR["status: ready<br/>models_loaded: bool<br/>model_status: {...}"]
-        H --> |"503 fora de ready"| HU["status: starting, degraded ou failed"]
+        H --> |"200 when ready"| HR["status: ready<br/>models_loaded: bool<br/>model_status: {...}"]
+        H --> |"503 otherwise"| HU["status: starting, degraded, or failed"]
         S --> |200| SR["requests_served: N<br/>embed_queries_count: N<br/>rerank_count: N"]
         EQ --> |200| EQR["embeddings: [[1024 floats]]"]
         EC --> |200| ECR["embeddings: [[1024 floats]]"]
@@ -128,7 +128,7 @@ flowchart LR
 
 ---
 
-## Encerramento gracioso
+## Graceful shutdown
 
 ```mermaid
 sequenceDiagram
@@ -152,31 +152,31 @@ sequenceDiagram
     MM->>MM: Cancel timers
     MM->>MM: Release models
 
-    Note over D: Daemon finalizado
+    Note over D: Daemon stopped
 ```
 
 ---
 
-## `sync_check` na inicialização
+## Startup `sync_check`
 
 ```mermaid
 flowchart TB
-    Start([MCP Server inicia]) --> Check{Daemon disponível?}
+    Start([MCP server starts]) --> Check{Daemon available?}
 
-    Check -->|Sim| UseDaemon[Usar daemon para embed/rerank]
-    Check -->|Não| LoadLocal[Carregar modelos localmente]
+    Check -->|Yes| UseDaemon[Use daemon for embedding and reranking]
+    Check -->|No| LoadLocal[Load models locally]
 
     UseDaemon --> SyncCheck[sync_check]
     LoadLocal --> SyncCheck
 
     SyncCheck --> Scan[Scan filesystem]
-    Scan --> Compare{Comparar mtime<br/>com último index}
+    Scan --> Compare{Compare mtime<br/>with indexed state}
 
-    Compare -->|Arquivos novos/modificados| Reindex[Reindexar incrementalmente]
-    Compare -->|Nenhuma mudança| Ready[Server pronto]
+    Compare -->|New or modified files| Reindex[Reindex incrementally]
+    Compare -->|No change| Ready[Server ready]
 
     Reindex --> Ready
 
-    Ready --> Watch[Iniciar file watcher]
-    Watch --> Serve([Servir requests])
+    Ready --> Watch[Start filesystem watcher]
+    Watch --> Serve([Serve requests])
 ```

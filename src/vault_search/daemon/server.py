@@ -1,29 +1,31 @@
 """
-Servidor HTTP do daemon para manter modelos em memória e monitorar vault.
+Loopback HTTP daemon that keeps models in memory and optionally watches a vault.
 
 Endpoints:
 - POST /embed/queries - embed queries (max_length=512)
 - POST /embed/corpus - embed corpus (max_length=1024)
 - POST /rerank - rerank results
 - GET /health - health check
-- GET /stats - estatísticas
+- GET /stats - aggregate statistics
 
 File Watcher:
-- Monitora o vault Obsidian
-- Reindexar notas automaticamente
-- Enriquece frontmatter via IA (campos required faltantes)
+- Watches the configured Markdown vault
+- Reindexes changed notes
+- Enriches missing required frontmatter fields when explicitly enabled
 """
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
+import os
 import signal
+import socket
 import threading
 import time
 from errno import EADDRINUSE
-from http.server import BaseHTTPRequestHandler
-from http.server import ThreadingHTTPServer as HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Literal
 
 import numpy as np
@@ -43,8 +45,24 @@ logger = logging.getLogger(__name__)
 HealthState = Literal["starting", "ready", "degraded", "failed"]
 
 
+class IPv6ThreadingHTTPServer(ThreadingHTTPServer):
+    """Threaded HTTP server that binds IPv6 loopback addresses."""
+
+    address_family = socket.AF_INET6
+
+
+def _server_class_for_host(host: str) -> type[ThreadingHTTPServer]:
+    """Select the socket family that matches a validated loopback host."""
+    if host == "localhost":
+        return ThreadingHTTPServer
+    address = ipaddress.ip_address(host)
+    if isinstance(address, ipaddress.IPv6Address):
+        return IPv6ThreadingHTTPServer
+    return ThreadingHTTPServer
+
+
 class RequestValidationError(ValueError):
-    """Erro de protocolo HTTP seguro para retornar ao cliente."""
+    """Safe HTTP protocol error that can be returned to the client."""
 
     def __init__(self, message: str, status: int = 400):
         super().__init__(message)
@@ -52,18 +70,18 @@ class RequestValidationError(ValueError):
 
 
 class DaemonRequestHandler(BaseHTTPRequestHandler):
-    """Handler HTTP para requests do daemon."""
+    """HTTP request handler for the daemon."""
 
-    # Referência para o servidor (set em DaemonServer)
+    # Assigned by DaemonServer for each handler class.
     daemon_server: DaemonServer | None = None
 
     def log_message(self, format: str, *args: Any) -> None:
-        """Registra apenas metadados controlados, sem request target."""
+        """Log only controlled metadata without the request target."""
         status_code = args[1] if len(args) > 1 else "unknown"
         logger.debug("http_request_completed status=%s", status_code)
 
     def _send_json(self, data: dict[str, Any], status: int = 200) -> None:
-        """Envia resposta JSON."""
+        """Send a JSON response."""
         response = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -72,7 +90,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(response)
 
     def _read_json(self) -> dict[str, Any] | None:
-        """Lê body JSON da request."""
+        """Read the request's JSON body."""
         server = self.daemon_server
         if server is None:
             raise RequestValidationError("Server not initialized", 503)
@@ -102,7 +120,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
             raise RequestValidationError("Invalid JSON") from None
 
     def _read_validated_json(self) -> dict[str, Any] | None:
-        """Converte falhas de protocolo em uma única resposta HTTP."""
+        """Convert protocol failures to one bounded HTTP response."""
         try:
             return self._read_json()
         except RequestValidationError as error:
@@ -110,7 +128,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
             return None
 
     def _require_ready(self) -> DaemonServer | None:
-        """Bloqueia inferência enquanto o warmup não estiver íntegro."""
+        """Block inference until warmup completes successfully."""
         server = self.daemon_server
         if server is None:
             self._send_json({"error": "Server not initialized"}, 503)
@@ -156,7 +174,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
         self._send_json(snapshot, http_status)
 
     def _handle_stats(self) -> None:
-        """Retorna estatísticas do daemon."""
+        """Return daemon statistics."""
         server = self.daemon_server
         if server is None:
             self._send_json({"error": "Server not initialized"}, 500)
@@ -198,7 +216,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
             server.embed_queries_count += len(texts)
             server.request_count += 1
 
-            # Converter numpy para lista
+            # Convert NumPy output to JSON-compatible lists.
             if isinstance(embeddings, np.ndarray):
                 embeddings = embeddings.tolist()
 
@@ -231,7 +249,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
             server.embed_corpus_count += len(texts)
             server.request_count += 1
 
-            # Converter numpy para lista
+            # Convert NumPy output to JSON-compatible lists.
             if isinstance(embeddings, np.ndarray):
                 embeddings = embeddings.tolist()
 
@@ -264,16 +282,16 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            # ModelManager.rerank() retorna lista de scores na ordem dos textos
+            # ModelManager.rerank() returns scores in input order.
             all_scores = server.models.rerank(query, texts)
             server.rerank_count += 1
             server.request_count += 1
 
-            # Criar lista de (index, score) ordenada por score
+            # Return (index, score) pairs ordered by score.
             indexed_scores = list(enumerate(all_scores))
             indexed_scores.sort(key=lambda x: x[1], reverse=True)
 
-            # Limitar ao top_k
+            # Apply top_k.
             top_scores = indexed_scores[:top_k]
 
             self._send_json({"scores": top_scores})
@@ -286,7 +304,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
 
 
 class DaemonServer:
-    """Servidor daemon que mantém modelos em memória e monitora vault."""
+    """Daemon that keeps models in memory and optionally watches the vault."""
 
     def __init__(
         self,
@@ -299,7 +317,7 @@ class DaemonServer:
         self.host = host or daemon_config.host
         self.port = port or daemon_config.port
         if not is_loopback_host(self.host):
-            raise ValueError("O daemon aceita apenas bind em loopback")
+            raise ValueError("The daemon accepts only loopback bind addresses")
 
         self.enable_watcher = enable_watcher
         self.max_request_bytes = daemon_config.max_request_bytes
@@ -312,8 +330,8 @@ class DaemonServer:
         self.embed_queries_count = 0
         self.embed_corpus_count = 0
         self.rerank_count = 0
-        self.reindex_count = 0  # Contagem de reindex via watcher
-        self._server: HTTPServer | None = None
+        self.reindex_count = 0  # Watcher reindex count.
+        self._server: ThreadingHTTPServer | None = None
         self._server_thread: threading.Thread | None = None
         self._init_thread: threading.Thread | None = None
         self._watcher: Any = None
@@ -321,16 +339,17 @@ class DaemonServer:
         self._health_state: HealthState = "starting"
         self._health_lock = threading.Lock()
         self._warmup_errors: tuple[str, ...] = ()
+        self._startup_failed = threading.Event()
 
     @property
     def health_state(self) -> HealthState:
-        """Estado atual, protegido contra leituras concorrentes."""
+        """Return current state under the concurrent-read lock."""
         with self._health_lock:
             return self._health_state
 
     @property
     def model_status(self) -> dict[str, bool]:
-        """Normaliza o contrato legado de ``ModelManager.is_loaded``."""
+        """Normalize the legacy ``ModelManager.is_loaded`` contract."""
         try:
             status = self.models.is_loaded()
         except Exception:
@@ -345,7 +364,7 @@ class DaemonServer:
 
     @property
     def models_loaded(self) -> bool:
-        """Indica que os dois modelos necessários estão disponíveis."""
+        """Return whether both required models are available."""
         status = self.model_status
         return status["embed_model"] and status["reranker_model"]
 
@@ -359,7 +378,7 @@ class DaemonServer:
             self._warmup_errors = errors
 
     def health_snapshot(self) -> dict[str, Any]:
-        """Retorna health sem expor exceções, paths ou conteúdo processado."""
+        """Return health without exposing exceptions, paths, or processed content."""
         with self._health_lock:
             state = self._health_state
             errors = self._warmup_errors
@@ -370,6 +389,7 @@ class DaemonServer:
             errors = (*errors, "models_unloaded")
         return {
             "status": state,
+            "pid": os.getpid(),
             "models_loaded": models_loaded,
             "model_status": model_status,
             "warmup_errors": list(errors),
@@ -378,7 +398,7 @@ class DaemonServer:
         }
 
     def validate_texts(self, value: Any) -> list[str]:
-        """Valida batches antes de alocar memória para inferência."""
+        """Validate batches before allocating inference memory."""
         if not isinstance(value, list) or not value:
             raise RequestValidationError("texts must be a non-empty list")
         if len(value) > self.max_texts:
@@ -395,7 +415,7 @@ class DaemonServer:
         texts: Any,
         top_k: Any = None,
     ) -> tuple[str, list[str], int]:
-        """Valida a operação de reranking e normaliza ``top_k``."""
+        """Validate a reranking request and normalize ``top_k``."""
         if not isinstance(query, str) or not query.strip():
             raise RequestValidationError("query must be a non-empty string")
         if len(query) > self.max_query_length:
@@ -413,7 +433,7 @@ class DaemonServer:
         return query, validated_texts, effective_top_k
 
     def _initialize_runtime(self) -> None:
-        """Executa warmup e deriva o estado operacional observado."""
+        """Run warmup and derive the observed operational state."""
         self._set_health_state("starting")
         logger.info("model_warmup_started")
         try:
@@ -424,6 +444,7 @@ class DaemonServer:
                 extra={"error_type": type(error).__name__},
             )
             self._set_health_state("failed", ("warmup",))
+            self._startup_failed.set()
             return
 
         errors = tuple(
@@ -437,16 +458,19 @@ class DaemonServer:
             state = "ready"
         self._set_health_state(state, errors)
 
-        if state != "failed" and self.enable_watcher:
+        if state != "ready":
+            self._startup_failed.set()
+
+        if state == "ready" and self.enable_watcher:
             self._start_watcher()
         logger.info("model_warmup_finished", extra={"state": state})
 
     def _setup_signal_handlers(self) -> None:
-        """Configura handlers para SIGTERM e SIGINT."""
+        """Configure SIGTERM and SIGINT handlers."""
 
         def signal_handler(signum: int, frame: Any) -> None:
             sig_name = signal.Signals(signum).name
-            logger.info(f"Sinal {sig_name} recebido, iniciando shutdown...")
+            logger.info("Signal %s received; starting shutdown...", sig_name)
             request_shutdown()
 
         signal.signal(signal.SIGTERM, signal_handler)
@@ -454,39 +478,35 @@ class DaemonServer:
 
     def start(self, blocking: bool = True) -> None:
         """
-        Inicia o servidor daemon.
+        Start the daemon server.
 
         Args:
-            blocking: Se True, bloqueia até shutdown. Se False, roda em thread.
+            blocking: block until shutdown when true, otherwise run in a thread
         """
-        logger.info(f"Iniciando daemon em {self.host}:{self.port}")
+        logger.info("daemon_starting host=%s port=%d", self.host, self.port)
 
-        # Configurar signal handlers
+        # Configure signal handlers.
         self._setup_signal_handlers()
 
-        # Criar servidor HTTP antes de warmup/watcher para falhar rápido
-        # em caso de porta ocupada (evita custo de carregar modelos à toa).
+        # Bind before warmup so an occupied port fails without loading models.
         try:
             handler = type(
                 "BoundDaemonRequestHandler",
                 (DaemonRequestHandler,),
                 {"daemon_server": self},
             )
-            self._server = HTTPServer((self.host, self.port), handler)
+            server_class = _server_class_for_host(self.host)
+            self._server = server_class((self.host, self.port), handler)
             self.port = int(self._server.server_address[1])
         except OSError as exc:
             if exc.errno == EADDRINUSE:
                 self._set_health_state("failed", ("bind",))
-                logger.warning(
-                    "Porta %s já está em uso em %s. "
-                    "Outro daemon pode estar rodando; encerrando esta instância.",
-                    self.port,
-                    self.host,
-                )
-                return
+                message = f"Port {self.port} is already in use on {self.host}"
+                logger.error("daemon_bind_failed reason=address_in_use")
+                raise RuntimeError(message) from exc
             raise
 
-        self._server.timeout = 1.0  # Permite verificar shutdown periodicamente
+        self._server.timeout = 1.0  # Poll shutdown periodically.
 
         if blocking:
             self._init_thread = threading.Thread(
@@ -496,6 +516,8 @@ class DaemonServer:
             )
             self._init_thread.start()
             self._serve_forever()
+            if self._startup_failed.is_set():
+                raise RuntimeError("Daemon startup did not reach the ready state")
         else:
             self._server_thread = threading.Thread(
                 target=self._serve_forever,
@@ -504,13 +526,16 @@ class DaemonServer:
             )
             self._server_thread.start()
             self._initialize_runtime()
+            if self._startup_failed.is_set():
+                self._server_thread.join(timeout=2.0)
+                raise RuntimeError("Daemon startup did not reach the ready state")
 
     def _start_watcher(self) -> None:
-        """Inicia o file watcher para monitorar o vault."""
+        """Start the optional vault watcher."""
         try:
             from vault_search.config.paths import VAULT_PATH
             from vault_search.core.indexer import VaultIndexer
-            from vault_search.server.watcher import VaultWatcher
+            from vault_search.watching.watcher import VaultWatcher
 
             if not VAULT_PATH.exists():
                 logger.warning("watcher_disabled", extra={"reason": "vault_unavailable"})
@@ -531,22 +556,22 @@ class DaemonServer:
             self._watcher = None
 
     def _on_reindex_callback(self) -> None:
-        """Callback chamado após cada reindex."""
+        """Record a completed reindex callback."""
         self.reindex_count += 1
 
     def _serve_forever(self) -> None:
-        """Loop principal do servidor."""
+        """Run the server loop."""
         if self._server is None:
             return
 
-        while not shutdown_requested():
+        while not shutdown_requested() and not self._startup_failed.is_set():
             self._server.handle_request()
 
-        logger.info("Shutdown iniciado...")
+        logger.info("Shutdown started...")
 
-        # Parar watcher primeiro
+        # Stop the watcher first.
         if self._watcher:
-            logger.info("Parando watcher...")
+            logger.info("watcher_stopping")
             self._watcher.stop()
             self._watcher = None
 
@@ -554,11 +579,11 @@ class DaemonServer:
         if self._init_thread and self._init_thread.is_alive():
             self._init_thread.join(timeout=5.0)
         self.models.cleanup()
-        logger.info("Daemon finalizado")
+        logger.info("Daemon stopped")
 
     def stop(self) -> None:
-        """Para o servidor."""
-        # Parar watcher primeiro
+        """Stop the server."""
+        # Stop the watcher first.
         if self._watcher:
             self._watcher.stop()
             self._watcher = None
@@ -571,14 +596,13 @@ class DaemonServer:
 
 
 def main() -> None:
-    """Entry point do daemon."""
-    import os
+    """Run the daemon entry point."""
     import sys
 
-    # Marcar que estamos rodando como daemon (evita deadlock no ModelManager)
+    # Mark daemon execution to prevent ModelManager self-connection deadlocks.
     os.environ["VAULT_SEARCH_RUNNING_AS_DAEMON"] = "1"
 
-    # Configurar logging
+    # Configure logging.
     log_handler = logging.StreamHandler(sys.stderr)
     log_handler.addFilter(PrivacyFilter())
     logging.basicConfig(
@@ -588,16 +612,19 @@ def main() -> None:
         force=True,
     )
 
-    # Inicializar shutdown manager
+    # Initialize the shutdown manager.
     ShutdownManager.initialize(timeout=30.0)
 
-    # Iniciar servidor
+    # Start the server.
     server = DaemonServer()
 
     try:
         server.start(blocking=True)
     except KeyboardInterrupt:
-        logger.info("Interrompido pelo usuário")
+        logger.info("daemon interrupted_by_user=true")
+    except Exception as error:
+        logger.error("daemon_startup_failed error_type=%s", type(error).__name__)
+        raise SystemExit(1) from None
     finally:
         ShutdownManager.shutdown()
 

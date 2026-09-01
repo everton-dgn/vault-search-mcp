@@ -1,9 +1,8 @@
 """
-Parser de frontmatter YAML e extração de tags.
+YAML frontmatter parser and tag extraction.
 
-Inclui leitura otimizada que lê apenas até encontrar
-o fechamento do frontmatter (---), evitando carregar
-arquivos inteiros na memória.
+Read only through the closing frontmatter delimiter instead of loading
+entire files into memory.
 """
 
 import re
@@ -12,42 +11,40 @@ from typing import Any
 
 import yaml
 
-# Limite máximo de bytes para leitura de frontmatter (64KB)
-# Frontmatters maiores que isso são raros e indicam problema
+# Maximum frontmatter read size. Larger frontmatter is treated as invalid.
 FRONTMATTER_MAX_BYTES = 64 * 1024
 
-# Tamanho do chunk para leitura incremental (4KB)
+# Chunk size for incremental reads.
 FRONTMATTER_CHUNK_SIZE = 4 * 1024
 
-# Regex para detectar frontmatter: --- no início de linha, sozinho
+# Detect a standalone ``---`` at the beginning of a line.
 _FRONTMATTER_RE = re.compile(r"^---\s*$", re.MULTILINE)
 
-# PyYAML pode produzir escalares, datas e coleções aninhadas. O tipo aberto
-# fica restrito a esta fronteira de parsing; os extratores normalizam a saída.
+# PyYAML may produce scalars, dates, and nested collections. Keep the open type
+# inside this parsing boundary and normalize extractor output.
 type Frontmatter = dict[str, Any]
 
 
 def parse_frontmatter(content: str) -> tuple[Frontmatter, str]:
     """
-    Extrai frontmatter YAML do início de um arquivo markdown.
+    Extract YAML frontmatter from the beginning of a Markdown file.
 
-    Valida que o resultado do YAML parse é um dict — valores
-    escalares (string, int) ou listas retornam {}.
+    Accept only dictionaries; scalar and list YAML values return an empty mapping.
 
-    Parâmetros:
-        content: conteúdo completo do arquivo .md
+    Parameters:
+        content: Complete Markdown file content.
 
-    Retorna:
-        Tupla (metadados_dict, corpo_sem_frontmatter).
-        Se não houver frontmatter, retorna ({}, content).
+    Returns:
+        A ``(metadata, body_without_frontmatter)`` tuple. When frontmatter is
+        absent, return ``({}, content)``.
     """
-    content = content.lstrip("\ufeff")  # Remove BOM se presente
+    content = content.lstrip("\ufeff")  # Remove a leading BOM.
 
     matches = list(_FRONTMATTER_RE.finditer(content))
     if len(matches) < 2:
         return {}, content
 
-    # Primeiro --- deve estar no início do arquivo (possivelmente após whitespace)
+    # The first delimiter must be at the start, allowing leading whitespace.
     first = matches[0]
     if first.start() != 0 and content[: first.start()].strip():
         return {}, content
@@ -61,7 +58,7 @@ def parse_frontmatter(content: str) -> tuple[Frontmatter, str]:
     except yaml.YAMLError:
         metadata = {}
 
-    # Validar tipo: YAML pode retornar string, int, list — só dict é válido
+    # PyYAML may return a string, integer, or list; only a dictionary is valid.
     if not isinstance(metadata, dict):
         return {}, body
 
@@ -70,13 +67,13 @@ def parse_frontmatter(content: str) -> tuple[Frontmatter, str]:
 
 def extract_tags(metadata: Frontmatter) -> list[str]:
     """
-    Extrai tags do frontmatter. Suporta formatos comuns do Obsidian.
+    Extract tags from common Obsidian frontmatter formats.
 
-    Parâmetros:
-        metadata: dicionário do frontmatter
+    Parameters:
+        metadata: Frontmatter dictionary.
 
-    Retorna:
-        Lista de tags como strings.
+    Returns:
+        Tags as strings.
     """
     tags = metadata.get("tags", [])
     if isinstance(tags, str):
@@ -90,58 +87,58 @@ def extract_tags(metadata: Frontmatter) -> list[str]:
 
 def extract_frontmatter_fields(metadata: Frontmatter) -> dict[str, str]:
     """
-    Extrai campos estruturados do frontmatter para indexação.
+    Extract structured frontmatter fields for indexing.
 
-    Campos suportados:
-    - id: UUID v7 único da nota
-    - created_at / created / date: data de criação
-    - updated_at / updated / modified: data de última atualização
-    - description / summary / excerpt: descrição da nota
+    Supported fields:
+    - ``id``: unique UUID v7
+    - ``created_at`` / ``created`` / ``date``: creation date
+    - ``updated_at`` / ``updated`` / ``modified``: last-update date
+    - ``description`` / ``summary`` / ``excerpt``: note description
     - status: draft, review, published, archived
     - note_type / type: daily, weekly, monthly, yearly, meeting, idea, task, person
     - category / categories: work, personal, reference, project
-    - project: nome do projeto
-    - source / url / link: URL ou referência da fonte
+    - ``project``: project name
+    - ``source`` / ``url`` / ``link``: source URL or reference
 
-    Parâmetros:
-        metadata: dicionário do frontmatter
+    Parameters:
+        metadata: Frontmatter dictionary.
 
-    Retorna:
-        Dict com campos extraídos (apenas não-vazios).
+    Returns:
+        Non-empty extracted fields.
     """
     fields: dict[str, str] = {}
 
-    # id: UUID único da nota
+    # id: unique note UUID
     if note_id := metadata.get("id"):
         fields["id"] = str(note_id)
 
-    # created_at: múltiplos nomes comuns
+    # created_at: common aliases
     created = metadata.get("created_at") or metadata.get("created") or metadata.get("date")
     if created:
-        # Garantir string (YAML pode retornar datetime)
-        fields["created_at"] = str(created)[:19]  # Truncar se necessário (ISO)
+        # YAML may return a datetime; normalize to a bounded ISO string.
+        fields["created_at"] = str(created)[:19]
 
-    # updated_at: múltiplos nomes comuns
+    # updated_at: common aliases
     updated = metadata.get("updated_at") or metadata.get("updated") or metadata.get("modified")
     if updated:
-        fields["updated_at"] = str(updated)[:19]  # Truncar se necessário (ISO)
+        fields["updated_at"] = str(updated)[:19]  # Bound to ISO datetime length
 
-    # description: múltiplos nomes comuns
+    # description: common aliases
     description = metadata.get("description") or metadata.get("summary") or metadata.get("excerpt")
     if description and isinstance(description, str):
-        fields["description"] = description[:500]  # Limitar tamanho
+        fields["description"] = description[:500]  # Bound field size.
 
     # status
     status = metadata.get("status")
     if status and isinstance(status, str):
         fields["status"] = status.lower().strip()
 
-    # note_type: 'type' é comum em Obsidian
+    # ``type`` is a common Obsidian alias for note_type.
     note_type = metadata.get("note_type") or metadata.get("type")
     if note_type and isinstance(note_type, str):
         fields["note_type"] = note_type.lower().strip()
 
-    # category: pode ser string ou lista
+    # category may be a string or a list.
     category = metadata.get("category") or metadata.get("categories")
     if category:
         if isinstance(category, list):
@@ -158,35 +155,34 @@ def extract_frontmatter_fields(metadata: Frontmatter) -> dict[str, str]:
     if project and isinstance(project, str):
         fields["project"] = project.strip()
 
-    # source: URL ou referência
+    # source: URL or reference
     source = metadata.get("source") or metadata.get("url") or metadata.get("link")
     if source and isinstance(source, str):
-        fields["source"] = source.strip()[:500]  # Limitar tamanho de URLs
+        fields["source"] = source.strip()[:500]  # Bound URL size.
 
     return fields
 
 
 def read_frontmatter_only(file_path: Path) -> tuple[Frontmatter, int]:
     """
-    Lê apenas o frontmatter de um arquivo sem carregar todo o conteúdo.
+    Read frontmatter without loading the entire file.
 
-    Usa leitura incremental por chunks, parando assim que encontra
-    o fechamento do frontmatter (segundo ---). Muito mais eficiente
-    para arquivos grandes onde só precisamos dos metadados.
+    Read incrementally and stop at the second ``---`` delimiter. This bounds
+    memory use when only metadata is needed from large files.
 
-    Parâmetros:
-        file_path: caminho do arquivo .md
+    Parameters:
+        file_path: Markdown file path.
 
-    Retorna:
-        Tupla (frontmatter_dict, bytes_read).
-        Se não houver frontmatter válido, retorna ({}, bytes_lidos).
+    Returns:
+        A ``(frontmatter, bytes_read)`` tuple. Invalid or absent frontmatter
+        returns an empty mapping with the measured byte count.
     """
     bytes_read = 0
     buffer = ""
 
     try:
         with open(file_path, encoding="utf-8") as f:
-            # Ler primeiro chunk
+            # Read the first chunk.
             chunk = f.read(FRONTMATTER_CHUNK_SIZE)
             if not chunk:
                 return {}, 0
@@ -194,20 +190,20 @@ def read_frontmatter_only(file_path: Path) -> tuple[Frontmatter, int]:
             buffer = chunk.lstrip("\ufeff")  # Remove BOM
             bytes_read = len(chunk.encode("utf-8"))
 
-            # Verificar se começa com ---
+            # Check whether the file starts with the delimiter.
             if not buffer.lstrip().startswith("---"):
                 return {}, bytes_read
 
-            # Procurar segundo --- incrementalmente
+            # Search incrementally for the closing delimiter.
             while True:
                 matches = list(_FRONTMATTER_RE.finditer(buffer))
 
                 if len(matches) >= 2:
-                    # Encontrou abertura e fechamento
+                    # Found both opening and closing delimiters.
                     first = matches[0]
                     second = matches[1]
 
-                    # Validar que primeiro --- está no início
+                    # Validate that the first delimiter is at the beginning.
                     if first.start() != 0 and buffer[: first.start()].strip():
                         return {}, bytes_read
 
@@ -222,14 +218,14 @@ def read_frontmatter_only(file_path: Path) -> tuple[Frontmatter, int]:
 
                     return metadata, bytes_read
 
-                # Limite de segurança
+                # Enforce the safety limit.
                 if bytes_read >= FRONTMATTER_MAX_BYTES:
                     return {}, bytes_read
 
-                # Ler próximo chunk
+                # Read the next chunk.
                 chunk = f.read(FRONTMATTER_CHUNK_SIZE)
                 if not chunk:
-                    # EOF sem encontrar segundo ---
+                    # EOF before a closing delimiter.
                     return {}, bytes_read
 
                 buffer += chunk

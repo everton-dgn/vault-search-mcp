@@ -1,63 +1,63 @@
-# Caminhos e persistência
+# Paths and persistence
 
-## Fonte de cada path
+## Source of each path
 
-| Dado | Configuração | Papel |
+| Data | Configuration | Role |
 |---|---|---|
-| Vault | `paths.vault_path`, `VAULT_SEARCH_VAULT_PATH` ou alias `VAULT_PATH` | Fonte primária de notas |
-| Dados | `paths.data_dir` ou `VAULT_SEARCH_DATA_DIR` | LanceDB, catálogo e cache reconstruíveis |
-| Tabela | `paths.lancedb_table` | Nome lógico dentro do LanceDB |
+| Vault | `paths.vault_path`, `VAULT_SEARCH_VAULT_PATH`, or legacy `VAULT_PATH` | Primary note source |
+| Data directory | `paths.data_dir` or `VAULT_SEARCH_DATA_DIR` | Rebuildable LanceDB, catalog, and cache |
+| Table | `paths.lancedb_table` | Logical LanceDB table name |
 
-Caminhos relativos usam o diretório que contém o arquivo YAML carregado. Sem
-arquivo, os defaults usam o diretório de trabalho do processo. O runtime
-expande `~` e resolve o path sem exigir que o destino já exista.
+Relative paths use the directory containing the selected YAML file. Without a
+file, defaults use the process working directory. The runtime expands `~` and
+resolves the path without requiring the target to exist first.
 
-`VAULT_SEARCH_DB_DIR` não é lida. Os overrides reconhecidos são aplicados no
-primeiro import de `vault_search.config.paths` e exigem reinício para mudar.
+`VAULT_SEARCH_DB_DIR` is not read. Recognized overrides are captured on first
+import of `vault_search.config.paths`; restart the process to change them.
 
-## Layout padrão
+## Default layout
 
 ```text
 vault-search-mcp/
-├── config.yaml                 # local, ignorado pelo Git
-├── data/                       # artefatos reconstruíveis
+├── config.yaml                 # local and ignored by Git
+├── data/                       # rebuildable artifacts
 │   ├── vault_chunks.lance/
 │   └── notes_catalog.db
 └── vaults/
-    └── obsidian_vault/         # vault ou symlink controlado
+    └── obsidian_vault/         # vault or operator-controlled symlink
 ```
 
-## Contenção
+## Containment
 
-Todo path recebido por tool deve ser relativo ao vault. A validação segura:
+Every path supplied to a tool must be relative to the vault. Safe validation:
 
-1. rejeita path absoluto, `..`, byte nulo e extensão não suportada;
-2. resolve a raiz e o destino;
-3. confirma que o destino resolvido está dentro da raiz;
-4. verifica symlinks para impedir escape;
-5. repete a garantia no momento da operação quando uma corrida for possível.
+1. rejects absolute paths, `..`, null bytes, and unsupported extensions;
+2. resolves the vault root and target;
+3. confirms that the resolved target stays below the root;
+4. checks symlinks for boundary escape;
+5. repeats the guarantee at operation time when races are possible.
 
-Validação somente textual não cobre symlink que muda depois da checagem.
+Text-only validation cannot contain a symlink that changes after validation.
 
 ## Backup
 
-Faça backup do vault com a ferramenta já usada para suas notas. Índices podem
-ser reconstruídos e não substituem backup. Antes de manutenção, confirme que o
-backup consegue restaurar ao menos uma nota de teste.
+Back up the vault with the system already used for note recovery. Derived
+indexes are rebuildable and do not replace backups. Before maintenance, verify
+that one synthetic note can be restored.
 
-## Dados públicos
+## Public repository boundary
 
-Nunca versione:
+Never commit:
 
-- conteúdo de `vaults/`;
-- `config.yaml` ou `.env*`;
-- `data/`, arquivos `.lance`, `.sqlite` ou `.npy`;
-- logs ou dumps que contenham caminhos resolvidos.
+- vault content;
+- `config.yaml`, `config.yml`, or `.env*`;
+- `data/`, `.lance`, `.sqlite`, `.npy`, or model-cache artifacts;
+- logs or dumps containing resolved paths.
 
-Use fixtures sintéticas pequenas em testes e documentação.
+Use small synthetic fixtures in tests and documentation.
 
-## Mudança de vault
+## Switching vaults
 
-Pare MCP e daemon, ajuste a configuração e crie um índice separado. Não reutilize
-um índice de outro vault como se fosse compatível. Confirme `vault_stats` e uma
-busca sintética antes de liberar operações de escrita.
+Stop the MCP process and daemon, update configuration, and create a separate
+index. Do not reuse another vault's index as compatible state. Check
+`vault_stats` and a synthetic search before enabling writes.

@@ -1,10 +1,10 @@
 """
-Daemon para manter modelos em memória e watcher ativo.
+Optional daemon that keeps models in memory and watches the vault.
 
-Arquitetura:
-- Daemon roda persistente, carrega modelos BGE-M3 e reranker
-- MCP server conecta via HTTP para embed/rerank
-- Watcher sempre ativo indexando mudanças
+Architecture:
+- A persistent local process loads the embedding and reranking models
+- The MCP server delegates embedding and reranking over loopback HTTP
+- An optional watcher indexes filesystem changes
 """
 
 from vault_search.daemon.client import DaemonClient, is_daemon_running

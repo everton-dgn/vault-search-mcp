@@ -1,82 +1,59 @@
-# Ferramentas de navegação
+# Navigation tools
 
-10 ferramentas para navegação e descoberta no vault.
+Ten tools navigate links, recency, tags, folders, random notes, and daily notes.
+Numeric payloads on this page are synthetic fixtures that document shape only.
 
-Os payloads numéricos desta página são fixtures sintéticas que mostram o
-formato. Eles não representam um vault medido.
-
-## get_backlinks
-
-Encontra notas que linkam para uma nota específica usando o índice de links.
+## `get_backlinks`
 
 ```python
-get_backlinks(
-    path: str,              # caminho da nota alvo
-    include_context: bool = True  # incluir trecho onde o link aparece
-) -> list[dict] | str
+get_backlinks(path: str, include_context: bool = True) -> list[dict] | str
 ```
 
-**Retorno:**
+Returns indexed links that point to the requested note.
+
 ```python
 [
     {
-        "path": "projetos/roadmap.md",
+        "path": "projects/roadmap.md",
         "title": "Roadmap",
-        "link_type": "wikilink",  # wikilink, markdown, embed
-        "link_target": "minha-nota",
-        "context": "...relacionado à [[minha-nota]] que define..."
+        "link_type": "wikilink",
+        "link_target": "example-note",
+        "context": "...related to [[example-note]]...",
     }
 ]
 ```
 
-**Execução:** consulta indexada; o custo varia com o grafo e a quantidade de
-resultados.
+`link_type` can be `wikilink`, `markdown`, or `embed`. Context is omitted when
+`include_context=False`.
 
----
-
-## get_outlinks
-
-Lista os links saindo de uma nota pelo índice de links.
+## `get_outlinks`
 
 ```python
 get_outlinks(path: str) -> dict | str
 ```
 
-**Retorno:**
 ```python
 {
-    "path": "projetos/meu-projeto.md",
+    "path": "projects/example.md",
     "wikilinks": [
-        {"target": "roadmap", "resolved": true, "resolved_path": "roadmap.md"}
+        {"target": "roadmap", "resolved": True, "resolved_path": "roadmap.md"}
     ],
-    "markdown_links": [
-        {"target": "docs/manual.md", "resolved": true}
-    ],
-    "embeds": [
-        {"target": "diagrama.png", "resolved": false}
-    ],
-    "external": [
-        {"url": "https://example.com"}
-    ],
+    "markdown_links": [{"target": "docs/manual.md", "resolved": True}],
+    "embeds": [{"target": "diagram.png", "resolved": False}],
+    "external": [{"url": "https://example.com"}],
     "total": 4,
-    "broken_count": 1
+    "broken_count": 1,
 }
 ```
 
----
-
-## find_broken_links
-
-Encontra links que apontam para notas inexistentes.
+## `find_broken_links`
 
 ```python
-find_broken_links(
-    folder: str | None = None,  # filtrar por pasta
-    limit: int = 100            # máximo de notas (max: 500)
-) -> dict | str
+find_broken_links(folder: str | None = None, limit: int = 100) -> dict | str
 ```
 
-**Retorno:**
+Finds indexed links without a resolved note target. `limit` is capped at 500.
+
 ```python
 {
     "total_broken_links": 5,
@@ -85,36 +62,28 @@ find_broken_links(
     "has_more": True,
     "notes": [
         {
-            "path": "projeto.md",
-            "title": "Projeto",
+            "path": "project.md",
+            "title": "Project",
             "broken_links": [
-                {"target": "inexistente", "type": "wikilink", "context": "..."}
-            ]
+                {"target": "missing", "type": "wikilink", "context": "..."}
+            ],
         }
-    ]
+    ],
 }
 ```
 
-`total_broken_links` e `notes_with_broken_links` cobrem todo o filtro.
-`returned_notes` mede o recorte em `notes`; `has_more` indica que outras notas
-ficaram fora do limite. A tool não recebe `offset`, e o limite máximo é 500.
+The totals cover the complete filter, while `notes` respects `limit`.
+`has_more` reports truncation. There is no `offset`.
 
-**Execução:** consulta e resolução de alvos no índice.
-
----
-
-## find_orphan_notes
-
-Encontra notas sem nenhum backlink (isoladas no grafo).
+## `find_orphan_notes`
 
 ```python
-find_orphan_notes(
-    folder: str | None = None,  # filtrar por pasta
-    limit: int = 100            # máximo de notas (max: 500)
-) -> dict | str
+find_orphan_notes(folder: str | None = None, limit: int = 100) -> dict | str
 ```
 
-**Retorno:**
+Finds catalog notes without known incoming or outgoing links. The limit is
+capped at 500.
+
 ```python
 {
     "total_notes": 500,
@@ -123,28 +92,22 @@ find_orphan_notes(
     "returned_notes": 1,
     "has_more": True,
     "notes": [
-        {"path": "isolada.md", "title": "Nota Isolada", "modified_at": "2024-01-01"}
-    ]
+        {"path": "isolated.md", "title": "Isolated note", "modified_at": "2026-01-01"}
+    ],
 }
 ```
 
-Os três totais são globais dentro do filtro, enquanto `notes` respeita `limit`.
-`returned_notes` descreve o recorte e `has_more` sinaliza resultado truncado. A
-tool não oferece `offset`.
+Totals cover the complete filter. The note array is bounded and has no offset.
 
-**Execução:** agregação do índice de links e do catálogo.
-
----
-
-## link_stats
-
-Estatísticas gerais de links do vault.
+## `link_stats`
 
 ```python
 link_stats(limit: int = 50) -> dict | str
 ```
 
-**Retorno:**
+Returns global link counts, resolution rate, unique sources and targets, and
+bounded `most_referenced` and `most_outlinks` lists.
+
 ```python
 {
     "total_links": 1234,
@@ -154,165 +117,108 @@ link_stats(limit: int = 50) -> dict | str
     "resolution_rate": 97.0,
     "unique_sources": 200,
     "unique_targets": 150,
-    "most_referenced": [
-        {"path": "hub-note.md", "backlinks": 50}
-    ],
-    "most_outlinks": [
-        {"path": "index.md", "outlinks": 30}
-    ]
+    "most_referenced": [{"path": "hub.md", "backlinks": 50}],
+    "most_outlinks": [{"path": "index.md", "outlinks": 30}],
 }
 ```
 
-**Execução:** agregação do índice de links.
-
----
-
-## get_recent_notes
-
-Retorna notas modificadas recentemente.
+## `get_recent_notes`
 
 ```python
 get_recent_notes(
-    days: int = 7,           # janela de tempo (max: 365)
-    limit: int = 20,         # máximo de notas (max: 100)
-    folder: str | None = None  # filtrar por pasta
+    days: int = 7,
+    limit: int = 20,
+    folder: str | None = None,
 ) -> list[dict] | str
 ```
 
-**Retorno:**
-```python
-[
-    {
-        "path": "projetos/nota.md",
-        "title": "Minha Nota",
-        "modified_at": "2024-01-15T10:30:00",
-        "folder": "projetos",
-        "days_ago": 2
-    }
-]
-```
+`days` is capped at 365 and `limit` at 100. Each item contains `path`, `title`,
+`modified_at`, `folder`, and `days_ago`.
 
----
-
-## tag_stats
-
-Retorna estatísticas de tags do vault (tag cloud).
+## `tag_stats`
 
 ```python
-tag_stats(
-    limit: int = 50,           # máximo de tags (max: 500)
-    folder: str | None = None  # filtrar por pasta
-) -> dict | str
+tag_stats(limit: int = 50, folder: str | None = None) -> dict | str
 ```
 
-**Retorno:**
+Returns `total_tags`, `total_notes_with_tags`, and a frequency-sorted `tags`
+array. `limit` is capped at 500.
+
 ```python
 {
-    "total_tags": 127,
-    "total_notes_with_tags": 892,
+    "total_tags": 3,
+    "total_notes_with_tags": 8,
     "tags": [
-        {"tag": "projeto", "count": 156},
-        {"tag": "2024", "count": 89},
-        {"tag": "ideia", "count": 45}
-    ]
+        {"tag": "project", "count": 5},
+        {"tag": "architecture", "count": 3},
+    ],
 }
 ```
 
----
-
-## folder_tree
-
-Retorna a estrutura de pastas do vault como árvore hierárquica.
+## `folder_tree`
 
 ```python
-folder_tree(
-    include_counts: bool = True,  # incluir contagem de notas
-    max_depth: int = 10           # profundidade máxima (max: 50)
-) -> dict | str
+folder_tree(include_counts: bool = True, max_depth: int = 10) -> dict | str
 ```
 
-**Retorno:**
+Returns `total_folders`, `total_notes`, and a hierarchical `tree`. Counts use
+the reserved `_count` key. `max_depth` is capped at 50.
+
 ```python
 {
-    "total_folders": 45,
-    "total_notes": 1234,
+    "total_folders": 3,
+    "total_notes": 12,
     "tree": {
-        "projetos": {
-            "_count": 56,
-            "web": {"_count": 23},
-            "mobile": {"_count": 12}
-        },
-        "referencias": {
-            "_count": 89,
-            "livros": {"_count": 34}
+        "projects": {
+            "_count": 8,
+            "web": {"_count": 5},
+            "mobile": {"_count": 3},
         }
-    }
+    },
 }
 ```
 
----
-
-## random_note
-
-Retorna uma nota aleatória do vault.
+## `random_note`
 
 ```python
 random_note(
-    folder: str | None = None,    # filtrar por pasta
-    extension: str | None = None  # filtrar por extensão
+    folder: str | None = None,
+    extension: str | None = None,
 ) -> dict | str
 ```
 
-**Retorno:**
-```python
-{
-    "path": "ideias/projeto-x.md",
-    "title": "Projeto X",
-    "folder": "ideias",
-    "extension": ".md",
-    "modified_at": "2024-01-15T10:30:00",
-    "size_bytes": 2048
-}
-```
+Returns one catalog item with `path`, `title`, `folder`, `extension`,
+`modified_at`, and `size_bytes`. Filters are optional.
 
-**Uso:** Redescoberta, serendipidade, exploração aleatória.
-
----
-
-## daily_note
-
-Verifica a existência de uma daily note para uma data específica.
+## `daily_note`
 
 ```python
-daily_note(
-    date: str | None = None,  # data ISO (YYYY-MM-DD), default hoje
-    folder: str = "daily"     # pasta das daily notes
-) -> dict | str
+daily_note(date: str | None = None, folder: str = "daily") -> dict | str
 ```
 
-| Parâmetro | Tipo | Default | Descrição |
-|-----------|------|---------|-----------|
-| date | str \| None | None | Data em formato ISO. Se None, usa data atual |
-| folder | str | "daily" | Pasta onde ficam as daily notes |
+`date` is an ISO `YYYY-MM-DD` value and defaults to the current local date.
+`folder` is validated inside the vault.
 
-**Retorno (nota existe):**
+Existing note:
+
 ```python
 {
     "exists": True,
-    "path": "daily/2024-01-15.md",
-    "title": "2024-01-15",
+    "path": "daily/2026-01-15.md",
+    "title": "2026-01-15",
     "folder": "daily",
-    "date": "2024-01-15",
-    "modified_at": "2024-01-15T10:30:00",
-    "size_bytes": 1024
+    "date": "2026-01-15",
+    "modified_at": "2026-01-15T10:30:00",
+    "size_bytes": 1024,
 }
 ```
 
-**Retorno (nota não existe):**
+Missing note:
+
 ```python
 {
     "exists": False,
-    "expected_path": "daily/2024-01-15.md",
-    "date": "2024-01-15"
+    "expected_path": "daily/2026-01-15.md",
+    "date": "2026-01-15",
 }
 ```

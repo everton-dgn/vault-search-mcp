@@ -1,254 +1,155 @@
-# Sistema de links indexados
+# Indexed links
 
-O sistema de links indexados evita reparsing completo do vault em consultas de
-backlinks, outlinks e análises de grafo.
+The link index avoids reparsing the complete vault for backlink, outlink, and
+graph queries.
 
-## Visão geral
+## Extraction
 
-Durante a indexação, o sistema extrai e armazena todos os links encontrados nas notas:
+Indexing recognizes:
 
-- **Wikilinks**: `[[nota]]`, `[[nota|alias]]`, `[[nota#heading]]`, `[[nota^block]]`
-- **Markdown links**: texto com destino relativo ou externo
-- **Embeds**: `![[imagem.png]]`, `![[nota]]`
-- **URLs externas**: `https://...` (opcional)
+- wikilinks: `[[note]]`, `[[note|alias]]`, `[[note#heading]]`, `[[note^block]]`;
+- Markdown links with relative or external targets;
+- embeds such as `![[image.png]]` and `![[note]]`;
+- external URLs when enabled.
 
-Os payloads numéricos desta página são fixtures sintéticas para mostrar o
-formato. Eles não representam um vault medido.
+Numeric payloads below are synthetic and document shape only.
 
-## Tabelas
+## Tables
 
-### links_index
+### `links_index`
 
-Armazena todos os links extraídos.
+| Field | Meaning |
+|---|---|
+| `from_note_path` | Source note path |
+| `from_note_title` | Source note title |
+| `link_type` | `wikilink`, `markdown`, `embed`, or `external` |
+| `link_target` | Original target |
+| `link_target_normalized` | Target normalized for matching |
+| `to_note_path` | Resolved target note, when present |
+| `is_resolved` | Whether a note target was found |
+| `alias` | Display alias |
+| `heading` | Heading fragment |
+| `block_ref` | Block reference |
+| `context` | Bounded source context |
+| `modified_at` | Source-note modification time |
 
-| Campo | Tipo | Descrição |
-|-------|------|-----------|
-| `from_note_path` | string | Nota de origem do link |
-| `from_note_title` | string | Título da nota de origem |
-| `link_type` | string | `wikilink`, `markdown`, `embed`, `external` |
-| `link_target` | string | Target original do link |
-| `link_target_normalized` | string | Target normalizado para matching |
-| `to_note_path` | string | Path da nota alvo (se resolvido) |
-| `is_resolved` | bool | Se o link foi resolvido para uma nota |
-| `alias` | string | Alias do link (`[[nota\|alias]]`) |
-| `heading` | string | Heading (`[[nota#heading]]`) |
-| `block_ref` | string | Block reference (`[[nota^block]]`) |
-| `context` | string | Trecho de texto onde o link aparece |
-| `modified_at` | string | Data de modificação da nota |
+### `note_aliases`
 
-### note_aliases
+| Field | Meaning |
+|---|---|
+| `note_path` | Note path |
+| `alias` | Original frontmatter alias |
+| `alias_normalized` | Matching form |
 
-Mapeia aliases do frontmatter para notas.
+## Navigation tools
 
-| Campo | Tipo | Descrição |
-|-------|------|-----------|
-| `note_path` | string | Path da nota |
-| `alias` | string | Alias original |
-| `alias_normalized` | string | Alias normalizado |
-
-## Ferramentas MCP
-
-### get_backlinks
-
-Encontra notas que linkam para uma nota específica.
+### `get_backlinks`
 
 ```python
-get_backlinks(path="minha-nota.md", include_context=True)
+get_backlinks(path="example-note.md", include_context=True)
 ```
 
-**Retorno**:
 ```json
 [
   {
-    "path": "outra-nota.md",
-    "title": "Outra Nota",
+    "path": "related-note.md",
+    "title": "Related note",
     "link_type": "wikilink",
-    "link_target": "minha-nota",
-    "context": "...texto com [[minha-nota]]..."
+    "link_target": "example-note",
+    "context": "...text with [[example-note]]..."
   }
 ]
 ```
 
-**Execução:** consulta indexada no banco de links. O custo inclui busca e volume
-de resultados retornados.
-
-### get_outlinks
-
-Lista todos os links saindo de uma nota.
+### `get_outlinks`
 
 ```python
-get_outlinks(path="minha-nota.md")
+get_outlinks(path="example-note.md")
 ```
 
-**Retorno**:
 ```json
 {
-  "path": "minha-nota.md",
-  "wikilinks": [{"target": "outra", "resolved": true, "resolved_path": "outra.md"}],
+  "path": "example-note.md",
+  "wikilinks": [{"target": "related", "resolved": true, "resolved_path": "related.md"}],
   "markdown_links": [],
-  "embeds": [{"target": "imagem.png", "resolved": false}],
+  "embeds": [{"target": "image.png", "resolved": false}],
   "external": [{"url": "https://example.com"}],
   "total": 3,
   "broken_count": 1
 }
 ```
 
-### find_broken_links
+### `find_broken_links`
 
-Encontra links que apontam para notas inexistentes.
+Returns complete filtered totals plus a bounded note list. `returned_notes` is
+the list size and `has_more` reports truncation. There is no offset.
 
-```python
-find_broken_links(folder="projetos", limit=100)
-```
+### `find_orphan_notes`
 
-**Retorno**:
-```json
-{
-  "total_broken_links": 5,
-  "notes_with_broken_links": 3,
-  "returned_notes": 1,
-  "has_more": true,
-  "notes": [
-    {
-      "path": "projeto.md",
-      "title": "Projeto",
-      "broken_links": [
-        {"target": "inexistente", "type": "wikilink", "context": "..."}
-      ]
-    }
-  ]
-}
-```
+Returns complete filtered note/orphan totals plus a bounded list of notes with
+no known links. There is no offset.
 
-Os totais cobrem todo o filtro. `notes` contém até `limit` notas,
-`returned_notes` informa o tamanho desse recorte e `has_more` mostra se houve
-truncamento. Não há argumento `offset`.
+### `link_stats`
 
-### find_orphan_notes
+Aggregates total, resolved, broken, and external links; unique sources and
+targets; and bounded most-referenced and most-outgoing lists.
 
-Encontra notas sem nenhum backlink (isoladas no grafo).
+Detailed shapes are in [navigation tools](../api/tools-navigation.md).
 
-```python
-find_orphan_notes(folder=None, limit=100)
-```
+## Normalization and resolution
 
-**Retorno**:
-```json
-{
-  "total_notes": 500,
-  "total_orphans": 42,
-  "orphan_percentage": 8.4,
-  "returned_notes": 1,
-  "has_more": true,
-  "notes": [
-    {"path": "isolada.md", "title": "Nota Isolada", "modified_at": "2024-01-01"}
-  ]
-}
-```
-
-`total_notes`, `total_orphans` e `orphan_percentage` são globais dentro do
-filtro. A lista respeita `limit`; confira `returned_notes` e `has_more` antes de
-tratá-la como conjunto completo. Não há argumento `offset`.
-
-### link_stats
-
-Estatísticas gerais de links do vault.
-
-```python
-link_stats(limit=50)
-```
-
-**Retorno**:
-```json
-{
-  "total_links": 1234,
-  "total_resolved": 1100,
-  "total_broken": 34,
-  "total_external": 100,
-  "resolution_rate": 97.0,
-  "unique_sources": 200,
-  "unique_targets": 150,
-  "most_referenced": [
-    {"path": "hub-note.md", "backlinks": 50}
-  ],
-  "most_outlinks": [
-    {"path": "index.md", "outlinks": 30}
-  ]
-}
-```
-
-## Normalização de links
-
-O sistema normaliza targets para matching consistente:
-
-| Original | Normalizado |
-|----------|-------------|
-| `Meu Projeto` | `meu-projeto` |
+| Original | Normalized |
+|---|---|
+| `Example Project` | `example-project` |
 | `docs/API.md` | `docs/api` |
-| `  nota  ` | `nota` |
+| `  note  ` | `note` |
 | `UPPER CASE` | `upper-case` |
 
-## Resolução de links
+Resolution order:
 
-Durante a indexação, o sistema tenta resolver cada link:
+1. exact normalized path;
+2. normalized note stem;
+3. normalized frontmatter alias.
 
-1. **Match exato**: `link_target_normalized` == `note_path_normalized`
-2. **Match por stem**: `link_target_normalized` == `note_stem_normalized`
-3. **Match por alias**: `link_target_normalized` == `alias_normalized`
+A resolved row sets `is_resolved=true` and `to_note_path`.
 
-Links resolvidos têm `is_resolved=true` e `to_note_path` preenchido.
+Complex wikilinks retain their parts:
 
-## Extração de partes
+```text
+[[Note#Heading|alias]]
+  target: Note
+  heading: Heading
+  alias: alias
 
-O parser extrai todas as partes de wikilinks complexos:
-
-```
-[[Nota#Heading|alias]]
-  └─ target: Nota
-  └─ heading: Heading
-  └─ alias: alias
-
-[[Nota^block-id]]
-  └─ target: Nota
-  └─ block_ref: block-id
+[[Note^block-id]]
+  target: Note
+  block_ref: block-id
 ```
 
-## Aliases do frontmatter
-
-Aliases definidos no frontmatter são indexados:
+Frontmatter aliases are indexed:
 
 ```yaml
 ---
 title: API Documentation
-aliases: [API Docs, Documentação da API]
+aliases: [API Docs, API Reference]
 ---
 ```
 
-Links como `[[API Docs]]` serão resolvidos para esta nota.
+`[[API Docs]]` can then resolve to that note.
 
-## Performance
+## Consistency and bounds
 
-| Operação | Antes | Depois |
-|----------|-------|--------|
-| `get_backlinks()` | Reparse do vault | Consulta no índice de links |
-| `find_broken_links()` | Não disponível | Consulta e resolução de alvos |
-| `find_orphan_notes()` | Não disponível | Agregação do grafo indexado |
-| `link_stats()` | Não disponível | Agregação do índice |
+Queries read indexed rows and avoid full-vault reparsing. Internal read and
+return limits protect memory. In a vault beyond those limits, a field called
+`total` may describe the processed view rather than a census. Validate coverage
+before using it as a global count.
 
-Números dependem do vault e do ambiente. Use o protocolo de
-[benchmarking](../performance/benchmarking.md).
-
-As tools aplicam limites internos de leitura e retorno. Em vaults maiores que
-esses limites, campos chamados `total` podem descrever apenas o conjunto
-processado pela chamada atual; não use esses valores como censo sem validar a
-cobertura.
-
-## Uso via CLI
+After editing links, wait for the watcher or run `reindex_note`. A complete
+rebuild recreates both link and alias tables.
 
 ```bash
-# Reindexar para criar/atualizar índice de links
 uv run python -m vault_search.core.indexer
-
-# As ferramentas ficam disponíveis via MCP server
 uv run python -m vault_search
 ```
+
+Measure comparisons with the [benchmark protocol](../performance/benchmarking.md).

@@ -1,11 +1,11 @@
-"""Fixtures compartilhadas para testes do vault-search-mcp."""
+"""Shared fixtures for vault-search-mcp tests."""
 
 import sys
 from pathlib import Path
 
 import pytest
 
-# Garantir que src está no sys.path para imports
+# Ensure src is on sys.path for imports.
 SRC_DIR = Path(__file__).parent.parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
@@ -13,44 +13,44 @@ if str(SRC_DIR) not in sys.path:
 
 @pytest.fixture
 def sample_markdown_simple():
-    """Markdown simples sem frontmatter."""
-    return "# Título\n\nParágrafo de texto simples.\n\n## Subtítulo\n\nOutro parágrafo."
+    """Simple Markdown without frontmatter."""
+    return "# Title\n\nA simple text paragraph.\n\n## Subtitle\n\nAnother paragraph."
 
 
 @pytest.fixture
 def sample_markdown_with_frontmatter():
-    """Markdown com frontmatter YAML válido."""
+    """Markdown with valid YAML frontmatter."""
     return (
         "---\n"
-        "title: Minha Nota\n"
+        "title: My Note\n"
         "tags:\n"
         "  - python\n"
         "  - obsidian\n"
         "---\n"
-        "# Conteúdo\n\n"
-        "Texto da nota com **markdown**."
+        "# Content\n\n"
+        "Note text with **markdown**."
     )
 
 
 @pytest.fixture
 def sample_markdown_scalar_frontmatter():
-    """Markdown com frontmatter que retorna escalar (não dict)."""
-    return "---\napenas uma string\n---\nCorpo da nota."
+    """Markdown whose frontmatter parses as a scalar instead of a mapping."""
+    return "---\njust a scalar\n---\nBody of the note."
 
 
 @pytest.fixture
 def sample_markdown_list_frontmatter():
-    """Markdown com frontmatter que retorna lista (não dict)."""
-    return "---\n- item1\n- item2\n---\nCorpo da nota."
+    """Markdown whose frontmatter parses as a list instead of a mapping."""
+    return "---\n- item1\n- item2\n---\nBody of the note."
 
 
 @pytest.fixture
 def sample_long_text():
-    """Texto longo que precisa de chunking (~5000 chars)."""
+    """Long text that requires chunking (about 5,000 characters)."""
     paragraphs = []
     for i in range(25):
         paragraphs.append(
-            f"Parágrafo {i}: Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
+            f"Paragraph {i}: Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
             f"Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. "
             f"Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris."
         )
@@ -59,41 +59,41 @@ def sample_long_text():
 
 @pytest.fixture
 def tmp_vault(tmp_path):
-    """Cria vault temporário com algumas notas para testes."""
+    """Create a temporary vault with synthetic notes for tests."""
     vault = tmp_path / "test_vault"
     vault.mkdir()
 
-    # Nota simples
-    (vault / "simples.md").write_text(
-        "# Nota Simples\n\nTexto de teste.",
+    # Simple note
+    (vault / "simple.md").write_text(
+        "# Simple Note\n\nTest text.",
         encoding="utf-8",
     )
 
-    # Nota com frontmatter
-    (vault / "com_meta.md").write_text(
-        "---\ntitle: Nota com Meta\ntags:\n  - teste\n  - python\n---\n"
-        "# Conteúdo\n\nTexto com metadados.",
+    # Note with frontmatter
+    (vault / "with_meta.md").write_text(
+        "---\ntitle: Note with Meta\ntags:\n  - test\n  - python\n---\n"
+        "# Content\n\nText with metadata.",
         encoding="utf-8",
     )
 
-    # Nota em subpasta
-    subdir = vault / "projetos"
+    # Note in subfolder
+    subdir = vault / "projects"
     subdir.mkdir()
-    (subdir / "projeto1.md").write_text(
-        "---\ntitle: Projeto 1\ntags: projeto\n---\n# Projeto 1\n\nDescrição do projeto.",
+    (subdir / "project1.md").write_text(
+        "---\ntitle: Project 1\ntags: project\n---\n# Project 1\n\nDescription of the project.",
         encoding="utf-8",
     )
 
-    # Nota com frontmatter inválido (lista)
-    (vault / "meta_invalido.md").write_text(
-        "---\n- item1\n- item2\n---\nCorpo sem meta válido.",
+    # Note with frontmatter invalid (list)
+    (vault / "meta_invalid.md").write_text(
+        "---\n- item1\n- item2\n---\nBody without valid metadata.",
         encoding="utf-8",
     )
 
-    # Arquivo não-markdown (deve ser ignorado)
-    (vault / "readme.txt").write_text("Ignorar este arquivo.", encoding="utf-8")
+    # Non-Markdown file.
+    (vault / "readme.txt").write_text("Ignore this file.", encoding="utf-8")
 
-    # Canvas simples
+    # Simple Canvas file
     import json
 
     canvas_data = {
@@ -101,7 +101,7 @@ def tmp_vault(tmp_path):
             {
                 "id": "n1",
                 "type": "text",
-                "text": "Conteúdo do canvas",
+                "text": "Content of the canvas",
                 "x": 0,
                 "y": 0,
                 "width": 200,
@@ -110,20 +110,20 @@ def tmp_vault(tmp_path):
         ],
         "edges": [],
     }
-    (vault / "diagrama.canvas").write_text(json.dumps(canvas_data), encoding="utf-8")
+    (vault / "diagram.canvas").write_text(json.dumps(canvas_data), encoding="utf-8")
 
-    # PDF simples
+    # Simple PDF.
     import pymupdf
 
     doc = pymupdf.open()
     page = doc.new_page()
-    page.insert_text((72, 72), "Conteúdo do PDF de teste")
-    doc.save(str(vault / "documento.pdf"))
+    page.insert_text((72, 72), "Test PDF content")
+    doc.save(str(vault / "document.pdf"))
     doc.close()
 
-    # Pasta ignorada
+    # Ignored folder.
     ignored = vault / ".obsidian"
     ignored.mkdir()
-    (ignored / "config.md").write_text("Deve ser ignorado.", encoding="utf-8")
+    (ignored / "config.md").write_text("Must be ignored.", encoding="utf-8")
 
     return vault

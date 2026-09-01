@@ -1,4 +1,4 @@
-"""Regressões de privacidade, contenção de path e escrita atômica."""
+"""Privacy, path-containment, and atomic-write regressions."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from vault_search.utils.privacy import redact_mapping, redact_text
 
 
 def test_redact_text_removes_local_paths() -> None:
-    message = "falhou em /Users/local/private/vault/note.md e C:\\Users\\local\\note.md"  # publication-check: synthetic-fixture
+    message = "failed in /Users/local/private/vault/note.md and C:\\Users\\local\\note.md"  # publication-check: synthetic-fixture
 
     redacted = redact_text(message)
 
@@ -29,7 +29,7 @@ def test_redact_text_removes_local_paths() -> None:
 
 def test_redact_mapping_is_recursive() -> None:
     payload = {
-        "query": "conteúdo privado",
+        "query": "content private",
         "nested": {
             "token": "secret",
             "message": "/home/local/vault/note.md",  # publication-check: synthetic-fixture
@@ -48,7 +48,7 @@ def test_redaction_handles_path_objects_and_spaces() -> None:
     private_path = "/Users/local/My Vault/private note.md"  # publication-check: synthetic-fixture
     payload = {
         "path_object": Path(private_path),
-        "message": "falhou em /Users/local/My Vault/private note.md",  # publication-check: synthetic-fixture
+        "message": "failed in /Users/local/My Vault/private note.md",  # publication-check: synthetic-fixture
     }
 
     redacted = redact_mapping(payload)
@@ -87,21 +87,21 @@ def test_structlog_keeps_privacy_processors_and_stderr(
 
     try:
         raise OSError(
-            "falhou em /Users/local/My Vault/private note.md"  # publication-check: synthetic-fixture
+            "failed in /Users/local/My Vault/private note.md"  # publication-check: synthetic-fixture
         )
     except OSError:
         logger.exception(
             "provider_failed",
-            query="conteúdo privado",
+            query="content private",
             token="secret-token",  # publication-check: synthetic-fixture
-            note_body="corpo privado",
+            note_body="body private",
         )
 
     captured = capfd.readouterr()
     assert captured.out == ""
-    assert "conteúdo privado" not in captured.err
+    assert "content private" not in captured.err
     assert "secret-token" not in captured.err  # publication-check: synthetic-fixture
-    assert "corpo privado" not in captured.err
+    assert "body private" not in captured.err
     assert "/Users/local" not in captured.err  # publication-check: synthetic-fixture
     assert "private note.md" not in captured.err
     assert "Traceback" not in captured.err
@@ -117,7 +117,7 @@ def test_public_error_does_not_expose_exception_details() -> None:
     assert "/Users/local" not in response  # publication-check: synthetic-fixture
     assert "note.md" not in response
     assert "OSError" not in response
-    assert "Referência:" in response
+    assert "Reference:" in response
 
 
 def test_stdlib_log_filter_removes_paths_and_tracebacks() -> None:
@@ -156,7 +156,7 @@ def test_resolve_path_rejects_symlink_escape(tmp_path: Path, monkeypatch) -> Non
     (vault / "escape").symlink_to(outside, target_is_directory=True)
     monkeypatch.setattr(validation, "VAULT_PATH", vault)
 
-    with pytest.raises(ValueError, match="fora do vault"):
+    with pytest.raises(ValueError, match="outside the vault"):
         validation.resolve_path("escape/private.md")
 
 
@@ -173,7 +173,7 @@ def test_list_notes_fallback_rejects_symlink_folder(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(validation, "VAULT_PATH", vault)
     monkeypatch.setattr(read, "USE_CATALOG", False)
 
-    with pytest.raises(ValueError, match="fora do vault"):
+    with pytest.raises(ValueError, match="outside the vault"):
         read.list_notes(folder="escape")
 
 
@@ -190,7 +190,7 @@ def test_delete_rejects_external_trash_symlink(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr(validation, "VAULT_PATH", vault)
     monkeypatch.setattr(delete, "VAULT_PATH", vault)
 
-    with pytest.raises(ValueError, match="fora do vault"):
+    with pytest.raises(ValueError, match="outside the vault"):
         delete.delete_note("note.md")
 
     assert note.exists()

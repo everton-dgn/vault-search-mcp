@@ -1,6 +1,6 @@
-# Ajuste por ambiente
+# Environment tuning
 
-## Comece pelo padrão automático
+## Start from automatic defaults
 
 ```yaml
 embedding:
@@ -15,74 +15,74 @@ prewarm:
   enabled: true
 ```
 
-Altere um eixo por vez e guarde o manifesto de benchmark. Ajuste sem medição
-pode trocar latência por memória ou reduzir qualidade de recuperação.
+Change one axis at a time and keep the benchmark manifest. Unmeasured tuning
+can exchange latency for memory or reduce retrieval quality.
 
 ## Device
 
-| Valor | Uso |
+| Value | Use |
 |---|---|
-| `auto` | Detecta backend disponível e mantém fallback |
-| `cpu` | Maior portabilidade e diagnóstico |
-| `mps` | Apple Silicon, sujeito a operações sem suporte |
-| `cuda` | GPU NVIDIA com stack compatível |
+| `auto` | Detect an available backend and retain fallback behavior |
+| `cpu` | Highest portability and clearest diagnosis |
+| `mps` | Apple Silicon, subject to unsupported operations |
+| `cuda` | NVIDIA GPU with a compatible stack |
 
-Fixar device exige teste no hardware alvo. FP16 reduz precisão e memória em
-backends compatíveis; `null` deixa a decisão para o runtime.
+A fixed device needs validation on target hardware. FP16 reduces precision and
+memory on compatible backends; `null` leaves the decision to runtime.
 
-## Lote e workers
+## Batch size and workers
 
-`indexing.batch_size` afeta pico de memória e quantidade de chamadas ao backend.
-`indexing.workers` afeta somente parsing paralelo. Aumentar ambos ao mesmo tempo
-dificulta atribuir causa.
+`indexing.batch_size` affects peak memory and backend call count.
+`indexing.workers` affects parser concurrency only. Changing both together
+makes cause attribution difficult.
 
-Sinais de lote grande demais:
+Signs of an oversized batch:
 
-- OOM ou swap intenso;
-- pausa longa antes de progresso;
-- timeout do daemon;
-- instabilidade do backend.
+- out-of-memory failures or sustained swap;
+- long pauses before visible progress;
+- daemon timeouts;
+- backend instability.
 
-Sinais de workers demais:
+Signs of excessive workers:
 
-- disco saturado;
-- CPU gasta em troca de contexto;
-- memória cresce sem aumento de throughput.
+- saturated storage;
+- CPU spent on context switching;
+- memory growth without throughput improvement.
 
-## Candidatos e reranking
+## Candidates and reranking
 
-`search.candidates`, `candidates_multiplier` e `candidates_max` controlam o pool
-antes do reranking. Um pool maior pode melhorar recall e aumentar custo. Meça
-latência e qualidade em um conjunto de queries rotulado.
+`search.candidates`, `candidates_multiplier`, and `candidates_max` define the
+pool before reranking. A larger pool may improve recall and costs more. Measure
+latency and retrieval quality against a labeled query set.
 
-## Busca textual
+## Full-text search
 
-`fts.language: null` mantém tokenização neutra para conteúdo multilíngue. Um
-idioma específico habilita stemming e pode melhorar correspondências nessa
-língua, com custo para termos de outras línguas. Reconstrua o FTS e compare o
-mesmo conjunto de queries antes de manter a mudança.
+`fts.language: null` disables language-specific stemming and stop-word removal,
+while retaining lowercase and accent folding for multilingual matching. A
+specific language enables its analyzer. Rebuild FTS and compare the same query
+set before retaining a change.
 
 ## Chunking
 
-Chunk maior preserva contexto e aumenta texto por embedding. Overlap ajuda
-passagens nas fronteiras, com custo de índice e repetição. Compare por formato e
-tipo de nota, sem usar uma única query como prova.
+Larger chunks preserve more context and send more text to each embedding.
+Overlap helps passages at chunk boundaries while increasing index size and
+repetition. Compare by format and note type, never by one query alone.
 
 ## ANN
 
-`vector_index.min_chunks` evita criar índice aproximado em bases pequenas.
-`num_sub_vectors` precisa ser compatível com a dimensão do embedding e o tipo
-de índice. O schema rejeita antecipadamente a combinação inválida em `IVF_PQ`.
-`vector_index_status` mostra a configuração efetiva.
+`vector_index.min_chunks` avoids an approximate index on small datasets.
+`num_sub_vectors` must be compatible with embedding dimension and index type.
+The schema rejects incompatible `IVF_PQ` combinations before indexing.
+`vector_index_status` reports effective state.
 
-## Prewarm e cache
+## Prewarm and cache
 
-Prewarm tem guardrails de memória. Desative em processos curtos ou ambientes
-disputados. Cache de query beneficia repetição, mas benchmark de estado frio
-deve começar em processo novo.
+Prewarming has memory guardrails. Disable it for short-lived processes or
+contended machines. Query caches help repetition; a cold-state benchmark starts
+in a new process.
 
-## Protocolo
+## Measurement protocol
 
-Use [../performance/benchmarking.md](../performance/benchmarking.md) e registre
-correção, recall, latência e memória. Uma configuração vira recomendação somente
-depois de repetir em ambientes representativos.
+Follow [benchmarking](../performance/benchmarking.md) and record correctness,
+recall, latency, and memory. A setting becomes a recommendation only after
+repetition in representative environments.

@@ -1,8 +1,8 @@
 """
-Testes unitários para parse_pdf.py — parser de PDF.
+Unit tests for parse_pdf.py — parser of PDF.
 
-Testes rápidos que NÃO precisam de modelos ML nem LanceDB.
-Geram PDFs de teste in-memory com pymupdf.
+Fast tests that do not require ML models or LanceDB.
+Generate PDFs of test in-memory with pymupdf.
 """
 
 from pathlib import Path
@@ -15,7 +15,7 @@ from vault_search.parsers.pdf import _check_ocr_available, _extract_page_text, p
 
 
 def _create_pdf(path: Path, pages: list[str], title: str = "") -> Path:
-    """Helper: cria um PDF com as páginas de texto fornecidas."""
+    """Create a PDF with the supplied text pages."""
     doc = pymupdf.open()
     if title:
         doc.set_metadata({"title": title})
@@ -29,7 +29,7 @@ def _create_pdf(path: Path, pages: list[str], title: str = "") -> Path:
 
 
 class TestParsePdfBasic:
-    def test_pdf_uma_pagina(self, tmp_vault):
+    def test_single_page_pdf(self, tmp_vault):
         path = _create_pdf(tmp_vault / "single.pdf", ["Hello PDF World"])
         chunks = parse_pdf(path, tmp_vault)
         assert len(chunks) >= 1
@@ -38,10 +38,10 @@ class TestParsePdfBasic:
         assert chunks[0]["note_path"] == "single.pdf"
         assert chunks[0]["tags"] == ""
 
-    def test_pdf_multiplas_paginas(self, tmp_vault):
+    def test_pdf_multiple_pages(self, tmp_vault):
         path = _create_pdf(
             tmp_vault / "multi.pdf",
-            ["Página um", "Página dois", "Página três"],
+            ["Page a", "Page two", "Page three"],
         )
         chunks = parse_pdf(path, tmp_vault)
         assert len(chunks) >= 3
@@ -50,27 +50,27 @@ class TestParsePdfBasic:
         assert "Page 2" in headers
         assert "Page 3" in headers
 
-    def test_pdf_com_titulo_metadata(self, tmp_vault):
+    def test_pdf_with_title_metadata(self, tmp_vault):
         path = _create_pdf(
             tmp_vault / "titled.pdf",
-            ["Conteúdo"],
-            title="Meu Documento PDF",
+            ["Content"],
+            title="My Document PDF",
         )
         chunks = parse_pdf(path, tmp_vault)
         assert len(chunks) >= 1
-        assert chunks[0]["note_title"] == "Meu Documento PDF"
+        assert chunks[0]["note_title"] == "My Document PDF"
 
-    def test_pdf_sem_titulo_usa_stem(self, tmp_vault):
-        path = _create_pdf(tmp_vault / "notitle.pdf", ["Texto"])
+    def test_pdf_without_title_uses_stem(self, tmp_vault):
+        path = _create_pdf(tmp_vault / "notitle.pdf", ["Text"])
         chunks = parse_pdf(path, tmp_vault)
         assert len(chunks) >= 1
         assert chunks[0]["note_title"] == "notitle"
 
-    def test_pdf_pagina_sem_texto_ignorada(self, tmp_vault):
-        """Página vazia (sem texto) deve ser ignorada."""
+    def test_pdf_page_without_text_is_ignored(self, tmp_vault):
+        """An empty page without text is ignored."""
         path = _create_pdf(
             tmp_vault / "blank.pdf",
-            ["Texto na página 1", "", "Texto na página 3"],
+            ["Text in the page 1", "", "Text in the page 3"],
         )
         chunks = parse_pdf(path, tmp_vault)
         headers = {c["headers"] for c in chunks}
@@ -80,13 +80,13 @@ class TestParsePdfBasic:
 
 
 class TestParsePdfChunking:
-    def test_pdf_texto_longo_chunked(self, tmp_vault):
-        """Texto de página > CHUNK_SIZE deve ser dividido."""
-        # insert_text tem limite de largura da página, usar múltiplas linhas
+    def test_pdf_with_long_text_is_chunked(self, tmp_vault):
+        """Page text larger than CHUNK_SIZE must be split."""
+        # insert_text has limit of width of the page, use multiple lines
         doc = pymupdf.open()
         page = doc.new_page(width=2000, height=50000)
         y = 72
-        line = "Palavra teste repetida para gerar texto longo no PDF. "
+        line = "Word test repeated for generate text long in the PDF. "
         for _ in range(100):
             page.insert_text((72, y), line)
             y += 14
@@ -100,22 +100,22 @@ class TestParsePdfChunking:
 
 
 class TestParsePdfEdgeCases:
-    def test_pdf_corrompido(self, tmp_vault):
+    def test_corrupt_pdf(self, tmp_vault):
         path = tmp_vault / "corrupt.pdf"
         path.write_bytes(b"not a pdf file contents")
         chunks = parse_pdf(path, tmp_vault)
         assert chunks == []
 
-    def test_pdf_sem_texto(self, tmp_vault):
-        """PDF com página mas sem texto extraível."""
+    def test_pdf_without_text(self, tmp_vault):
+        """PDF with page but without text extractable."""
         path = _create_pdf(tmp_vault / "notext.pdf", [""])
         chunks = parse_pdf(path, tmp_vault)
         assert chunks == []
 
-    def test_pdf_subpasta(self, tmp_vault):
+    def test_pdf_subfolder(self, tmp_vault):
         sub = tmp_vault / "docs"
         sub.mkdir()
-        path = _create_pdf(sub / "doc.pdf", ["Conteúdo em subpasta"])
+        path = _create_pdf(sub / "doc.pdf", ["Content in subfolder"])
         chunks = parse_pdf(path, tmp_vault)
         assert len(chunks) >= 1
         assert chunks[0]["folder"] == "docs"
@@ -124,78 +124,78 @@ class TestParsePdfEdgeCases:
     def test_pdf_unicode(self, tmp_vault):
         path = _create_pdf(
             tmp_vault / "unicode.pdf",
-            ["Programação: áéíóú ãõ ç"],
+            ["Programming: áéíóú ãõ ç"],
         )
         chunks = parse_pdf(path, tmp_vault)
         assert len(chunks) >= 1
-        # pymupdf pode ter encoding diferente, verificar que não crasheia
+        # PyMuPDF may use a different encoding; verify that parsing does not crash.
         assert chunks[0]["text"].strip() != ""
 
-    def test_pdf_protegido_senha(self, tmp_vault):
-        """PDF protegido com senha deve retornar lista vazia."""
+    def test_password_protected_pdf(self, tmp_vault):
+        """A password-protected PDF returns an empty list."""
         doc = pymupdf.open()
         page = doc.new_page()
-        page.insert_text((72, 72), "Conteúdo secreto")
+        page.insert_text((72, 72), "Content secreto")
         path = tmp_vault / "protected.pdf"
-        # Salvar com encriptação (senha de usuário)
+        # Save with encryption (password of user)
         doc.save(
             str(path),
             encryption=pymupdf.PDF_ENCRYPT_AES_256,
-            user_pw="senha123",
+            user_pw="password123",
             owner_pw="owner456",
         )
         doc.close()
         chunks = parse_pdf(path, tmp_vault)
-        # pymupdf não consegue extrair texto sem a senha
+        # PyMuPDF cannot extract text without a password.
         assert chunks == []
 
 
 class TestParsePdfOcr:
-    """Testes para funcionalidade de OCR."""
+    """Tests for OCR behavior."""
 
     def test_check_ocr_available(self):
-        """Verifica detecção de disponibilidade do Tesseract."""
-        # Reseta o cache global
+        """Check Tesseract availability detection."""
+        # Resets the cache global
         pdf_module._ocr_available = None
         result = _check_ocr_available()
-        # Deve retornar bool (True se Tesseract instalado, False caso contrário)
+        # Return a bool: True when Tesseract is installed, otherwise False.
         assert isinstance(result, bool)
-        # Segunda chamada deve usar cache
+        # Second called must use cache
         result2 = _check_ocr_available()
         assert result == result2
 
-    def test_extract_page_text_com_texto_nativo(self):
-        """Página com texto nativo não deve usar OCR."""
+    def test_extract_page_text_with_native_text(self):
+        """A page containing native text does not use OCR."""
         doc = pymupdf.open()
         page = doc.new_page()
-        page.insert_text((72, 72), "Texto nativo direto")
+        page.insert_text((72, 72), "Direct native text")
         text = _extract_page_text(page, 0)
-        assert "Texto nativo direto" in text
+        assert "Direct native text" in text
         doc.close()
 
-    def test_extract_page_text_sem_texto_ocr_desabilitado(self):
-        """Página sem texto com OCR desabilitado retorna vazio."""
+    def test_extract_page_text_without_text_ocr_disabled(self):
+        """A page without text returns empty content when OCR is disabled."""
         doc = pymupdf.open()
-        page = doc.new_page()  # Página vazia
+        page = doc.new_page()  # Page empty
         with patch.object(pdf_module, "PDF_OCR_ENABLED", False):
             text = _extract_page_text(page, 0)
         assert text == ""
         doc.close()
 
-    def test_extract_page_text_sem_texto_ocr_indisponivel(self):
-        """Página sem texto com Tesseract indisponível retorna vazio."""
+    def test_extract_page_text_without_text_ocr_unavailable(self):
+        """A page without text returns empty content when Tesseract is unavailable."""
         doc = pymupdf.open()
         page = doc.new_page()
-        # Simula Tesseract não disponível
+        # Simulate an unavailable Tesseract installation.
         pdf_module._ocr_available = False
         text = _extract_page_text(page, 0)
         assert text == ""
-        # Restaura estado
+        # Restore the cached state.
         pdf_module._ocr_available = None
         doc.close()
 
-    def test_parse_pdf_ocr_flag_respeitada(self, tmp_vault):
-        """Quando OCR desabilitado, páginas sem texto são ignoradas."""
+    def test_parse_pdf_respects_ocr_flag(self, tmp_vault):
+        """When OCR disabled, pages without text are ignored."""
         path = _create_pdf(tmp_vault / "notext_ocr.pdf", [""])
         with patch.object(pdf_module, "PDF_OCR_ENABLED", False):
             chunks = parse_pdf(path, tmp_vault)

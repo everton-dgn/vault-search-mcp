@@ -1,71 +1,69 @@
-# Monitoramento
+# Monitoring
 
-## Objetivo
+Monitoring means detecting availability, queued work, synchronization failure,
+and resource pressure without recording vault content.
 
-Monitorar este projeto significa detectar indisponibilidade, fila de trabalho,
-falha de sincronização e pressão de recursos sem registrar conteúdo do vault.
+## Available signals
 
-## Sinais disponíveis
-
-| Sinal | Interface | Uso |
+| Signal | Interface | Purpose |
 |---|---|---|
-| `health_check` | Tool MCP | Estado agregado do servidor e índice |
-| `system_stats` | Tool MCP | Métricas internas e cache |
-| `vault_stats` | Tool MCP | Notas, chunks e atualização do índice |
-| `/health` | Daemon HTTP local | Identidade e saúde dos modelos |
-| `/stats` | Daemon HTTP local | Uso agregado do daemon |
-| logs estruturados | stderr, journald ou arquivo local | Eventos e falhas sanitizados |
+| `health_check` | MCP tool | Aggregated server and index state |
+| `system_stats` | MCP tool | Internal metrics and caches |
+| `vault_stats` | MCP tool | Notes, chunks, and index update state |
+| `/health` | Local daemon HTTP | Model identity and readiness |
+| `/stats` | Local daemon HTTP | Aggregated daemon use |
+| structured logs | stderr, journald, or local file | Sanitized events and failures |
 
-## Check local do daemon
+## Local daemon check
 
 ```bash
 curl --fail --silent --show-error --max-time 5 \
   http://127.0.0.1:9847/health
 ```
 
-Não use esse endpoint por rede. Uma resposta HTTP válida deve também ter o
-schema e a identidade esperados. O status HTTP é 200 somente quando os dois
-modelos estão carregados e o estado é `ready`; estados de inicialização,
-degradação e falha retornam 503.
+Do not call this endpoint over a network. A valid HTTP response must also match
+the expected identity and schema. HTTP 200 means both models are loaded and the
+state is `ready`; startup, degradation, and failure return 503. The `pid` field
+identifies the serving process and should match the service manager during
+installation or incident diagnosis. Clients require literal JSON booleans for
+model readiness and a JSON integer for strict PID matching.
 
-## Estado do índice
+## Index state
 
-Registre ao menos:
+Record at least:
 
-- total de notas e chunks;
-- timestamp da última atualização;
-- arquivos novos, alterados e removidos no sync check;
-- geração ativa do índice, quando disponível;
-- status do ANN e do FTS.
+- note and chunk counts;
+- last update timestamp;
+- new, modified, and deleted files from synchronization;
+- active index generation, when exposed;
+- ANN and FTS state.
 
-Mudança brusca na contagem merece investigação antes de uma reindexação
-destrutiva.
+Investigate a sudden count change before discarding a derived index.
 
-## Logs seguros
+## Safe logs
 
-Eventos podem conter código estável, duração, contagem e nome de componente.
-Evite:
+Events may contain stable code, duration, counts, and component names. Exclude:
 
-- consulta completa;
-- trecho de nota;
-- path absoluto ou nome de usuário;
-- frontmatter, tag privada ou UUID desnecessário;
-- token, variável de ambiente completa ou stack trace devolvido ao cliente.
+- complete queries;
+- note excerpts;
+- absolute paths or usernames;
+- private frontmatter, tags, or unnecessary UUIDs;
+- tokens, complete environments, or client-visible tracebacks.
 
-Para compartilhar um diagnóstico, substitua paths por nomes sintéticos e revise
-o arquivo linha a linha.
+Before sharing diagnostics, replace paths with synthetic names and review every
+line.
 
-## Alertas
+## Alerts
 
-O projeto ainda não publica thresholds universais. Defina alertas a partir de
-uma baseline do seu ambiente. Exemplos de condição, sem número prescrito:
+The project publishes no universal alert thresholds. Build alerts from a
+baseline in the target environment. Useful conditions include:
 
-- health check falha consecutivamente;
-- sync permanece pendente além da janela normal;
-- índice perde notas sem alteração correspondente no vault;
-- p95 de busca aumenta em relação à baseline do mesmo ambiente;
-- daemon reinicia repetidamente;
-- memória livre cruza o limite operacional definido pelo mantenedor.
+- consecutive health-check failure;
+- synchronization pending beyond the normal local window;
+- index note loss without corresponding vault changes;
+- search p95 growth against the same environment's baseline;
+- repeated daemon restarts;
+- available memory crossing an operator-defined floor.
 
-Registre o protocolo de [../performance/benchmarking.md](../performance/benchmarking.md)
-antes de transformar uma observação em SLO.
+Record the [benchmark protocol](../performance/benchmarking.md) before turning
+an observation into an SLO.

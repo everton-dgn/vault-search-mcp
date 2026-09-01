@@ -1,4 +1,4 @@
-"""Regressões do gate que protege a superfície pública do repositório."""
+"""Regression tests for the gate that protects the repository public surface."""
 
 from __future__ import annotations
 
@@ -99,6 +99,31 @@ def test_repository_history_accepts_generic_noreply_and_bot_identities(tmp_path:
     assert publication.check_repository_history(tmp_path) == []
 
 
+def test_repository_history_uses_parent_histories_for_github_pr_merge(tmp_path: Path, monkeypatch):
+    """A GitHub PR audit excludes only the ephemeral test-merge identity."""
+    (tmp_path / ".git").mkdir()
+    output = _git_history_record(
+        "a" * 40,
+        "Vault Search MCP Maintainers",
+        "noreply@vault-search.invalid",
+        "Vault Search MCP Maintainers",
+        "noreply@vault-search.invalid",
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        commands.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout=output)
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_REF", "refs/pull/1/merge")
+    monkeypatch.setattr(publication.subprocess, "run", fake_run)
+
+    assert publication.check_repository_history(tmp_path) == []
+    assert commands[0][4] == "HEAD^@"
+
+
 def test_repository_history_rejects_personal_email_without_leaking_it(tmp_path: Path, monkeypatch):
     (tmp_path / ".git").mkdir()
     private_email = "person@private.invalid"  # publication-check: synthetic-fixture
@@ -195,7 +220,7 @@ def test_distribution_check_accepts_regular_wheel_and_sdist(tmp_path: Path):
 
 def test_markdown_check_rejects_undefined_reference(tmp_path: Path):
     readme = tmp_path / "README.md"
-    readme.write_text("Leia [o guia][missing].\n", encoding="utf-8")
+    readme.write_text("Read the [guide][missing].\n", encoding="utf-8")
 
     findings = publication.check_markdown_links(tmp_path, [readme])
 
@@ -205,10 +230,32 @@ def test_markdown_check_rejects_undefined_reference(tmp_path: Path):
 def test_markdown_check_rejects_missing_reference_target(tmp_path: Path):
     readme = tmp_path / "README.md"
     readme.write_text(
-        "Leia [o guia][guide].\n\n[guide]: docs/missing.md\n",
+        "Read the [guide][guide].\n\n[guide]: docs/missing.md\n",
         encoding="utf-8",
     )
 
     findings = publication.check_markdown_links(tmp_path, [readme])
 
     assert any(finding.code == "BROKEN_LINK" for finding in findings)
+
+
+def test_public_document_contract_rejects_removed_shutdown_endpoint(tmp_path: Path):
+    readme = tmp_path / "README.md"
+
+    findings = publication._check_public_document_contracts(
+        readme,
+        "Call `/shutdown` to stop the daemon.\n",
+    )
+
+    assert [finding.code for finding in findings] == ["REMOVED_DAEMON_ENDPOINT"]
+
+
+def test_public_document_contract_allows_documenting_signal_only_shutdown(tmp_path: Path):
+    readme = tmp_path / "README.md"
+
+    findings = publication._check_public_document_contracts(
+        readme,
+        "Stop the daemon through the service manager or a local signal.\n",
+    )
+
+    assert findings == []

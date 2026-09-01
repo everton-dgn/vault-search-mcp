@@ -1,5 +1,5 @@
 """
-Operações de delete e move para notas do vault.
+Delete and move operations for vault notes.
 """
 
 import logging
@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def _write_conflict(relative_path: str) -> OperationResult:
-    """Retorna conflito seguro quando origem ou destino mudou."""
+    """Return a safe conflict when the source or destination changed."""
     return error_result(
         relative_path,
-        "Conflito de escrita: a nota foi alterada durante a operação. Tente novamente.",
+        "Write conflict: the note changed during the operation. Try again.",
         error_code="write_conflict",
     )
 
@@ -37,31 +37,30 @@ def _write_conflict(relative_path: str) -> OperationResult:
 @return_write_lock_timeout
 def delete_note(relative_path: str) -> OperationResult:
     """
-    Deleta uma nota, movendo-a para a lixeira (.trash/).
+    Delete a note by moving it to the vault's .trash directory.
 
-    Por segurança, deleção permanente não é suportada.
-    Arquivos podem ser recuperados do .trash/ se necessário.
+    Permanent deletion is intentionally unsupported. Files remain recoverable.
 
-    Parâmetros:
-        relative_path: caminho relativo no vault
+    Parameters:
+        relative_path: path relative to the vault
 
-    Retorna:
-        OperationResult indicando sucesso ou falha.
+    Returns:
+        OperationResult describing success or failure.
     """
     validate_extension(relative_path)
-    validate_not_ignored_folder(relative_path)  # Não deletar de .trash, .obsidian
+    validate_not_ignored_folder(relative_path)  # Do not delete from ignored folders.
     file_path = resolve_path(relative_path)
     with advisory_path_lock(file_path):
         file_path = resolve_path(relative_path)
         revision = file_revision(file_path)
         if revision is None:
-            return error_result(relative_path, f"Nota não encontrada: {relative_path}")
+            return error_result(relative_path, f"Note not found: {relative_path}")
 
         trash_dir = resolve_internal_path(".trash")
         trash_dir.mkdir(exist_ok=True)
         relative = Path(relative_path)
-        # Resolver também os componentes internos impede que um symlink como
-        # ``.trash/pasta -> /fora/do/vault`` redirecione o destino do move.
+        # Resolving internal components prevents a symlink in .trash from
+        # redirecting the move outside the vault.
         trash_path = resolve_internal_path(".trash", *relative.parts)
         trash_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -81,7 +80,7 @@ def delete_note(relative_path: str) -> OperationResult:
             logger.error("delete_note collision_limit=%d", max_attempts)
             return error_result(
                 relative_path,
-                f"Não foi possível gerar nome único na lixeira após {max_attempts} tentativas",
+                f"Could not generate a unique trash name after {max_attempts} attempts",
             )
 
         if file_revision(file_path) != revision:
@@ -90,12 +89,12 @@ def delete_note(relative_path: str) -> OperationResult:
             shutil.move(str(file_path), str(final_trash_path))
         except (OSError, shutil.Error) as e:
             logger.error("delete_note_failed error_type=%s", type(e).__name__)
-            return error_result(relative_path, "Erro ao mover para lixeira")
+            return error_result(relative_path, "Failed to move note to trash")
 
     logger.info("delete_note completed destination=trash")
     return success_result(
         relative_path,
-        "Nota movida para lixeira: "
+        "Note moved to trash: "
         f"{final_trash_path.relative_to(VAULT_PATH.expanduser().resolve(strict=False))}",
     )
 
@@ -103,28 +102,28 @@ def delete_note(relative_path: str) -> OperationResult:
 @return_write_lock_timeout
 def move_note(from_path: str, to_path: str) -> OperationResult:
     """
-    Move ou renomeia uma nota.
+    Move or rename a note.
 
-    Parâmetros:
-        from_path: caminho atual relativo no vault
-        to_path: novo caminho relativo no vault (não pode ser pasta ignorada)
+    Parameters:
+        from_path: current vault-relative path
+        to_path: new vault-relative path outside ignored folders
 
-    Retorna:
-        OperationResult indicando sucesso ou falha.
+    Returns:
+        OperationResult describing success or failure.
     """
     validate_extension(from_path)
-    validate_extension(to_path)  # Destino deve ter extensão válida
-    validate_not_ignored_folder(to_path)  # Impede mover para .trash, .obsidian
-    validate_not_ignored_folder(from_path)  # Impede mover de .trash, .obsidian
+    validate_extension(to_path)  # Destination must have a valid extension.
+    validate_not_ignored_folder(to_path)
+    validate_not_ignored_folder(from_path)
 
-    # Validar que extensão não muda (evita corrupção: .pdf → .md)
+    # Reject extension changes that could corrupt the file format.
     from_ext = Path(from_path).suffix.lower()
     to_ext = Path(to_path).suffix.lower()
     if from_ext != to_ext:
         return error_result(
             from_path,
-            f"Não é possível mudar extensão de '{from_ext}' para '{to_ext}'. "
-            f"Isso pode corromper o arquivo.",
+            f"Cannot change extension from '{from_ext}' to '{to_ext}'. "
+            "This could corrupt the file.",
         )
 
     from_file = resolve_path(from_path)
@@ -134,9 +133,9 @@ def move_note(from_path: str, to_path: str) -> OperationResult:
         to_file = resolve_path(to_path)
         source_revision = file_revision(from_file)
         if source_revision is None:
-            return error_result(from_path, f"Nota de origem não encontrada: {from_path}")
+            return error_result(from_path, f"Source note not found: {from_path}")
         if file_revision(to_file) is not None:
-            return error_result(to_path, f"Destino já existe: {to_path}")
+            return error_result(to_path, f"Destination already exists: {to_path}")
 
         to_file.parent.mkdir(parents=True, exist_ok=True)
         if file_revision(from_file) != source_revision or file_revision(to_file) is not None:
@@ -145,7 +144,7 @@ def move_note(from_path: str, to_path: str) -> OperationResult:
             shutil.move(str(from_file), str(to_file))
         except (OSError, shutil.Error) as e:
             logger.error("move_note_failed error_type=%s", type(e).__name__)
-            return error_result(from_path, "Erro ao mover nota")
+            return error_result(from_path, "Failed to move note")
 
     logger.info("move_note completed")
-    return success_result(to_path, f"Nota movida: {from_path} -> {to_path}")
+    return success_result(to_path, f"Note moved: {from_path} -> {to_path}")

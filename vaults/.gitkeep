@@ -1,2 +1,2 @@
-# Esta pasta contém symlinks para os diretórios a serem indexados
-# Conteúdo ignorado pelo .gitignore
+# This folder may contain symlinks to directories selected for indexing.
+# Its contents are ignored by .gitignore.

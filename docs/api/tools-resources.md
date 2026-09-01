@@ -1,20 +1,18 @@
-# Resources MCP
+# MCP resources
 
-O servidor registra seis resources somente de leitura. Todos refletem o estado
-local do índice, catálogo ou vault no momento da chamada.
+The server registers six read-only resources. Each reflects local vault,
+catalog, or index state at call time.
 
-| URI registrada | Fonte | Limite atual |
+| Registered URI | Source | Current bound |
 |---|---|---|
-| `vault://stats` | LanceDB | sem paginação |
-| `vault://folders` | catálogo SQLite | todas as pastas conhecidas |
-| `vault://notes` | catálogo SQLite | primeiras 5.000, sem paginação |
-| `vault://notes/{path*}` | arquivo `.md` | uma nota |
-| `vault://search/recent` | catálogo SQLite | 50 notas em 7 dias |
-| `vault://tags` | LanceDB | todas as tags conhecidas |
+| `vault://stats` | LanceDB | no pagination |
+| `vault://folders` | SQLite catalog | all known folders |
+| `vault://notes` | SQLite catalog | first 5,000 entries |
+| `vault://notes/{path*}` | `.md` file | one note |
+| `vault://search/recent` | SQLite catalog | 50 notes from seven days |
+| `vault://tags` | LanceDB | all known tags |
 
 ## `vault://stats`
-
-Retorna um envelope com as estatísticas do índice:
 
 ```python
 {
@@ -28,11 +26,9 @@ Retorna um envelope com as estatísticas do índice:
 }
 ```
 
-Os zeros representam um índice vazio.
+The zero values represent an empty index.
 
 ## `vault://folders`
-
-Monta uma árvore a partir das pastas do catálogo:
 
 ```python
 {
@@ -43,12 +39,12 @@ Monta uma árvore a partir das pastas do catálogo:
 }
 ```
 
-O exemplo é uma fixture sintética e documenta somente o formato.
+The synthetic example documents shape only.
 
 ## `vault://notes`
 
-Lista as primeiras 5.000 entradas do catálogo com `path`, `title`, `folder` e
-`modified_at`:
+Lists the first 5,000 catalog entries with `path`, `title`, `folder`, and
+`modified_at`.
 
 ```python
 {
@@ -62,27 +58,25 @@ Lista as primeiras 5.000 entradas do catálogo com `path`, `title`, `folder` e
 }
 ```
 
-`total` é a contagem global do catálogo, `returned` informa o tamanho do
-snapshot, `limit` vale 5.000 e `has_more` indica truncamento. O resource não
-recebe argumentos, cursor nem `offset`, portanto não permite buscar as entradas
-seguintes. Use `list_notes` quando precisar de paginação, filtro ou um limite
-menor.
+`total` is the complete catalog count. `returned` is the snapshot size and
+`has_more` reports truncation. This resource has no arguments, cursor, or
+`offset`. Use `list_notes` for pagination or filtering.
 
 ## `vault://notes/{path*}`
 
-O wildcard preserva subpastas no path relativo:
+The wildcard preserves subfolders in a relative path:
 
 ```text
 vault://notes/projects/atlas/decision.md
 ```
 
-Somente `.md` pode ser lido como conteúdo completo. O retorno inclui `title`,
-`content`, `frontmatter`, `modified_at` e `size_bytes`. Path inválido, extensão
-não legível e nota ausente retornam erro público.
+Only `.md` content can be read in full. The result includes `title`, `content`,
+`frontmatter`, `modified_at`, and `size_bytes`. Invalid paths, unreadable
+extensions, and missing notes return public errors.
 
 ## `vault://search/recent`
 
-Consulta no máximo 50 notas modificadas nos últimos 7 dias:
+Returns at most 50 notes modified during the last seven days.
 
 ```python
 {
@@ -94,12 +88,9 @@ Consulta no máximo 50 notas modificadas nos últimos 7 dias:
 }
 ```
 
-A janela é fixa neste resource. Use `get_recent_notes` para escolher dias,
-pasta ou limite.
+The window is fixed. Use `get_recent_notes` to choose days, folder, or limit.
 
 ## `vault://tags`
-
-Retorna cada tag conhecida e sua contagem:
 
 ```python
 {
@@ -110,10 +101,10 @@ Retorna cada tag conhecida e sua contagem:
 }
 ```
 
-## Consistência e erros
+## Consistency and errors
 
-Resources baseados no catálogo podem refletir a última reconciliação concluída.
-Após alteração externa, aguarde o watcher ou use `sync_vault`. Erros internos
-passam pelo envelope público sanitizado; detalhes permanecem no log local.
+Catalog-backed resources can lag behind an external filesystem change until
+the watcher reconciles it. Wait for the watcher or call `sync_vault`. Internal
+failures use the sanitized public envelope; details remain in local logs.
 
-Veja [Catálogo](../performance/catalog.md) e [Erros da API](errors.md).
+See [catalog behavior](../performance/catalog.md) and [API errors](errors.md).

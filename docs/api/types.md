@@ -1,36 +1,36 @@
-# Tipos públicos e internos
+# Public and internal types
 
-Os contratos compartilhados ficam em `src/vault_search/type_defs.py`. Respostas
-CRUD ficam em `src/vault_search/crud/types.py`. A CI executa mypy sobre todos os
-arquivos-fonte do pacote.
+Shared contracts live in `src/vault_search/type_defs.py`. CRUD response types
+live in `src/vault_search/crud/types.py`. CI runs mypy across the complete
+package.
 
-## Estados
+## States
 
 ### `ParseStatus`
 
-| Valor | Significado |
+| Value | Meaning |
 |---|---|
-| `success` | Parser produziu registros |
-| `empty` | Arquivo válido sem chunks |
-| `error` | Falha de parsing |
-| `unsupported` | Formato não atendido pelo dispatcher |
+| `success` | Parser produced records |
+| `empty` | Valid file without chunks |
+| `error` | Parsing failed |
+| `unsupported` | Dispatcher does not support the format |
 
 ### `ReindexStatus`
 
-Valores: `updated`, `empty`, `deleted`, `parse_error`, `error_add_failed`,
-`rejected_path_traversal`, `rejected_extension` e `circuit_breaker_open`.
+Values are `updated`, `empty`, `deleted`, `parse_error`, `error_add_failed`,
+`rejected_path_traversal`, `rejected_extension`, and `circuit_breaker_open`.
 
 ### `FullReindexStatus`
 
-Valores: `completed`, `failed` e `interrupted`.
+Values are `completed`, `failed`, and `interrupted`.
 
-As três classes herdam de `StrEnum`, então serializam como texto.
+All three classes inherit from `StrEnum` and serialize as strings.
 
 ## Chunks
 
 ### `ChunkRecord`
 
-Registro produzido pelo parser, antes do embedding:
+Record produced before embedding:
 
 ```python
 class ChunkRecord(TypedDict):
@@ -43,22 +43,22 @@ class ChunkRecord(TypedDict):
     text: str
 ```
 
-Campos de frontmatter opcionais: `id`, `created_at`, `updated_at`,
-`description`, `status`, `note_type`, `category`, `project` e `source`.
+Optional frontmatter fields include `id`, `created_at`, `updated_at`,
+`description`, `status`, `note_type`, `category`, `project`, and `source`.
 
 ### `ChunkWithVector`
 
-Estende `ChunkRecord` com:
+Extends `ChunkRecord` with:
 
 ```python
 vector: list[float]
 ```
 
-O vetor é armazenado no índice e não faz parte do `SearchResult` público.
+The stored vector is not part of the public `SearchResult`.
 
 ### `ParseResult`
 
-Dataclass com slots que separa arquivo vazio de falha:
+The slotted dataclass distinguishes empty input from parsing failure:
 
 ```python
 @dataclass(slots=True)
@@ -70,13 +70,13 @@ class ParseResult:
     error_type: str | None
 ```
 
-O iterador mantém o unpacking histórico de `chunks`, `links` e `aliases`.
+Iteration preserves historical unpacking into `chunks`, `links`, and `aliases`.
 
 ## Links
 
-`LinkRecord` contém origem, target original e normalizado, tipo, contexto e data
-de modificação. A resolução acrescenta `to_note_path` e `is_resolved`. Alias,
-heading e block reference são opcionais.
+`LinkRecord` contains source, original and normalized target, type, context, and
+modification date. Resolution adds `to_note_path` and `is_resolved`. Alias,
+heading, and block reference are optional.
 
 ```python
 class LinkRecord(TypedDict):
@@ -89,7 +89,7 @@ class LinkRecord(TypedDict):
     modified_at: str
 ```
 
-## Busca
+## Search
 
 ```python
 class SearchResult(TypedDict):
@@ -102,23 +102,23 @@ class SearchResult(TypedDict):
     score: NotRequired[float]
 ```
 
-O score aparece quando o backend fornece distância ou reranking. Ele serve para
-ordenar o resultado daquela execução, não é uma probabilidade calibrada e não
-deve ser comparado como métrica de qualidade entre modelos ou versões.
+`score` appears when a backend provides distance or reranking. It orders one
+execution, is not a calibrated probability, and should not compare quality
+between models or versions.
 
-## Indexação
+## Indexing
 
 ### `ReindexResult`
 
-Campos obrigatórios:
+Required fields:
 
 ```python
 chunks_indexed: int
 status: ReindexStatus
 ```
 
-Campos opcionais: `links_indexed`, `aliases_indexed`, `id_added`,
-`frontmatter_enriched`, `frontmatter_fields_filled` e `auto_compacted`.
+Optional fields are `links_indexed`, `aliases_indexed`, `id_added`,
+`frontmatter_enriched`, `frontmatter_fields_filled`, and `auto_compacted`.
 
 ### `IndexStats`
 
@@ -139,16 +139,13 @@ class FullReindexStats(TypedDict):
     duration_seconds: float
 ```
 
-Campos opcionais registram erros de parsing, preservação do índice anterior,
-links, aliases, interrupção e criação do índice vetorial. O retorno de
-`dry_run` usa outro formato com contagens observadas no scan, descrito em
-[Tools de indexação](tools-indexing.md).
+Optional fields cover parse errors, preservation of the old index, links,
+aliases, interruption, and vector-index creation. Dry runs use the scan-count
+shape documented in [indexing tools](tools-indexing.md).
 
 ## CRUD
 
 ### `NoteContent`
-
-Retorno de `read_note`:
 
 ```python
 class NoteContent(TypedDict):
@@ -165,10 +162,10 @@ class NoteContent(TypedDict):
 
 ### `NoteMetadata`
 
-Retorno de `get_note_metadata`. Tem os mesmos metadados de `NoteContent`, sem
-`content` e `body`.
+The `get_note_metadata` result has the same metadata as `NoteContent`, without
+`content` or `body`.
 
-### `NoteListItem` e `NoteListResult`
+### `NoteListItem` and `NoteListResult`
 
 ```python
 class NoteListItem(TypedDict):
@@ -198,14 +195,13 @@ class OperationResult(TypedDict):
     reindex_status: NotRequired[str]
 ```
 
-`reindex_status` informa `queued`, `coalesced`, `queue_full` ou `stopped` quando
-a operação agenda atualização assíncrona do índice. Algumas operações também
-acrescentam avisos de validação, sugestões, campos de UUID ou o ID de um job de
-enriquecimento.
+`reindex_status` is `queued`, `coalesced`, `queue_full`, or `stopped` when a
+mutation schedules an asynchronous update. Operations may also add validation
+warnings, suggestions, UUID fields, or an enrichment job ID.
 
-## Compatibilidade
+## Compatibility
 
-Os tipos ajudam o código interno e documentam o formato atual. Durante a fase
-alpha, clientes devem ignorar campos extras e tratar campos opcionais como
-ausentes. Uma remoção ou renomeação precisa entrar no [changelog](../../CHANGELOG.md)
-e nos testes de contrato.
+These types support internal checking and document the current public shape.
+During alpha, clients should ignore extra fields and handle optional fields as
+absent. Removals and renames require a [changelog](../../CHANGELOG.md) entry and
+contract tests.

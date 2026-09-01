@@ -1,12 +1,12 @@
 """
-Indexador de notas do vault Obsidian no LanceDB.
+Obsidian vault note indexer for LanceDB.
 
-Responsável por:
-- Gerar embeddings com BGE-M3
-- Armazenar chunks + embeddings no LanceDB
-- Indexação completa e incremental (com leitura paralela)
-- Compactação periódica do índice
-- Estatísticas do índice
+Responsibilities:
+- Generate embeddings with BGE-M3
+- Store chunks and embeddings in LanceDB
+- Complete and incremental indexing with parallel reads
+- Periodic index compaction
+- Index statistics
 """
 
 import os
@@ -72,7 +72,7 @@ logger = get_logger(__name__)
 
 
 class VectorIndexCreationResult(TypedDict):
-    """Resultado estável da criação opcional do índice ANN."""
+    """Stable result for optional ANN index creation."""
 
     created: bool
     reason: str
@@ -82,7 +82,7 @@ class VectorIndexCreationResult(TypedDict):
 
 
 class VectorIndexStatus(TypedDict):
-    """Estado público do índice ANN."""
+    """Public ANN index state."""
 
     exists: bool
     auto_create_enabled: bool
@@ -92,7 +92,7 @@ class VectorIndexStatus(TypedDict):
 
 
 class SyncStats(TypedDict):
-    """Contagens produzidas pela sincronização incremental."""
+    """Counts produced by incremental synchronization."""
 
     vault_files: int
     indexed_files: int
@@ -102,7 +102,7 @@ class SyncStats(TypedDict):
     synced: int
 
 
-# Compactação automática após N operações incrementais.
+# Compact automatically after a fixed number of incremental operations.
 AUTO_COMPACT_THRESHOLD = 100
 _STAGING_SUFFIX = "__reindex_staging"
 
@@ -156,27 +156,25 @@ _ALIASES_SCHEMA = pa.schema(
 
 class VaultIndexer:
     """
-    Gerencia a indexação do vault Obsidian no LanceDB.
+    Manage Obsidian vault indexing in LanceDB.
 
-    Thread-safe: _write_lock serializa operações de escrita
-    (full_reindex e reindex_note) para evitar race conditions
-    entre o watcher e reindexações manuais.
+    ``_write_lock`` serializes ``full_reindex`` and ``reindex_note`` writes
+    to prevent races between the watcher and manual reindexing.
 
-    FTS Async: rebuild do índice FTS roda em background após
-    compactação automática, sem bloquear operações.
+    FTS rebuilds run in the background after automatic compaction.
 
-    Circuit Breaker: limita reindex da mesma nota para evitar loops
-    infinitos causados por escritas que disparam o watcher.
+    A circuit breaker limits repeated reindexing of one note to prevent
+    write-triggered watcher loops.
 
-    Uso:
+    Usage:
         indexer = VaultIndexer()
-        indexer.full_reindex()       # indexa tudo
-        indexer.reindex_note(path)   # reindexar uma nota
+        indexer.full_reindex()       # Index everything
+        indexer.reindex_note(path)   # Reindex one note
     """
 
     _write_lock = threading.Lock()
-    _fts_rebuild_lock = threading.Lock()  # Evita múltiplos rebuilds simultâneos
-    _circuit_breaker_lock = threading.Lock()  # Protege _reindex_attempts
+    _fts_rebuild_lock = threading.Lock()  # Prevent concurrent FTS rebuilds
+    _circuit_breaker_lock = threading.Lock()  # Protect _reindex_attempts
     _fts_rebuild_in_progress = False
 
     # Circuit breaker: (path -> (attempt_count, first_attempt_time))
@@ -194,18 +192,18 @@ class VaultIndexer:
 
     def _check_circuit_breaker(self, path: str) -> bool:
         """
-        Verifica se o circuit breaker deve bloquear reindex desta nota.
+        Check whether the circuit breaker should block this note.
 
-        Retorna True se a nota foi reindexada muitas vezes em curto período
-        (indica possível loop infinito entre escritas e watcher).
+        Return ``True`` after too many reindexes in a short period, which may
+        indicate an infinite loop between writes and the watcher.
 
-        Limpa entradas expiradas para evitar memory leak.
-        Thread-safe via _circuit_breaker_lock.
+        Clear expired entries to avoid a memory leak. Thread-safe through
+        ``_circuit_breaker_lock``.
         """
         with self._circuit_breaker_lock:
             now = time.time()
 
-            # Limpar entradas antigas (garbage collection)
+            # Remove expired entries.
             expired = [
                 p
                 for p, (_, first_time) in self._reindex_attempts.items()
@@ -214,15 +212,15 @@ class VaultIndexer:
             for p in expired:
                 del self._reindex_attempts[p]
 
-            # Verificar tentativas atuais
+            # Check the current attempt window.
             if path in self._reindex_attempts:
                 count, first_time = self._reindex_attempts[path]
                 if now - first_time <= self._CIRCUIT_BREAKER_WINDOW_SECONDS:
                     if count >= self._CIRCUIT_BREAKER_MAX_ATTEMPTS:
-                        return True  # Bloquear
+                        return True  # Block repeated reindexing.
                     self._reindex_attempts[path] = (count + 1, first_time)
                 else:
-                    # Janela expirou, resetar
+                    # Reset an expired window.
                     self._reindex_attempts[path] = (1, now)
             else:
                 self._reindex_attempts[path] = (1, now)
@@ -231,12 +229,12 @@ class VaultIndexer:
 
     def reset_circuit_breaker(self, path: str | None = None) -> None:
         """
-        Reseta o circuit breaker para uma nota ou todas.
+        Reset the circuit breaker for one note or all notes.
 
-        Útil para testes que fazem múltiplos reindex consecutivos.
+        Useful for tests that perform repeated reindexing.
 
         Args:
-            path: Caminho da nota para resetar. Se None, reseta todas.
+            path: Note path to reset; ``None`` resets every note.
         """
         with self._circuit_breaker_lock:
             if path is None:
@@ -245,7 +243,7 @@ class VaultIndexer:
                 del self._reindex_attempts[path]
 
     def _connect_db(self) -> DBConnection:
-        """Retorna conexão LanceDB, criando se necessário."""
+        """Return the LanceDB connection, creating it when necessary."""
         if self._db is None:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
             self._db = lancedb.connect(str(DATA_DIR))
@@ -253,13 +251,13 @@ class VaultIndexer:
 
     def _ensure_table(self, data: list[ChunkWithVector] | None = None) -> Table:
         """
-        Retorna a tabela LanceDB, criando se necessário.
+        Return the LanceDB table, creating it when necessary.
 
-        Reutiliza handle existente para evitar reabrir a tabela
-        (que pode não ver dados não-commitados no LanceDB).
+        Reuse an existing handle because reopening the table may not see
+        uncommitted LanceDB data.
 
-        Parâmetros:
-            data: dados iniciais se a tabela precisar ser criada.
+        Parameters:
+            data: initial rows when the table must be created
         """
         if self._table is not None:
             return self._table
@@ -277,9 +275,9 @@ class VaultIndexer:
 
     def _ensure_links_table(self):
         """
-        Retorna a tabela de links, criando se necessário.
+        Return the links table, creating it when necessary.
 
-        Armazena links extraídos das notas para queries rápidas de backlinks.
+        Store extracted note links for fast backlink queries.
         """
         if self._links_table is not None:
             return self._links_table
@@ -295,9 +293,9 @@ class VaultIndexer:
 
     def _ensure_aliases_table(self):
         """
-        Retorna a tabela de aliases, criando se necessário.
+        Return the aliases table, creating it when necessary.
 
-        Armazena aliases das notas (do frontmatter) para resolução de links.
+        Store frontmatter aliases for link resolution.
         """
         if self._aliases_table is not None:
             return self._aliases_table
@@ -313,15 +311,15 @@ class VaultIndexer:
 
     def _index_links(self, links: list[LinkRecord]) -> int:
         """
-        Indexa links na tabela links_index.
+        Index links in the links_index table.
 
-        Thread-safe: chamado dentro do _write_lock.
+        Thread-safe when called under _write_lock.
 
-        Parâmetros:
-            links: lista de LinkRecord para indexar
+        Parameters:
+            links: ``LinkRecord`` entries to index.
 
-        Retorna:
-            Número de links indexados.
+        Returns:
+            Number of indexed links.
         """
         if not links:
             return 0
@@ -332,16 +330,16 @@ class VaultIndexer:
 
     def _index_aliases(self, note_path: str, aliases: list[str]) -> int:
         """
-        Indexa aliases de uma nota na tabela note_aliases.
+        Index note aliases in the ``note_aliases`` table.
 
-        Thread-safe: chamado dentro do _write_lock.
+        Thread-safe when called under _write_lock.
 
-        Parâmetros:
-            note_path: caminho relativo da nota
-            aliases: lista de aliases do frontmatter
+        Parameters:
+            note_path: Relative note path.
+            aliases: Frontmatter aliases.
 
-        Retorna:
-            Número de aliases indexados.
+        Returns:
+            Number of indexed aliases.
         """
         if not aliases:
             return 0
@@ -367,9 +365,9 @@ class VaultIndexer:
 
     def _delete_note_links(self, note_path: str) -> None:
         """
-        Remove todos os links de uma nota específica.
+        Remove every link for one note.
 
-        Thread-safe: chamado dentro do _write_lock.
+        Thread-safe when called under _write_lock.
         """
         escaped = escape_sql_string(note_path)
         try:
@@ -383,9 +381,9 @@ class VaultIndexer:
 
     def _delete_note_aliases(self, note_path: str) -> None:
         """
-        Remove todos os aliases de uma nota específica.
+        Remove every alias for one note.
 
-        Thread-safe: chamado dentro do _write_lock.
+        Thread-safe when called under _write_lock.
         """
         escaped = escape_sql_string(note_path)
         try:
@@ -399,15 +397,15 @@ class VaultIndexer:
 
     def _resolve_link_targets(self) -> int:
         """
-        Resolve links para identificar to_note_path.
+        Resolve links to identify ``to_note_path``.
 
-        Executado após indexação completa. Mapeia link_target_normalized
-        para note_path existentes no vault.
+        Run after complete indexing to map ``link_target_normalized`` values
+        to existing vault note paths.
 
-        Thread-safe: chamado dentro do _write_lock.
+        Thread-safe when called under _write_lock.
 
-        Retorna:
-            Número de links resolvidos.
+        Returns:
+            Number of resolved links.
         """
         from vault_search.utils.links import normalize_link_target
 
@@ -415,7 +413,7 @@ class VaultIndexer:
         aliases_table = self._ensure_aliases_table()
         chunks_table = self._ensure_table()
 
-        # 1. Obter todos os note_path únicos do índice
+        # 1. Read every unique note_path from the index.
         try:
             total = chunks_table.count_rows()
             if total == 0:
@@ -430,20 +428,20 @@ class VaultIndexer:
             )
             return 0
 
-        # 2. Construir mapa de resolução: normalized -> path
+        # 2. Build a normalized-target-to-path map.
         path_map: dict[str, str] = {}
         for path in all_paths:
-            # Stem normalizado (ex: "nota.md" -> "nota")
+            # Normalized stem, for example "note.md" -> "note".
             stem = normalize_link_target(Path(path).stem)
             if stem not in path_map:
                 path_map[stem] = path
 
-            # Path completo normalizado (ex: "pasta/nota.md" -> "pasta/nota")
+            # Normalized full path, for example "folder/note.md" -> "folder/note".
             full = normalize_link_target(path)
             if full not in path_map:
                 path_map[full] = path
 
-        # 3. Adicionar aliases ao mapa
+        # 3. Add aliases to the map.
         try:
             total_aliases = aliases_table.count_rows()
             if total_aliases > 0:
@@ -467,8 +465,7 @@ class VaultIndexer:
                 error_type=type(e).__name__,
             )
 
-        # 4. Obter links não resolvidos
-        # IMPORTANTE: Buscar link_type e link_target também para identificação única
+        # 4. Read unresolved links, including link_type and link_target for uniqueness.
         try:
             links_arrow = (
                 links_table.search()
@@ -497,7 +494,7 @@ class VaultIndexer:
         if not unresolved:
             return 0
 
-        # 5. Resolver e atualizar
+        # 5. Resolve and update.
         resolved_count = 0
         updates = []
 
@@ -516,16 +513,15 @@ class VaultIndexer:
                 )
                 resolved_count += 1
 
-        # 6. Aplicar updates em batch (delete + add para simplificar)
-        # IMPORTANTE: Usar link_type e link_target na chave para não colapsar links distintos
+        # 6. Apply updates as delete-and-add batches. Include link_type and
+        # link_target in the key so distinct links do not collapse.
         if updates:
             for update in updates:
                 try:
                     from_escaped = escape_sql_string(update["from_note_path"])
                     link_type_escaped = escape_sql_string(update["link_type"])
                     link_target_escaped = escape_sql_string(update["link_target"])
-                    # Buscar registro original para preservar outros campos
-                    # Usar link_type + link_target para identificação única
+                    # Read the original record to preserve other fields.
                     orig = (
                         links_table.search()
                         .where(
@@ -541,7 +537,7 @@ class VaultIndexer:
                         record = orig[0]
                         record["to_note_path"] = update["to_note_path"]
                         record["is_resolved"] = True
-                        # Delete com chave única (inclui link_type e link_target)
+                        # Delete with a key that includes link_type and link_target.
                         links_table.delete(
                             f"from_note_path = '{from_escaped}' AND "
                             f"link_type = '{link_type_escaped}' AND "
@@ -562,12 +558,12 @@ class VaultIndexer:
         return resolved_count
 
     def _reset_staging_tables(self, db: DBConnection) -> tuple[Table, Table, Table]:
-        """Cria gerações vazias sem tocar nas tabelas canônicas."""
+        """Create empty generations without modifying canonical tables."""
         existing = set(db.list_tables().tables)
 
         def reset(name: str, schema: pa.Schema) -> Table:
-            # Lance emite o caminho físico no stderr quando `overwrite` é usado
-            # para criar um dataset ausente. `create` evita esse vazamento.
+            # Lance prints the physical path to stderr when ``overwrite`` creates
+            # a missing dataset. ``create`` avoids that disclosure.
             mode = "overwrite" if name in existing else "create"
             return db.create_table(name, schema=schema, mode=mode)
 
@@ -577,10 +573,10 @@ class VaultIndexer:
         return chunks, links, aliases
 
     def _store_staging_batch(self, table: Table, batch: list[ChunkRecord]) -> int:
-        """Gera vetores e persiste um batch somente na tabela de staging."""
+        """Generate vectors and persist a batch only in the staging table."""
         vectors = self._models.embed_corpus([chunk["text"] for chunk in batch])
         if len(vectors) != len(batch):
-            raise ValueError("quantidade de embeddings diferente do batch")
+            raise ValueError("embedding count differs from batch size")
 
         records: list[ChunkWithVector] = [
             {**chunk, "vector": vector} for chunk, vector in zip(batch, vectors, strict=True)
@@ -590,7 +586,7 @@ class VaultIndexer:
 
     @staticmethod
     def _table_reader(table: Table) -> pa.RecordBatchReader:
-        """Retorna stream de batches para cópia com memória limitada."""
+        """Return a batch stream for memory-bounded copying."""
         total = table.count_rows()
         return table.search().limit(total).to_batches(batch_size=REINDEX_BATCH_SIZE)
 
@@ -600,7 +596,7 @@ class VaultIndexer:
         canonical_name: str,
         staging_table: Table,
     ) -> tuple[Table, int | None]:
-        """Publica staging em um commit Lance, mantendo a versão anterior."""
+        """Publish staging in one Lance commit while retaining the previous version."""
         existing = canonical_name in db.list_tables().tables
         reader = self._table_reader(staging_table)
 
@@ -615,7 +611,7 @@ class VaultIndexer:
 
     @staticmethod
     def _rollback_table(table: Table, previous_version: int | None) -> None:
-        """Restaura a versão anterior ou esvazia uma tabela recém-criada."""
+        """Restore the previous version or empty a newly created table."""
         if previous_version is not None:
             table.restore(previous_version)
             return
@@ -624,7 +620,7 @@ class VaultIndexer:
         table.add(empty, mode="overwrite")
 
     def _restore_canonical_handles(self, db: DBConnection) -> None:
-        """Remove referências de staging e reabre apenas tabelas públicas."""
+        """Drop staging references and reopen only public tables."""
         tables = set(db.list_tables().tables)
         self._table = db.open_table(LANCEDB_TABLE) if LANCEDB_TABLE in tables else None
         self._links_table = db.open_table(LINKS_TABLE) if LINKS_TABLE in tables else None
@@ -632,13 +628,12 @@ class VaultIndexer:
 
     def _parse_note(self, note: Path) -> ParseResult:
         """
-        Parseia uma nota e retorna seus chunks, links e aliases.
+        Parse a note and return its chunks, links, and aliases.
 
-        Executado em paralelo pelo ThreadPoolExecutor.
-        Thread-safe: não modifica estado compartilhado.
+        Run in parallel through ``ThreadPoolExecutor`` without modifying shared state.
 
-        Retorna:
-            ParseResult com estado explícito e dados extraídos.
+        Returns:
+            ``ParseResult`` with explicit state and extracted data.
         """
         try:
             result = parse_file_result(note, VAULT_PATH)
@@ -665,25 +660,25 @@ class VaultIndexer:
         dry_run: bool = False,
     ) -> FullReindexStats | FullReindexPreview:
         """
-        Reindexar todo o vault do zero.
+        Rebuild the complete vault index.
 
-        Otimizações:
-        - Leitura paralela de arquivos com ThreadPoolExecutor
-        - Batch size dinâmico baseado na RAM disponível
-        - write_lock serializa com reindex_note() do watcher
+        Optimizations:
+        - Parallel file reads through ``ThreadPoolExecutor``
+        - Dynamic batch size based on available RAM
+        - ``write_lock`` serialization with watcher ``reindex_note()`` calls
 
-        Parâmetros:
-            dry_run: se True, apenas retorna preview sem executar
+        Parameters:
+            dry_run: Return a preview without modifying the index.
 
-        Retorna:
-            Dict com estatísticas: total_notes, total_chunks, duration_seconds.
-            Se dry_run=True, retorna contagens observadas sem modificar o índice.
+        Returns:
+            Statistics including ``total_notes``, ``total_chunks``, and
+            ``duration_seconds``. A dry run returns observed counts only.
         """
-        # Dry-run: apenas estima o que seria feito
+        # A dry run reports what would be processed.
         notes = scan_vault(VAULT_PATH)
 
         if dry_run:
-            # Contar por extensão
+            # Count files by extension.
             by_extension: dict[str, int] = {}
             for note in notes:
                 ext = note.suffix.lower()
@@ -793,7 +788,7 @@ class VaultIndexer:
                     return failure_stats(FullReindexStatus.INTERRUPTED)
 
                 if batch:
-                    with protected_section("salvando batch final no LanceDB"):
+                    with protected_section("saving the final LanceDB batch"):
                         total_chunks += self._store_staging_batch(staging_chunks, batch)
 
                 if parse_errors:
@@ -803,7 +798,7 @@ class VaultIndexer:
                     )
                     return failure_stats()
 
-                with protected_section("indexando links e aliases em staging"):
+                with protected_section("indexing links and aliases in staging"):
                     for relative_path, aliases in all_aliases:
                         total_aliases += self._index_aliases(relative_path, aliases)
                     if all_links:
@@ -862,7 +857,7 @@ class VaultIndexer:
                 "created": False,
                 "reason": "not_attempted",
             }
-            with protected_section("criando índices FTS e vetorial"):
+            with protected_section("creating FTS and vector indexes"):
                 create_fts_index(canonical_chunks)
                 try_optimize(canonical_chunks)
                 vector_index_result = self._maybe_create_vector_index(replace_existing=True)
@@ -895,7 +890,7 @@ class VaultIndexer:
         links: list[LinkRecord],
         aliases: list[str],
     ) -> tuple[Table, int, int]:
-        """Substitui registros de uma nota e restaura versões em qualquer falha."""
+        """Replace note records and restore versions after any failure."""
         escaped_path = escape_sql_string(note_relative_path)
         snapshots: list[tuple[Table, int]] = []
         table = self._ensure_table()
@@ -930,12 +925,12 @@ class VaultIndexer:
             raise
 
     def _record_incremental_operation(self, table: Table) -> bool:
-        """Compacta em lote após várias mutações, sem otimizar a cada nota."""
+        """Compact after several mutations instead of optimizing every note."""
         self._operations_since_compact += 1
         if self._operations_since_compact < AUTO_COMPACT_THRESHOLD:
             return False
 
-        with protected_section("compactando índice LanceDB"):
+        with protected_section("compacting LanceDB index"):
             stats = compact_table(table)
         if not stats.get("compacted"):
             return False
@@ -953,19 +948,19 @@ class VaultIndexer:
         auto_generate_id: bool = True,
     ) -> ReindexResult:
         """
-        Reindexar uma nota específica (atualização incremental).
+        Reindex one note incrementally.
 
-        O parsing e os embeddings terminam antes da primeira mutação. A troca usa
-        versões do LanceDB para restaurar chunks, links e aliases em qualquer falha.
+        Parsing and embedding finish before the first mutation. The replacement
+        uses LanceDB versions to restore chunks, links, and aliases after a failure.
 
-        NÃO reconstrói FTS (O(N) por nota é inviável). Busca vetorial
-        fica atualizada imediatamente; FTS atualiza no próximo full_reindex.
+        This does not rebuild FTS because O(N) work per note is impractical.
+        Vector search updates immediately, and FTS updates on the next full reindex.
 
-        Parâmetros:
-            note_relative_path: caminho relativo ao vault (ex: 'pasta/nota.md')
+        Parameters:
+            note_relative_path: Vault-relative path, for example ``folder/note.md``.
 
-        Retorna:
-            Dict com 'chunks_indexed' e 'status'.
+        Returns:
+            A dictionary with ``chunks_indexed`` and ``status``.
         """
         if not validate_relative_path(note_relative_path):
             return {
@@ -973,14 +968,14 @@ class VaultIndexer:
                 "status": ReindexStatus.REJECTED_PATH_TRAVERSAL,
             }
 
-        # Extensão case-insensitive
+        # Compare the extension case-insensitively.
         if Path(note_relative_path).suffix.lower() not in INDEXABLE_EXTENSIONS:
             return {
                 "chunks_indexed": 0,
                 "status": ReindexStatus.REJECTED_EXTENSION,
             }
 
-        # Circuit breaker: evitar loops infinitos de reindex
+        # Circuit breaker for repeated reindex loops.
         if self._check_circuit_breaker(note_relative_path):
             logger.warning(
                 "circuit_breaker_triggered",
@@ -1011,10 +1006,8 @@ class VaultIndexer:
                     "status": ReindexStatus.DELETED,
                 }
 
-            # Garantir que notas .md tenham ID único (UUID v7)
-            # TRADE-OFF: Modifica o arquivo, o que dispara o watcher novamente.
-            # Porém, na segunda execução ensure_note_id não faz nada (já tem ID),
-            # então o loop para após uma reindexação extra.
+            # Ensure Markdown notes have unique UUID v7 IDs. This modifies the
+            # file and triggers the watcher once more; the second pass is a no-op.
             id_added = False
             if auto_generate_id and note_path.suffix.lower() == ".md":
                 try:
@@ -1087,7 +1080,7 @@ class VaultIndexer:
             links = parsed.links
             aliases = parsed.aliases
 
-            # Limitar chunks por nota (proteção contra resource exhaustion)
+            # Limit chunks per note to prevent resource exhaustion.
             if chunks and len(chunks) > MAX_CHUNKS_PER_NOTE:
                 logger.warning(
                     "note_chunks_truncated",
@@ -1121,7 +1114,7 @@ class VaultIndexer:
             try:
                 vectors = self._models.embed_corpus([chunk["text"] for chunk in chunks])
                 if len(vectors) != len(chunks):
-                    raise ValueError("quantidade de embeddings diferente dos chunks")
+                    raise ValueError("embedding count differs from chunk count")
             except Exception as e:
                 logger.error(
                     "reindex_note_embedding_failed",
@@ -1137,7 +1130,7 @@ class VaultIndexer:
             ]
 
             try:
-                with protected_section("atualizando registros da nota"):
+                with protected_section("updating note records"):
                     table, links_count, aliases_count = self._apply_note_records(
                         note_relative_path,
                         chunks_with_vectors,
@@ -1167,31 +1160,30 @@ class VaultIndexer:
                 result["id_added"] = True
             if auto_compacted:
                 result["auto_compacted"] = True
-                # FTS rebuild assíncrono após compactação (não bloqueia)
+                # Schedule a non-blocking FTS rebuild after compaction.
                 self._schedule_fts_rebuild_async()
             return result
 
     def _schedule_fts_rebuild_async(self) -> None:
         """
-        Agenda rebuild do FTS em background thread.
+        Schedule an FTS rebuild in a background thread.
 
-        Não bloqueia operações - busca vetorial continua funcionando.
-        Evita múltiplos rebuilds simultâneos com lock dedicado.
+        Keep vector search available and prevent concurrent rebuilds with a dedicated lock.
         """
 
         def _rebuild_fts_background():
-            """Worker thread para rebuild FTS."""
+            """Worker thread for FTS rebuilds."""
             try:
                 start = time.time()
                 logger.info("fts_rebuild_started", background=True)
 
-                # Obter referência à tabela (sem write_lock - read only)
+                # Read the table reference without the write lock.
                 table = self._table
                 if table is None:
                     logger.warning("fts_rebuild_skipped", reason="table_not_initialized")
                     return
 
-                # Rebuild FTS (operação thread-safe no LanceDB)
+                # Rebuild FTS through LanceDB's thread-safe operation.
                 create_fts_index(table)
 
                 duration_ms = (time.time() - start) * 1000
@@ -1210,21 +1202,21 @@ class VaultIndexer:
                 with self._fts_rebuild_lock:
                     self._fts_rebuild_in_progress = False
 
-        # FIX: Check E spawn DENTRO do lock para evitar race condition
+        # Check and mark state inside the lock to avoid a race.
         with self._fts_rebuild_lock:
             if self._fts_rebuild_in_progress:
-                logger.debug("FTS rebuild já em andamento, ignorando")
+                logger.debug("FTS rebuild already in progress; skipping")
                 return
-            # Marcar como em progresso ANTES de tentar spawnar
+            # Mark the rebuild in progress before spawning.
             self._fts_rebuild_in_progress = True
 
-        # Spawnar thread FORA do lock (start() pode bloquear brevemente)
+        # Spawn outside the lock because start() may block briefly.
         try:
             thread = threading.Thread(target=_rebuild_fts_background, daemon=True)
             thread.start()
             logger.debug("fts_rebuild_scheduled")
         except Exception as e:
-            # Rollback do flag se falhar ao spawnar thread
+            # Roll back the flag if thread creation fails.
             with self._fts_rebuild_lock:
                 self._fts_rebuild_in_progress = False
             logger.error(
@@ -1234,18 +1226,18 @@ class VaultIndexer:
 
     def _has_vector_index(self) -> bool:
         """
-        Verifica se já existe índice vetorial na tabela.
+        Check whether a vector index already exists on the table.
 
-        Thread-safe: chamado dentro do _write_lock.
+        Thread-safe when called under _write_lock.
 
-        Retorna:
-            True se existe índice vetorial na coluna 'vector'.
+        Returns:
+            ``True`` when the ``vector`` column has an index.
         """
         try:
             if self._table is None:
                 return False
             indices = self._table.list_indices()
-            # 0.29.2 retorna IndexConfig; versões antigas e mocks usam dict.
+            # LanceDB 0.29.2 returns IndexConfig; older versions and mocks use dicts.
             for index in indices:
                 if isinstance(index, dict):
                     columns = index.get("columns", [])
@@ -1268,20 +1260,18 @@ class VaultIndexer:
         replace_existing: bool = False,
     ) -> VectorIndexCreationResult:
         """
-        Cria índice vetorial se o dataset for grande o suficiente.
+        Create a vector index when the dataset is large enough.
 
-        Verifica:
-        1. Se auto-criação está habilitada
-        2. Se já não existe índice
-        3. Se o número de chunks atinge o threshold
+        Check whether automatic creation is enabled, an index is absent,
+        and the chunk count meets the threshold.
 
-        Thread-safe: deve ser chamado dentro do _write_lock.
+        Must be called while holding ``_write_lock``.
 
-        Retorna:
-            Dict com status da operação:
+        Returns:
+            Operation status:
             - created: bool
-            - reason: str (motivo de não criar ou sucesso)
-            - config: dict (se criado)
+            - ``reason``: outcome
+            - ``config``: configuration when created
         """
         try:
             table = self._table
@@ -1290,7 +1280,7 @@ class VaultIndexer:
 
             total_chunks = table.count_rows()
 
-            # Obter configuração (retorna None se não deve criar)
+            # ``None`` means the configuration does not require an index.
             settings = get_vector_index_settings()
             config = get_vector_index_config(total_chunks)
 
@@ -1303,11 +1293,11 @@ class VaultIndexer:
                     }
                 return {"created": False, "reason": "auto_create_disabled"}
 
-            # Verificar se já existe
+            # Check whether an index already exists.
             if self._has_vector_index() and not replace_existing:
                 return {"created": False, "reason": "already_exists"}
 
-            # Criar índice
+            # Create the index.
             logger.info(
                 "vector_index_creating",
                 total_chunks=total_chunks,
@@ -1370,17 +1360,17 @@ class VaultIndexer:
 
     def get_vector_index_status(self) -> VectorIndexStatus:
         """
-        Retorna status do índice vetorial.
+        Return vector-index status.
 
-        Thread-safe: adquire _write_lock para leitura consistente.
+        Acquire ``_write_lock`` for a consistent read.
 
-        Retorna:
-            Dict com:
+        Returns:
+            A dictionary containing:
             - exists: bool
             - auto_create_enabled: bool
             - threshold: int
             - total_chunks: int
-            - would_create: bool (se recriado agora)
+            - would_create: bool (whether it would be created now)
         """
         with self._write_lock:
             settings = get_vector_index_settings()
@@ -1410,20 +1400,19 @@ class VaultIndexer:
 
     def compact(self) -> CompactionStats:
         """
-        Compacta o índice LanceDB para reduzir fragmentação.
+        Compact the LanceDB index to reduce fragmentation.
 
-        Útil após muitas operações incrementais (reindex_note).
-        Agrupa arquivos pequenos e mantém versões para recuperação.
-        Reseta o contador de auto-compactação.
+        Useful after many incremental ``reindex_note`` operations. Group small
+        files, retain recovery versions, and reset the automatic-compaction counter.
 
-        Retorna:
-            Dict com estatísticas da compactação.
+        Returns:
+            Compaction statistics.
         """
         with self._write_lock:
             try:
                 table = self._ensure_table()
                 stats = compact_table(table)
-                self._operations_since_compact = 0  # Reset contador
+                self._operations_since_compact = 0  # Reset the operation counter.
                 logger.info(
                     "index_compaction_completed",
                     compacted=stats.get("compacted", False),
@@ -1443,24 +1432,22 @@ class VaultIndexer:
 
     def sync_check(self, auto_sync: bool = True) -> SyncStats:
         """
-        Verifica e sincroniza arquivos do vault com o índice.
+        Compare vault files with the index and synchronize differences.
 
-        Compara arquivos no vault com o índice para encontrar:
-        - Arquivos novos (no vault mas não no índice)
-        - Arquivos modificados (mtime do vault > mtime do índice)
-        - Arquivos deletados (no índice mas não no vault)
+        Find new files, modified files with a newer vault timestamp, and files
+        removed from the vault but still present in the index.
 
-        Parâmetros:
-            auto_sync: se True, reindexar arquivos fora de sincronia automaticamente
+        Parameters:
+            auto_sync: Reindex out-of-sync files automatically.
 
-        Retorna:
-            Dict com new_files, modified_files, deleted_files e synced counts.
+        Returns:
+            Counts and paths for new, modified, deleted, and synchronized files.
         """
         from datetime import datetime
 
         logger.info("sync_check_started")
 
-        # 1. Scan do vault
+        # 1. Scan the vault.
         vault_files = scan_vault(VAULT_PATH)
         vault_map: dict[str, float] = {}  # relative_path -> mtime
         for vault_file in vault_files:
@@ -1471,7 +1458,7 @@ class VaultIndexer:
             except OSError, ValueError:
                 continue
 
-        # 2. Obter arquivos indexados
+        # 2. Read indexed files.
         indexed_map: dict[str, str] = {}  # relative_path -> modified_at (ISO)
         try:
             with self._write_lock:
@@ -1479,7 +1466,7 @@ class VaultIndexer:
 
             total = table.count_rows()
             if total > 0:
-                # Query para obter todos note_path e modified_at únicos
+                # Read every unique note_path and modified_at value.
                 arrow_table = (
                     table.search().select(["note_path", "modified_at"]).limit(total).to_arrow()
                 )
@@ -1487,7 +1474,7 @@ class VaultIndexer:
                 paths = arrow_table.column("note_path").to_pylist()
                 mtimes = arrow_table.column("modified_at").to_pylist()
 
-                # Usar o primeiro chunk de cada nota (todos têm o mesmo modified_at)
+                # Use one chunk per note because modified_at is identical across chunks.
                 for indexed_path, indexed_mtime in zip(paths, mtimes, strict=True):
                     if indexed_path not in indexed_map:
                         indexed_map[indexed_path] = indexed_mtime
@@ -1497,10 +1484,10 @@ class VaultIndexer:
                 "sync_check_read_failed",
                 error_type=type(e).__name__,
             )
-            # Se não conseguiu ler o índice, assume vazio
+            # Treat an unreadable index as empty.
             indexed_map = {}
 
-        # 3. Comparar para encontrar diferenças
+        # 3. Compare both sets to find differences.
         new_files: list[str] = []
         modified_files: list[str] = []
         deleted_files: list[str] = []
@@ -1508,26 +1495,26 @@ class VaultIndexer:
         vault_paths = set(vault_map.keys())
         indexed_paths = set(indexed_map.keys())
 
-        # Arquivos novos: no vault mas não no índice
+        # Files present only in the vault are new.
         for relative_path in vault_paths - indexed_paths:
             new_files.append(relative_path)
 
-        # Arquivos deletados: no índice mas não no vault
+        # Files present only in the index were deleted.
         for relative_path in indexed_paths - vault_paths:
             deleted_files.append(relative_path)
 
-        # Arquivos modificados: comparar mtimes
+        # Compare timestamps for files present in both sets.
         for relative_path in vault_paths & indexed_paths:
             vault_mtime = vault_map[relative_path]
             try:
                 indexed_mtime_str = indexed_map[relative_path]
                 indexed_mtime = datetime.fromisoformat(indexed_mtime_str).timestamp()
 
-                # Margem de 1 segundo para evitar falsos positivos por arredondamento
+                # Allow one second for timestamp rounding.
                 if vault_mtime > indexed_mtime + 1:
                     modified_files.append(relative_path)
             except ValueError, TypeError:
-                # Se não conseguir parsear, considerar modificado
+                # Treat unparseable timestamps as modified.
                 modified_files.append(relative_path)
 
         stats: SyncStats = {
@@ -1539,7 +1526,7 @@ class VaultIndexer:
             "synced": 0,
         }
 
-        # 4. Sincronizar se solicitado
+        # 4. Synchronize when requested.
         if auto_sync and (new_files or modified_files or deleted_files):
             synced = 0
             total_to_sync = len(new_files) + len(modified_files) + len(deleted_files)
@@ -1551,10 +1538,10 @@ class VaultIndexer:
                 deleted=len(deleted_files),
             )
 
-            # Processar deletados primeiro
+            # Process deleted files first.
             for relative_path in deleted_files:
                 try:
-                    self.reindex_note(relative_path)  # Detecta ausência e remove do índice.
+                    self.reindex_note(relative_path)  # Missing files are removed from the index.
                     synced += 1
                 except Exception as e:
                     logger.warning(
@@ -1562,7 +1549,7 @@ class VaultIndexer:
                         error_type=type(e).__name__,
                     )
 
-            # Processar novos e modificados
+            # Process new and modified files.
             for relative_path in new_files + modified_files:
                 try:
                     self.reindex_note(relative_path)
@@ -1588,16 +1575,14 @@ class VaultIndexer:
 
     def get_stats(self) -> IndexStats:
         """
-        Retorna estatísticas do índice atual.
+        Return current index statistics.
 
-        Usa PyArrow nativo (sem pandas) com column projection
-        para evitar carregar vetores na memória.
+        Use native PyArrow column projection to avoid loading vectors into memory.
 
-        Thread-safe: adquire _write_lock brevemente para evitar
-        race condition com full_reindex (que dropa a tabela).
+        Briefly acquire ``_write_lock`` to avoid racing with ``full_reindex``.
 
-        Retorna:
-            Dict com total_chunks, unique_notes, última modificação.
+        Returns:
+            ``total_chunks``, ``unique_notes``, and the last modification time.
         """
         try:
             with self._write_lock:
@@ -1611,7 +1596,7 @@ class VaultIndexer:
                     "last_modified": None,
                 }
 
-            # PyArrow nativo com column projection (sem pandas, sem vetor)
+            # Native PyArrow column projection without pandas or vectors.
             arrow_table = (
                 table.search().select(["note_path", "modified_at"]).limit(total).to_arrow()
             )
@@ -1642,23 +1627,23 @@ if __name__ == "__main__":
     import os
     import sys
 
-    parser = argparse.ArgumentParser(description="Indexador de vault para busca semântica")
+    parser = argparse.ArgumentParser(description="Index a vault for semantic search")
     parser.add_argument(
         "--require-daemon",
         action="store_true",
-        help="Falha se daemon não disponível (não usa modelos locais). "
-        "Também via env VAULT_SEARCH_REQUIRE_DAEMON=1",
+        help="Fail when the daemon is unavailable instead of using local models. "
+        "Also available through VAULT_SEARCH_REQUIRE_DAEMON=1.",
     )
     parser.add_argument(
         "--wait-daemon",
         type=float,
         metavar="SECONDS",
-        help="Aguarda daemon ficar disponível (0 = indefinido). "
-        "Também via env VAULT_SEARCH_WAIT_DAEMON=<seconds>",
+        help="Wait for the daemon; 0 waits indefinitely. "
+        "Also available through VAULT_SEARCH_WAIT_DAEMON=<seconds>.",
     )
     args = parser.parse_args()
 
-    # Variáveis de ambiente como fallback
+    # Environment-variable fallbacks.
     require_daemon = args.require_daemon or os.environ.get("VAULT_SEARCH_REQUIRE_DAEMON") == "1"
     wait_daemon = args.wait_daemon
     if wait_daemon is None and "VAULT_SEARCH_WAIT_DAEMON" in os.environ:
@@ -1666,7 +1651,7 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
-    # Verificar daemon se requisitado
+    # Check the daemon when requested.
     if require_daemon or wait_daemon is not None:
         from vault_search.core.models import ModelManager
 
@@ -1675,15 +1660,15 @@ if __name__ == "__main__":
 
         if wait_daemon is not None:
             print(
-                f"Aguardando daemon... (max: {'indefinido' if max_wait is None else f'{max_wait}s'})"
+                f"Waiting for daemon... (max: {'unbounded' if max_wait is None else f'{max_wait}s'})"
             )
 
         try:
             mm.require_daemon(max_wait=max_wait or 30.0 if require_daemon else max_wait)
         except RuntimeError as e:
-            print(f"\nERRO: {type(e).__name__}", file=sys.stderr)
+            print(f"\nERROR: {type(e).__name__}", file=sys.stderr)
             sys.exit(1)
 
     indexer = VaultIndexer()
     stats = indexer.full_reindex()
-    print(f"\nIndexação finalizada: {stats}")
+    print(f"\nIndexing complete: {stats}")

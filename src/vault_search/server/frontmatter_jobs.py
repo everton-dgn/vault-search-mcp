@@ -1,5 +1,5 @@
 """
-Fila de enriquecimento de frontmatter em background.
+Background queue for frontmatter enrichment.
 """
 
 import queue
@@ -13,7 +13,7 @@ from vault_search.crud.write import enrich_note_frontmatter_required, is_ai_enri
 
 
 class FrontmatterEnrichmentJobManager:
-    """Gerencia jobs assíncronos de enriquecimento por nota ou lote."""
+    """Manage asynchronous enrichment jobs for one note or a batch."""
 
     _TERMINAL_STATUSES = frozenset({"completed", "completed_with_errors", "failed"})
 
@@ -45,7 +45,7 @@ class FrontmatterEnrichmentJobManager:
         self._worker: threading.Thread | None = None
 
     def enqueue(self, paths: list[str], reason: str = "manual") -> dict[str, Any]:
-        """Enfileira um novo job sem bloquear a thread da tool."""
+        """Enqueue a job without blocking the tool thread."""
         md_paths = list(
             dict.fromkeys(
                 path for path in paths if isinstance(path, str) and path.lower().endswith(".md")
@@ -54,7 +54,7 @@ class FrontmatterEnrichmentJobManager:
         if not md_paths:
             return {
                 "accepted": False,
-                "reason": "Nenhum path .md válido para enriquecimento",
+                "reason": "No valid .md path was provided for enrichment",
                 "queued_paths": 0,
             }
 
@@ -62,7 +62,7 @@ class FrontmatterEnrichmentJobManager:
             return {
                 "accepted": False,
                 "error_code": "too_many_paths",
-                "reason": "Quantidade de paths excede o limite por job",
+                "reason": "Path count exceeds the per-job limit",
                 "queued_paths": 0,
                 "max_paths": self._max_paths_per_job,
             }
@@ -70,7 +70,7 @@ class FrontmatterEnrichmentJobManager:
         if not is_ai_enrichment_enabled():
             return {
                 "accepted": False,
-                "reason": "Enriquecimento por IA desabilitado em config",
+                "reason": "AI enrichment is disabled in configuration",
                 "queued_paths": 0,
             }
 
@@ -81,7 +81,7 @@ class FrontmatterEnrichmentJobManager:
                 return {
                     "accepted": False,
                     "error_code": "stopped",
-                    "reason": "Fila de enriquecimento encerrada",
+                    "reason": "Enrichment queue is stopped",
                     "queued_paths": 0,
                 }
 
@@ -91,7 +91,7 @@ class FrontmatterEnrichmentJobManager:
                 return {
                     "accepted": False,
                     "error_code": "queue_full",
-                    "reason": "Fila de enriquecimento cheia",
+                    "reason": "Enrichment queue is full",
                     "queued_paths": 0,
                 }
 
@@ -121,7 +121,7 @@ class FrontmatterEnrichmentJobManager:
         }
 
     def get_status(self, job_id: str | None = None, limit: int = 20) -> dict[str, Any]:
-        """Retorna status de um job específico ou dos jobs recentes."""
+        """Return one job or the most recent jobs."""
         with self._lock:
             if job_id:
                 job = self._jobs.get(job_id)
@@ -141,7 +141,7 @@ class FrontmatterEnrichmentJobManager:
             }
 
     def stop(self) -> bool:
-        """Para de aceitar jobs e aguarda a drenagem dentro do prazo configurado."""
+        """Stop accepting jobs and wait for bounded queue drainage."""
         with self._lock:
             self._accepting = False
             worker = self._worker
@@ -156,7 +156,7 @@ class FrontmatterEnrichmentJobManager:
         return drained
 
     def _ensure_worker_locked(self) -> None:
-        """Garante que a worker thread está ativa. Requer ``self._lock``."""
+        """Ensure the worker is active while ``self._lock`` is held."""
         if self._worker and self._worker.is_alive():
             return
         self._worker = threading.Thread(
@@ -167,7 +167,7 @@ class FrontmatterEnrichmentJobManager:
         self._worker.start()
 
     def _worker_loop(self) -> None:
-        """Processa fila em background."""
+        """Process the queue in the background."""
         while not self._stop.is_set() or not self._queue.empty():
             try:
                 job_id, paths = self._queue.get(timeout=0.05)
@@ -186,7 +186,7 @@ class FrontmatterEnrichmentJobManager:
                 self._queue.task_done()
 
     def _run_job(self, job_id: str, paths: list[str]) -> None:
-        """Executa enriquecimento de um job."""
+        """Execute one enrichment job."""
         with self._lock:
             job = self._jobs.get(job_id)
             if not job:
@@ -204,7 +204,7 @@ class FrontmatterEnrichmentJobManager:
                 )
                 result = error_result(
                     path,
-                    "Falha interna durante o enriquecimento",
+                    "Internal enrichment failure",
                     error_code="internal_error",
                 )
             entry = {
@@ -253,7 +253,7 @@ class FrontmatterEnrichmentJobManager:
             self._prune_terminal_jobs_locked()
 
     def _mark_job_failed(self, job_id: str) -> None:
-        """Finaliza como falha um job interrompido por erro inesperado."""
+        """Mark a job interrupted by an unexpected error as failed."""
         with self._lock:
             job = self._jobs.get(job_id)
             if not job or job["status"] in self._TERMINAL_STATUSES:
@@ -264,13 +264,13 @@ class FrontmatterEnrichmentJobManager:
 
     @staticmethod
     def _snapshot_job_locked(job: dict[str, Any]) -> dict[str, Any]:
-        """Copia também a lista mutável de resultados da visão pública."""
+        """Copy the mutable result list for the public snapshot."""
         snapshot = dict(job)
         snapshot["results"] = [dict(result) for result in job["results"]]
         return snapshot
 
     def _prune_terminal_jobs_locked(self) -> None:
-        """Limita apenas o histórico terminal; queued/running nunca são podados."""
+        """Bound terminal history without pruning queued or running jobs."""
         terminal = [
             item for item in self._jobs.items() if item[1]["status"] in self._TERMINAL_STATUSES
         ]

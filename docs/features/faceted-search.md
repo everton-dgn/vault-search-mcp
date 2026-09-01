@@ -1,31 +1,30 @@
-# Busca facetada
+# Faceted search
 
-`search_advanced` combina similaridade semântica com filtros armazenados no
-índice. Use a ferramenta quando a consulta precisa respeitar pasta, tipo de
-arquivo, datas ou metadados do frontmatter.
+`search_advanced` combines semantic similarity with structured fields stored in
+the index. Use it when retrieval must respect folder, file type, modification
+date, or frontmatter metadata.
 
-## Fluxo
+## Flow
 
 ```mermaid
 flowchart LR
-    Q[Consulta] --> E[Embedding]
-    F[Filtros] --> W[Cláusula de seleção]
-    E --> V[Busca vetorial]
+    Q[Query] --> E[Embedding]
+    F[Filters] --> W[Selection predicate]
+    E --> V[Vector search]
     W --> V
-    V --> X[Exclusões]
+    V --> X[Exclusions]
     X --> R[Reranking]
-    R --> H[Realce opcional]
+    R --> H[Optional highlighting]
 ```
 
-Os filtros são aplicados durante a busca vetorial. Termos de `exclude` removem
-candidatos antes do reranking. O realce, quando pedido, é aplicado somente aos
-resultados finais.
+Filters apply during vector search. `exclude` removes candidates before
+reranking. Highlighting touches final results only.
 
-## Chamada MCP
+## MCP call
 
 ```python
 search_advanced(
-    query="decisões de arquitetura",
+    query="architecture decisions",
     top_k=10,
     tags=["architecture", "decision"],
     folder="projects/atlas",
@@ -40,168 +39,110 @@ search_advanced(
 )
 ```
 
-Somente `query` é obrigatória. Filtros ativos são combinados com `AND`, com a
-exceção de `tags`, que usa `OR` entre os itens da lista.
+Only `query` is required. Active filters combine with AND. `tags` is the
+exception and uses OR among supplied tags.
 
-## Parâmetros
+## Parameters
 
-| Parâmetro | Tipo | Comportamento |
-|---|---|---|
-| `query` | `str` | Consulta semântica. Espaços isolados são rejeitados. |
-| `top_k` | `int` | Quantidade final, limitada pelo servidor ao intervalo permitido. |
-| `tags` | `list[str]` | Aceita a nota quando ao menos uma tag aparece no campo indexado. |
-| `folder` | `str` | Inclui a pasta exata e suas subpastas. |
-| `extension` | `str` | Aceita valor com ou sem ponto: `md` e `.md` são equivalentes. |
-| `date_range` | `str` | Janela relativa: `today`, `week`, `month` ou `year`. |
-| `date_from` | `str` | Limite inicial ISO, usado quando `date_range` não foi informado. |
-| `date_to` | `str` | Limite final ISO, usado quando `date_range` não foi informado. |
-| `status` | `str` | Igualdade, depois de normalização para minúsculas. |
-| `note_type` | `str` | Igualdade, depois de normalização para minúsculas. |
-| `category` | `str` | Correspondência parcial no campo de categorias. |
-| `project` | `str` | Igualdade com o projeto indexado. |
-| `exclude` | `list[str]` | Remove resultados cujo texto contém algum termo. |
-| `highlight` | `bool` | Destaca termos da consulta no texto retornado. |
-
-Uma extensão fora da lista configurada é rejeitada. O servidor também limita o
-tamanho da consulta, `top_k` e a quantidade de termos excluídos. Consulte
-[Configuração YAML](../config/yaml.md) para alterar extensões indexáveis.
-
-## Datas
-
-As datas filtram `modified_at`, obtido do sistema de arquivos durante a
-indexação. Elas não filtram `created_at` nem `updated_at` do frontmatter.
-
-As janelas relativas usam o relógio local do processo:
-
-| Valor | Intervalo móvel |
+| Parameter | Contract |
 |---|---|
-| `today` | últimas 24 horas |
-| `week` | últimos 7 dias |
-| `month` | últimos 30 dias |
-| `year` | últimos 365 dias |
+| `query` | Semantic query; whitespace-only input is rejected |
+| `top_k` | Final result count, clamped to configured limits |
+| `tags` | Match when at least one tag occurs in the indexed field |
+| `folder` | Exact folder plus descendants |
+| `extension` | Accepts `md` and `.md` forms for an enabled extension |
+| `date_range` | `today`, `week`, `month`, or `year` |
+| `date_from`, `date_to` | ISO bounds used when `date_range` is absent |
+| `status` | Equality after lowercase normalization |
+| `note_type` | Equality after lowercase normalization |
+| `category` | Partial match in the normalized category field |
+| `project` | Equality against the indexed project |
+| `exclude` | Remove results containing any listed term |
+| `highlight` | Mark meaningful query terms with `**` |
 
-Para um intervalo explícito, use ISO `YYYY-MM-DD` ou
-`YYYY-MM-DDTHH:MM:SS`:
+Unsupported extensions are rejected. The server also bounds query size,
+`top_k`, and exclusion count.
+
+## Dates
+
+Date filters use filesystem `modified_at` captured during indexing. They do not
+filter frontmatter `created_at` or `updated_at`.
+
+| Value | Moving window |
+|---|---|
+| `today` | Last 24 hours |
+| `week` | Last 7 days |
+| `month` | Last 30 days |
+| `year` | Last 365 days |
+
+Explicit bounds accept `YYYY-MM-DD` or ISO datetime values:
 
 ```python
 search_advanced(
-    query="retrospectiva",
+    query="retrospective",
     date_from="2026-01-01",
     date_to="2026-03-31T23:59:59",
 )
 ```
 
-Se `date_range` estiver presente, `date_from` e `date_to` são ignorados. Uma
-data inválida é ignorada e registrada no log local.
+When `date_range` is present, explicit bounds are ignored. Invalid date values
+are ignored and recorded in local logs.
 
-## Pastas, extensões e tags
+## Folders, extensions, and tags
 
-O filtro `folder="projects"` aceita `projects` e `projects/subfolder`, mas não
-aceita `projects-archive`. Caminhos de resultado permanecem relativos ao vault.
+`folder="projects"` includes `projects` and `projects/subfolder`, but excludes
+`projects-archive`. Result paths remain relative to the vault.
 
-As extensões públicas suportadas pela configuração padrão são `.md`, `.mdx`,
-`.txt`, `.pdf` e `.canvas`. Alterar `vault.extensions` muda a lista aceita pela
-ferramenta e pelo indexador.
+Default extensions are `.md`, `.mdx`, `.txt`, `.pdf`, and `.canvas`. Changing
+`indexing.extensions` changes the set accepted by both indexer and tool.
 
-As tags são armazenadas em um campo textual. A busca aceita qualquer uma das
-tags informadas:
+Tags are stored in a textual field. Any supplied tag can satisfy the filter:
 
 ```python
 search_advanced(
-    query="autenticação",
+    query="authentication",
     tags=["security", "identity"],
     folder="engineering",
 )
 ```
 
-## Campos de frontmatter indexados
+## Indexed frontmatter fields
 
-O parser extrai os campos abaixo. Valores ausentes são indexados como string
-vazia.
+Missing values become empty strings.
 
-| Campo no índice | Nomes aceitos no YAML | Normalização |
+| Index field | Accepted YAML names | Normalization |
 |---|---|---|
-| `id` | `id` | Texto. |
-| `created_at` | `created_at`, `created`, `date` | Texto ISO, limitado a 19 caracteres. |
-| `updated_at` | `updated_at`, `updated`, `modified` | Texto ISO, limitado a 19 caracteres. |
-| `description` | `description`, `summary`, `excerpt` | Texto limitado a 500 caracteres. |
-| `status` | `status` | Minúsculas e espaços externos removidos. |
-| `note_type` | `note_type`, `type` | Minúsculas e espaços externos removidos. |
-| `category` | `category`, `categories` | Lista convertida em texto; resultado em minúsculas. |
-| `project` | `project` | Espaços externos removidos. |
-| `source` | `source`, `url`, `link` | Texto limitado a 500 caracteres. |
+| `id` | `id` | Text |
+| `created_at` | `created_at`, `created`, `date` | ISO text capped at 19 characters |
+| `updated_at` | `updated_at`, `updated`, `modified` | ISO text capped at 19 characters |
+| `description` | `description`, `summary`, `excerpt` | Text capped at 500 characters |
+| `status` | `status` | Lowercase, outer whitespace removed |
+| `note_type` | `note_type`, `type` | Lowercase, outer whitespace removed |
+| `category` | `category`, `categories` | List rendered as lowercase text |
+| `project` | `project` | Outer whitespace removed |
+| `source` | `source`, `url`, `link` | Text capped at 500 characters |
 
-`status`, `note_type`, `category` e `project` aceitam texto livre durante a
-extração. Para impor tipos, enumerações ou campos obrigatórios, habilite o
-[schema de frontmatter](frontmatter-schema.md).
+Extraction accepts free text for `status`, `note_type`, `category`, and
+`project`. Enable the [frontmatter schema](frontmatter-schema.md) to enforce
+types, enums, or required fields.
 
-## Exemplos focais
+## Result and limits
 
-### Pasta e período
+The result uses the semantic-search shape: path, title, section, text, score,
+and available indexed metadata. Reranking defines final order when enabled.
 
-```python
-search_advanced(
-    query="risco de migração",
-    folder="projects/atlas",
-    date_range="week",
-)
-```
+An empty list means no candidate passed every active filter. Internal failures
+use the sanitized public form in [API errors](../api/errors.md).
 
-### Tipo e estado
+Current limits:
 
-```python
-search_advanced(
-    query="próximas ações",
-    note_type="meeting",
-    status="published",
-)
-```
+- no aggregate counts per facet;
+- date filters use filesystem modification time;
+- category uses partial text matching;
+- tags use text matching rather than a relational table;
+- semantic quality depends on models, language, and vault content.
 
-### Exclusão e realce
-
-```python
-search_advanced(
-    query="API de pagamentos",
-    exclude=["deprecated", "cancelled"],
-    highlight=True,
-)
-```
-
-O realce modifica o campo de texto devolvido e usa `**` como marcador interno.
-A ferramenta MCP não expõe marcadores personalizados.
-
-## Resultado
-
-A resposta segue o mesmo formato das demais buscas semânticas. Cada item pode
-conter caminho da nota, título, seção, texto, score e metadados indexados. A
-ordem final vem do reranker quando ele está disponível no modo de execução.
-
-Uma lista vazia significa que nenhum candidato passou por todos os filtros.
-Falhas internas retornam a mensagem pública sanitizada descrita em
-[Erros da API](../api/errors.md).
-
-## Limitações atuais
-
-- A ferramenta não agrega contagens por faceta.
-- O filtro de data usa `modified_at` do arquivo.
-- `category` usa correspondência parcial em um campo textual.
-- A busca por tags usa correspondência textual, não uma tabela relacional.
-- A qualidade semântica depende dos modelos, do idioma e do conteúdo do vault.
-
-Esses limites descrevem o comportamento atual. Medidas de latência e qualidade
-devem seguir o [protocolo de benchmark](../performance/benchmarking.md) e citar
-hardware, versão, tamanho do índice e conjunto de consultas.
-
-## Diagnóstico
-
-Quando uma consulta retorna menos resultados do que o esperado:
-
-1. rode a mesma busca apenas com `query`;
-2. adicione um filtro por vez;
-3. confira os metadados com `get_note_metadata`;
-4. valide o frontmatter com `validate_frontmatter`;
-5. use `reindex_note` após corrigir metadados ou conteúdo.
-
-Para conferir a cobertura do índice, use `vault_stats` e
-`vector_index_status`. O guia de [solução de problemas](../operation/troubleshooting.md)
-traz o fluxo completo para índice ausente ou desatualizado.
+When results are unexpectedly narrow, begin with `query` alone and add one
+filter at a time. Check metadata, validate frontmatter, and call `reindex_note`
+after a correction. Use `vault_stats` and `vector_index_status` to inspect index
+coverage.

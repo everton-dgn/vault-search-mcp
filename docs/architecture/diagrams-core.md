@@ -1,6 +1,6 @@
-# Diagramas do núcleo
+# Core diagrams
 
-## Arquitetura geral
+## General architecture
 
 ```mermaid
 flowchart TB
@@ -39,7 +39,7 @@ flowchart TB
 
 ---
 
-## Fluxo de busca semântica
+## Semantic search flow
 
 ```mermaid
 sequenceDiagram
@@ -75,7 +75,7 @@ sequenceDiagram
 
 ---
 
-## Fluxo de indexação completa
+## Full indexing flow
 
 ```mermaid
 flowchart TB
@@ -105,7 +105,7 @@ flowchart TB
 
 ---
 
-## Fluxo de indexação incremental
+## Incremental indexing flow
 
 ```mermaid
 flowchart TB
@@ -131,7 +131,7 @@ flowchart TB
 
 ---
 
-## Busca híbrida
+## Hybrid search
 
 ```mermaid
 flowchart TB
@@ -163,7 +163,7 @@ flowchart TB
 
 ---
 
-## Ciclo de vida do `ModelManager`
+## `ModelManager` lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -178,8 +178,8 @@ stateDiagram-v2
     Unloading --> Unloaded: cleanup complete
 
     note right of Loaded
-        BGE-M3: uso depende de backend e precisão
-        Reranker: uso depende de versão e device
+        BGE-M3: memory use depends on backend and precision
+        Reranker: memory use depends on version and device
     end note
 
     note right of Unloading

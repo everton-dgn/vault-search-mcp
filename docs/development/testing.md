@@ -1,111 +1,106 @@
-# Estratégia de testes e qualidade
+# Testing and quality strategy
 
-## Pirâmide usada pelo projeto
+## Project gates
 
-| Camada | Objetivo | Comando |
+| Layer | Goal | Command |
 |---|---|---|
-| Lint | Fonte, testes e scripts | `uv run ruff check src tests scripts` |
-| Formatação | Fonte, testes e scripts | `uv run ruff format --check src tests scripts` |
-| Shell | Instaladores e desinstaladores | `bash -n scripts/*.sh && shellcheck scripts/*.sh` |
-| Tipos | Pacote Python completo | `uv run mypy src/vault_search` |
-| Unitária | Regras sem carregar modelos | `uv run pytest -m "not slow" --cov=vault_search --cov-fail-under=65` |
-| Integração ML | Modelos, índice e ambiente real | `uv run pytest -m slow` |
-| Publicação | Docs, privacidade, árvore Git e pacotes | `uv run python scripts/check_publication.py && uv build && uv run python scripts/check_publication.py --require-dist` |
+| Lint | Source, tests, and Python scripts | `uv run ruff check src tests scripts` |
+| Format | Source, tests, and Python scripts | `uv run ruff format --check src tests scripts` |
+| Shell | Daemon installers and uninstallers | `bash -n scripts/*.sh && shellcheck scripts/*.sh` |
+| Types | Complete Python package | `uv run mypy src/vault_search` |
+| Unit | Rules without loading real models | `uv run pytest -m "not slow" --cov=vault_search --cov-fail-under=65` |
+| ML integration | Models, index, and target environment | `uv run pytest -m slow` |
+| Publication | Docs, privacy, Git tree, and distributions | `uv run python scripts/check_publication.py && uv build && uv run python scripts/check_publication.py --require-dist` |
 
-ShellCheck é uma dependência de desenvolvimento para mudanças em `scripts/*.sh`;
-ele não entra nas dependências de runtime do pacote Python.
+ShellCheck is a development requirement for `scripts/*.sh` changes, not a
+Python runtime dependency.
 
-## Typecheck do pacote
+## Package type checking
 
-O mypy verifica todos os arquivos-fonte. Tipos próprios modelam os payloads
-heterogêneos, e exceções para bibliotecas sem stubs ficam limitadas aos módulos
-externos declarados no `pyproject.toml`. O projeto não aceita `ignore` genérico
-para esconder erro do pacote.
+mypy checks every source file. Project types model heterogeneous payloads;
+exceptions for libraries without stubs stay scoped to declared external
+modules in `pyproject.toml`. A blanket ignore must not hide package errors.
 
-## Testes sem modelos
+## Tests without real models
 
-O conjunto padrão deve usar fixtures sintéticas e mocks nas bordas de ML. Ele
-não deve baixar modelos, ler um vault pessoal, chamar serviços externos ou
-depender de daemon previamente instalado.
+The standard suite uses synthetic fixtures and mocks at ML boundaries. It must
+not download models, read a personal vault, call external services, or depend
+on a previously installed daemon.
 
-O gate de publicação aceita `publication-check: synthetic-fixture` somente na
-linha que contém um padrão sintético deliberado. O marcador nunca deve acompanhar
-um token, caminho ou endereço real.
+`publication-check: synthetic-fixture` exempts only the exact line containing a
+deliberate synthetic forbidden pattern. Never place that marker beside a real
+credential, address, or path.
 
-Quando existe um repositório Git, o gate também inspeciona a árvore rastreada e
-o histórico alcançável por `HEAD`. Ele rejeita config local, dados de vault,
-artefatos gerados e e-mails pessoais nos metadados dos commits. Identidades
-genéricas do projeto, bots e endereços no-reply do GitHub são aceitos. Com
-`--require-dist`, o gate exige wheel e sdist e valida seus membros sem extrair
-os arquivos.
+When Git is available, publication checks inspect tracked files and reachable
+history. They reject local configuration, vault data, generated artifacts, and
+personal commit email addresses. Generic project identities, bots, and GitHub
+no-reply addresses are allowed. With `--require-dist`, wheel and sdist contents
+are checked without extracting archives.
 
 ```bash
-uv run pytest -m "not slow" --cov=vault_search --cov-report=term --cov-fail-under=65
+uv run pytest -m "not slow" --cov=vault_search --cov-report=term \
+  --cov-fail-under=65
 ```
 
-Para uma mudança localizada, execute primeiro o arquivo ou teste focal e depois
-o conjunto padrão.
+For a localized change, run its focused test first and the standard suite next.
 
-## Testes lentos
+## Slow tests
 
-Use `slow` quando o teste carregar modelos, depender de hardware específico ou
-executar um volume incompatível com feedback curto. Registre:
+Use `slow` when a test loads models, depends on hardware, or processes a volume
+that cannot provide short feedback. Record:
 
-- modelo e versão resolvida;
-- device e precisão;
-- hardware e sistema operacional;
-- cache frio ou aquecido;
-- tempo total e resultado.
+- resolved model and version;
+- device and precision;
+- hardware and operating system;
+- cold or warm cache state;
+- exact command, total duration, and outcome.
 
-## Cobertura
+## Coverage
 
-Cobertura ajuda a localizar caminhos sem execução. Ela não prova qualidade de
-assertions nem cobre contratos externos por si só.
+Coverage identifies code without execution. It does not prove assertion quality
+or external contracts.
 
 ```bash
 uv run pytest --cov=vault_search --cov-report=term-missing -m "not slow"
 ```
 
-A CI exige pelo menos 65% de cobertura combinada de statements e branches. A
-linha de base foi definida abaixo da medição local registrada em 2026-08-30 com
-Python 3.14.7 no macOS: 1.161 testes passaram, 21 foram excluídos pela marca
-`slow` e a cobertura foi 66,48%. Os 7 avisos observados vieram de tipos SWIG da
-integração de PDF. Esse snapshot não substitui a revisão dos caminhos críticos
-nem promete o mesmo resultado em outro ambiente.
+CI requires at least 65% combined statement coverage. Do not turn one local
+result into a permanent claim; report the current command output with its
+runtime and environment when evidence matters.
 
-## Casos mínimos por superfície
+## Minimum cases by boundary
 
-### Caminhos e CRUD
+### Paths and CRUD
 
-- `..`, caminho absoluto e byte nulo;
-- symlink interno que aponta para fora do vault;
-- corrida entre validação e escrita;
-- falha antes e depois da troca atômica;
-- preservação do original quando a escrita falha.
+- `..`, absolute paths, and null bytes;
+- internal symlinks that point outside the vault;
+- races between validation and persistence;
+- failure before and after atomic replacement;
+- preservation of original content after a failed write.
 
 ### Daemon
 
-- porta fechada, listener estranho e resposta inválida;
-- morte depois de um health check positivo;
-- limite de corpo e lote;
-- timeout de conexão e de leitura;
-- rejeição de bind fora de loopback.
+- closed port, unexpected listener, and invalid response;
+- failure after a successful health probe;
+- body, text-count, and text-length limits;
+- connection and read timeout;
+- rejection of non-loopback binding.
 
-### Índice
+### Index
 
-- rebuild vazio e rebuild que falha no meio;
-- geração anterior disponível até o commit da nova;
-- criação de ANN em tamanho mínimo;
-- configuração inválida sem fallback silencioso.
+- empty rebuild and mid-rebuild failure;
+- old generation available until new commit;
+- ANN creation at the configured threshold;
+- invalid configuration without silent fallback.
 
 ### MCP
 
-- todos os decoradores registrados;
-- tipos, defaults e limites de argumentos;
-- erros sanitizados;
-- cancelamento e shutdown.
+- every decorator registered;
+- argument types, defaults, and limits;
+- sanitized errors;
+- cancellation and shutdown.
 
-## Atualização de snapshots e baselines
+## Baseline changes
 
-Nunca atualize baseline apenas para deixar a CI verde. Primeiro explique a
-mudança de contrato e revise o efeito para quem consome a saída.
+Never update a snapshot or threshold only to make CI green. Explain the contract
+change first and review its effect on consumers.

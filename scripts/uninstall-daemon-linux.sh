@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Desregistra o daemon no Linux e move a unidade para a lixeira.
+# Unregister the daemon on Linux and move the unit to the trash.
 
 set -euo pipefail
 
@@ -8,7 +8,7 @@ readonly SERVICE_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$SERVICE_N
 
 TRASH_COMMAND="$(command -v trash || command -v trash-put || true)"
 if [[ -z "$TRASH_COMMAND" ]]; then
-    printf '%s\n' "Erro: trash ou trash-put é obrigatório para remoção recuperável." >&2
+    printf '%s\n' "Error: trash or trash-put is required for recoverable removal." >&2
     exit 1
 fi
 
@@ -18,5 +18,5 @@ if [[ -f "$SERVICE_FILE" ]]; then
 fi
 systemctl --user daemon-reload
 
-printf '%s\n' "Daemon desregistrado. A unidade foi movida para a lixeira."
-printf '%s\n' "O vault, o índice e os logs não foram alterados."
+printf '%s\n' "Daemon unregistered. The unit was moved to the trash."
+printf '%s\n' "The vault, index, and logs were not changed."

@@ -1,11 +1,11 @@
 """
-MCP Resources para navegação do vault.
+MCP resources for vault navigation.
 
-Resources expõem dados do vault via URIs navegáveis:
-- vault://notes — lista todas as notas
-- vault://notes/{path} — conteúdo de uma nota específica
-- vault://folders — árvore de pastas
-- vault://stats — estatísticas do vault
+Resources expose vault data through navigable URIs:
+- vault://notes lists notes
+- vault://notes/{path} returns one note
+- vault://folders returns the folder tree
+- vault://stats returns vault statistics
 """
 
 import logging
@@ -26,7 +26,7 @@ type FolderTree = dict[str, FolderTree]
 
 
 def _collect_tag_stats(indexer) -> list[dict[str, str | int]]:
-    """Conta cada tag uma vez por nota a partir do índice reconstruível."""
+    """Count each tag once per note from the rebuildable index."""
     table = indexer._ensure_table()
     total_rows = table.count_rows()
     if total_rows == 0:
@@ -50,20 +50,20 @@ def _collect_tag_stats(indexer) -> list[dict[str, str | int]]:
 
 def register_resources(mcp, indexer, searcher):
     """
-    Registra Resources MCP para navegação do vault.
+    Register MCP resources for vault navigation.
 
-    Parâmetros:
-        mcp: instância do FastMCP
-        indexer: instância do VaultIndexer
-        searcher: instância do VaultSearcher
+    Parameters:
+        mcp: FastMCP instance
+        indexer: VaultIndexer instance
+        searcher: VaultSearcher instance
     """
 
     @mcp.resource("vault://stats")
     def vault_stats_resource(ctx: Context) -> dict[str, object]:
         """
-        Estatísticas gerais do vault.
+        Return aggregate vault statistics.
 
-        Retorna contagem de notas, chunks, última modificação.
+        Includes note count, chunk count, and last modification.
         """
         try:
             stats = indexer.get_stats()
@@ -78,15 +78,15 @@ def register_resources(mcp, indexer, searcher):
     @mcp.resource("vault://folders")
     def vault_folders_resource(ctx: Context) -> dict[str, object]:
         """
-        Árvore de pastas do vault.
+        Return the vault folder tree.
 
-        Retorna estrutura hierárquica de diretórios.
+        The response is a hierarchical directory structure.
         """
         try:
             catalog = get_catalog()
             folders = catalog.get_all_folders()
 
-            # Construir árvore
+            # Build the tree.
             tree: FolderTree = {}
             for folder in sorted(folders):
                 parts = folder.split("/")
@@ -106,9 +106,9 @@ def register_resources(mcp, indexer, searcher):
     @mcp.resource("vault://notes")
     def vault_notes_list_resource(ctx: Context) -> dict[str, object]:
         """
-        Retorna uma página limitada do catálogo de notas.
+        Return one bounded page of the note catalog.
 
-        O campo ``has_more`` informa quando o total ultrapassa o snapshot.
+        ``has_more`` reports whether matches remain after the snapshot.
         """
         try:
             catalog = get_catalog()
@@ -138,30 +138,30 @@ def register_resources(mcp, indexer, searcher):
     @mcp.resource("vault://notes/{path*}")
     def vault_note_resource(path: str, ctx: Context) -> dict[str, object]:
         """
-        Conteúdo de uma nota específica.
+        Return the content of one note.
 
-        Parâmetros:
-            path: caminho relativo da nota (ex: "pasta/nota.md")
+        Parameters:
+            path: vault-relative note path, such as "folder/note.md"
 
-        Retorna conteúdo completo da nota com metadados.
+        Returns complete note content with metadata.
         """
-        # Validar path
+        # Validate the path.
         try:
             resolve_path(path)
         except ValueError:
-            return {"error": "Path inválido ou fora do vault", "code": "invalid_path"}
+            return {"error": "Path is invalid or outside the vault", "code": "invalid_path"}
 
-        # Verificar extensão
+        # Check the extension.
         ext = Path(path).suffix.lower()
         if ext not in READABLE_TEXT_EXTENSIONS:
             return {
-                "error": f"Extensão {ext} não suportada para leitura. Suportadas: {READABLE_TEXT_EXTENSIONS}"
+                "error": (f"Extension {ext} is not readable. Supported: {READABLE_TEXT_EXTENSIONS}")
             }
 
         try:
             result = read_note(path)
             if isinstance(result, str):
-                # Erro retornado como string
+                # A tool-level error returned as a string.
                 return {"error": result}
 
             return {
@@ -175,16 +175,16 @@ def register_resources(mcp, indexer, searcher):
                 "size_bytes": result.get("size_bytes", 0),
             }
         except FileNotFoundError:
-            return {"error": "Nota não encontrada", "code": "not_found"}
+            return {"error": "Note not found", "code": "not_found"}
         except Exception as e:
             return public_error_dict(logger, "vault_note_resource", e)
 
     @mcp.resource("vault://search/recent")
     def vault_recent_resource(ctx: Context) -> dict[str, object]:
         """
-        Notas modificadas recentemente (últimos 7 dias).
+        Return notes modified in the last seven days.
 
-        Útil para descobrir atividade recente no vault.
+        This provides a bounded recent-activity snapshot.
         """
         try:
             catalog = get_catalog()
@@ -203,9 +203,9 @@ def register_resources(mcp, indexer, searcher):
     @mcp.resource("vault://tags")
     def vault_tags_resource(ctx: Context) -> dict[str, object]:
         """
-        Todas as tags do vault com contagens.
+        Return all indexed vault tags with counts.
 
-        Retorna estatísticas de uso de tags.
+        Counts each tag once per note.
         """
         try:
             tags = _collect_tag_stats(indexer)
@@ -219,4 +219,4 @@ def register_resources(mcp, indexer, searcher):
         except Exception as e:
             return public_error_dict(logger, "vault_tags_resource", e)
 
-    logger.info("Resources MCP registrados: 6")
+    logger.info("MCP resources registered: 6")

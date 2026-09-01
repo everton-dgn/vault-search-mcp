@@ -1,8 +1,8 @@
 """
-Chunking hierárquico de texto com sobreposição.
+Hierarchical text chunking with overlap.
 
-Divide texto longo em chunks respeitando separadores naturais
-(parágrafos > linhas > frases > palavras) com overlap controlado.
+Split long text into chunks at natural paragraph, line, sentence,
+and word boundaries with controlled overlap.
 """
 
 from vault_search.config.chunking import CHUNK_SEPARATORS
@@ -10,32 +10,31 @@ from vault_search.config.chunking import CHUNK_SEPARATORS
 
 def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
     """
-    Divide texto em chunks com sobreposição.
+    Split text into overlapping chunks.
 
-    O overlap é aplicado APENAS no nível superior, evitando
-    empilhamento entre níveis de recursão que causaria chunks
-    maiores que chunk_size.
+    Apply overlap only at the top level. This prevents overlap from
+    accumulating across recursion levels and exceeding ``chunk_size``.
 
-    Parâmetros:
-        text: texto a dividir
-        chunk_size: tamanho máximo de cada chunk (incluindo overlap)
-        overlap: sobreposição entre chunks
+    Parameters:
+        text: Text to split.
+        chunk_size: Maximum chunk size, including overlap.
+        overlap: Overlap between chunks.
 
-    Retorna:
-        Lista de chunks como strings.
+    Returns:
+        Text chunks.
     """
     if len(text) <= chunk_size:
         return [text]
 
-    # Chunking SEM overlap — apenas split hierárquico
+    # Perform the hierarchical split without overlap.
     chunks = _chunk_with_separators(text, chunk_size, CHUNK_SEPARATORS, 0)
 
-    # Aplicar overlap APENAS aqui, no nível superior
+    # Apply overlap only here at the top level.
     if overlap > 0 and len(chunks) > 1:
         overlapped = [chunks[0]]
         for i in range(1, len(chunks)):
             prefix = _get_overlap_prefix(chunks[i - 1], overlap)
-            # Garantir que chunk + prefix não exceda chunk_size
+            # Ensure the prefix and chunk do not exceed chunk_size.
             max_prefix = max(0, chunk_size - len(chunks[i]))
             if len(prefix) > max_prefix:
                 prefix = prefix[-max_prefix:] if max_prefix > 0 else ""
@@ -49,21 +48,21 @@ def _chunk_with_separators(
     text: str, chunk_size: int, separators: list[str], sep_idx: int
 ) -> list[str]:
     """
-    Implementação recursiva do chunking hierárquico (sem overlap).
+    Recursively implement hierarchical chunking without overlap.
 
-    Divide usando o separador atual. Para partes que ainda excedem
-    chunk_size, aplica recursivamente o próximo separador.
+    Split on the current separator. Recursively apply the next separator
+    to parts that still exceed ``chunk_size``.
 
-    Parâmetros:
-        text: texto a dividir
-        chunk_size: tamanho máximo
-        separators: lista hierárquica de separadores
-        sep_idx: índice do separador atual
+    Parameters:
+        text: Text to split.
+        chunk_size: Maximum size.
+        separators: Hierarchical separator list.
+        sep_idx: Current separator index.
     """
     if len(text) <= chunk_size:
         return [text]
 
-    # Se esgotamos todos os separadores, corte duro
+    # Fall back to hard cuts after exhausting all separators.
     if sep_idx >= len(separators):
         chunks = []
         for i in range(0, len(text), chunk_size):
@@ -74,10 +73,10 @@ def _chunk_with_separators(
     parts = text.split(sep)
 
     if len(parts) <= 1:
-        # Este separador não funciona, tentar o próximo
+        # Try the next separator when this one does not split the text.
         return _chunk_with_separators(text, chunk_size, separators, sep_idx + 1)
 
-    # Agrupar parts em chunks respeitando chunk_size
+    # Group parts into chunks that respect chunk_size.
     raw_chunks = []
     current = ""
 
@@ -93,8 +92,7 @@ def _chunk_with_separators(
     if current:
         raw_chunks.append(current)
 
-    # Recursão: qualquer raw_chunk que ainda excede chunk_size
-    # é subdividido com o próximo separador
+    # Recursively split any raw chunk that still exceeds chunk_size.
     final_chunks = []
     for rc in raw_chunks:
         if len(rc) > chunk_size:
@@ -108,21 +106,21 @@ def _chunk_with_separators(
 
 def _get_overlap_prefix(text: str, overlap: int) -> str:
     """
-    Extrai os últimos ~overlap caracteres do texto, respeitando
-    fronteira de palavras (não corta no meio de uma palavra).
+    Extract approximately the last ``overlap`` characters while respecting
+    word boundaries.
 
-    Parâmetros:
-        text: texto do chunk anterior
-        overlap: quantidade alvo de caracteres
+    Parameters:
+        text: Previous chunk text.
+        overlap: Target number of characters.
 
-    Retorna:
-        Sufixo do texto que respeita fronteira de palavra.
+    Returns:
+        A suffix that respects a word boundary.
     """
     if len(text) <= overlap:
         return text
 
     candidate = text[-overlap:]
-    # Encontrar primeiro espaço para não cortar palavra
+    # Find the first space to avoid cutting a word.
     space_idx = candidate.find(" ")
     if space_idx > 0 and space_idx < len(candidate) - 1:
         return candidate[space_idx + 1 :]

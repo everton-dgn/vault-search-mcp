@@ -1,5 +1,5 @@
 """
-Utilitários para criação e coleta de chunks.
+Utilities for creating and collecting chunks.
 """
 
 from collections.abc import Mapping
@@ -16,17 +16,17 @@ def make_chunk(
     frontmatter_fields: Mapping[str, str] | None = None,
 ) -> ChunkRecord:
     """
-    Cria um ChunkRecord a partir de texto e metadados.
+    Create a ``ChunkRecord`` from text and metadata.
 
-    Parâmetros:
-        text: texto do chunk (já stripped)
-        headers: hierarquia de headers
-        meta: metadados do arquivo
-        tags: tags separadas por vírgula (default "")
-        frontmatter_fields: campos opcionais do frontmatter (default None)
+    Parameters:
+        text: Chunk text, already stripped.
+        headers: Heading hierarchy.
+        meta: File metadata.
+        tags: Comma-separated tags; defaults to an empty string.
+        frontmatter_fields: Optional frontmatter fields.
 
-    Retorna:
-        ChunkRecord pronto para inserção.
+    Returns:
+        A ``ChunkRecord`` ready for insertion.
     """
     chunk: ChunkRecord = {
         "note_path": meta["relative_path"],
@@ -36,7 +36,7 @@ def make_chunk(
         "tags": tags,
         "modified_at": meta["modified_at"],
         "text": text,
-        # Campos opcionais do frontmatter (default vazio)
+        # Optional frontmatter fields default to empty values.
         "id": "",
         "created_at": "",
         "updated_at": "",
@@ -48,7 +48,7 @@ def make_chunk(
         "source": "",
     }
 
-    # Preencher campos do frontmatter se fornecidos
+    # Populate frontmatter fields when provided.
     if frontmatter_fields:
         if value := frontmatter_fields.get("id"):
             chunk["id"] = value
@@ -81,20 +81,20 @@ def chunk_and_collect(
     frontmatter_fields: Mapping[str, str] | None = None,
 ) -> None:
     """
-    Divide texto em chunks e adiciona à lista (pattern DRY para parsers).
+    Split text into chunks and append them to the destination list.
 
-    Centraliza a lógica repetida em parse_note, parse_canvas e parse_pdf:
-    - Divide o texto usando chunk_text
-    - Remove chunks vazios
-    - Cria ChunkRecord e adiciona à lista
+    Centralize logic shared by ``parse_note``, ``parse_canvas``, and ``parse_pdf``:
+    - Split text with ``chunk_text``.
+    - Remove empty chunks.
+    - Create ``ChunkRecord`` objects and append them to the list.
 
-    Parâmetros:
-        text: texto a dividir
-        headers: hierarquia de headers para os chunks
-        meta: metadados do arquivo
-        chunks: lista destino (modificada in-place)
-        tags: tags separadas por vírgula (default "")
-        frontmatter_fields: campos opcionais do frontmatter (default None)
+    Parameters:
+        text: Text to split.
+        headers: Heading hierarchy for the chunks.
+        meta: File metadata.
+        chunks: Destination list, modified in place.
+        tags: Comma-separated tags; defaults to an empty string.
+        frontmatter_fields: Optional frontmatter fields.
     """
     from vault_search.config.chunking import CHUNK_OVERLAP, CHUNK_SIZE
     from vault_search.core.chunker import chunk_text

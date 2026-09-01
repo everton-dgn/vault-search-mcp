@@ -1,5 +1,5 @@
 """
-Testes para fila assíncrona de enriquecimento de frontmatter.
+Tests for queue asynchronous of enrichment of frontmatter.
 """
 
 import threading
@@ -44,7 +44,7 @@ def _wait_job_completion(
         ):
             return status["job"]
         time.sleep(0.01)
-    raise AssertionError(f"Job {job_id} não terminou no timeout")
+    raise AssertionError(f"Job {job_id} not finished in the timeout")
 
 
 def _successful_enrichment(path: str) -> dict:
@@ -62,7 +62,7 @@ def test_enqueue_rejected_when_ai_disabled(monkeypatch):
     )
     manager = FrontmatterEnrichmentJobManager(_DummyIndexer(), _DummySearcher(), _DummyLogger())
 
-    result = manager.enqueue(["nota.md"])
+    result = manager.enqueue(["note.md"])
 
     assert result["accepted"] is False
     assert result["queued_paths"] == 0
@@ -83,7 +83,7 @@ def test_background_job_processes_paths_and_tracks_status(monkeypatch):
             }
         return {
             "success": False,
-            "message": "erro",
+            "message": "error",
             "error_code": "required_missing",
         }
 
@@ -95,7 +95,7 @@ def test_background_job_processes_paths_and_tracks_status(monkeypatch):
     searcher = _DummySearcher()
     manager = FrontmatterEnrichmentJobManager(indexer, searcher, _DummyLogger())
 
-    enqueued = manager.enqueue(["ok.md", "falha.md"], reason="test")
+    enqueued = manager.enqueue(["ok.md", "failure.md"], reason="test")
     assert enqueued["accepted"] is True
 
     job = _wait_job_completion(manager, enqueued["job_id"])
@@ -155,7 +155,7 @@ def test_active_jobs_are_never_pruned_when_capacity_is_full(monkeypatch):
     assert rejected == {
         "accepted": False,
         "error_code": "queue_full",
-        "reason": "Fila de enriquecimento cheia",
+        "reason": "Enrichment queue is full",
         "queued_paths": 0,
     }
 
@@ -194,7 +194,7 @@ def test_paths_are_deduplicated_and_closed_limit_is_enforced(monkeypatch):
     assert rejected == {
         "accepted": False,
         "error_code": "too_many_paths",
-        "reason": "Quantidade de paths excede o limite por job",
+        "reason": "Path count exceeds the per-job limit",
         "queued_paths": 0,
         "max_paths": 2,
     }

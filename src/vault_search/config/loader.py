@@ -1,13 +1,13 @@
 """
-Carregador de configuração YAML com validação Pydantic.
+YAML configuration loader with Pydantic validation.
 
-Ordem de precedência:
-1. Variável de ambiente VAULT_SEARCH_CONFIG (path para arquivo YAML)
-2. config.yaml ou config.yml no diretório de trabalho
-3. config.yaml ou config.yml na raiz da instalação, se diferente
-4. Defaults definidos em settings.py
+Precedence order:
+1. ``VAULT_SEARCH_CONFIG`` environment variable, pointing to a YAML file
+2. ``config.yaml`` or ``config.yml`` in the working directory
+3. ``config.yaml`` or ``config.yml`` in the installation root, when different
+4. Defaults defined in settings.py
 
-Uso:
+Usage:
     from vault_search.config.loader import get_config
 
     config = get_config()
@@ -26,15 +26,15 @@ from vault_search.config.settings import VaultSearchConfig
 
 logger = logging.getLogger(__name__)
 
-# Raiz do projeto (4 níveis acima deste arquivo)
+# Project root, four levels above this file
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
-# Variável de ambiente para override
+# Environment variable override
 _CONFIG_ENV_VAR = "VAULT_SEARCH_CONFIG"
 
 
 def _default_config_paths() -> tuple[Path, ...]:
-    """Retorna locais portáveis, removendo duplicatas sem depender do SO."""
+    """Return portable locations, removing duplicates without OS-specific behavior."""
     candidates = (
         Path.cwd() / "config.yaml",
         Path.cwd() / "config.yml",
@@ -46,27 +46,27 @@ def _default_config_paths() -> tuple[Path, ...]:
 
 def _find_config_file() -> Path | None:
     """
-    Encontra arquivo de configuração.
+    Find the configuration file.
 
-    Ordem de precedência:
-    1. Variável de ambiente VAULT_SEARCH_CONFIG
-    2. config.yaml no diretório de trabalho
-    3. config.yml no diretório de trabalho
-    4. config.yaml na raiz da instalação, se diferente
-    5. config.yml na raiz da instalação, se diferente
+    Precedence order:
+    1. ``VAULT_SEARCH_CONFIG`` environment variable
+    2. ``config.yaml`` in the working directory
+    3. ``config.yml`` in the working directory
+    4. ``config.yaml`` in the installation root, when different
+    5. ``config.yml`` in the installation root, when different
 
-    Retorna:
-        Path do arquivo se encontrado, None caso contrário.
+    Returns:
+        The file path when found, otherwise ``None``.
     """
-    # Check variável de ambiente
+    # Check the environment variable.
     env_path = os.environ.get(_CONFIG_ENV_VAR)
     if env_path:
         path = Path(env_path).expanduser()
         if path.exists():
             return path
-        raise FileNotFoundError(f"Arquivo definido por {_CONFIG_ENV_VAR} não foi encontrado")
+        raise FileNotFoundError(f"File defined by {_CONFIG_ENV_VAR} was not found")
 
-    # Check paths padrão
+    # Check default paths.
     for path in _default_config_paths():
         if path.exists():
             return path
@@ -76,17 +76,17 @@ def _find_config_file() -> Path | None:
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """
-    Merge recursivo de dicionários.
+    Recursively merge dictionaries.
 
-    Valores do override substituem valores do base.
-    Para dicts aninhados, merge é recursivo.
+    Override values replace base values.
+    Nested dictionaries are merged recursively.
 
-    Parâmetros:
-        base: Dicionário base
-        override: Dicionário com valores para sobrescrever
+    Parameters:
+        base: Base dictionary.
+        override: Dictionary containing replacement values.
 
-    Retorna:
-        Dicionário merged.
+    Returns:
+        The merged dictionary.
     """
     result = base.copy()
     for key, value in override.items():
@@ -99,18 +99,18 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 def load_config_from_file(path: Path) -> VaultSearchConfig:
     """
-    Carrega configuração de um arquivo YAML.
+    Load configuration from a YAML file.
 
-    Parâmetros:
-        path: Caminho para o arquivo YAML
+    Parameters:
+        path: Path to the YAML file.
 
-    Retorna:
-        Configuração validada.
+    Returns:
+        The validated configuration.
 
     Raises:
-        FileNotFoundError: Arquivo não existe
-        yaml.YAMLError: YAML inválido
-        pydantic.ValidationError: Valores inválidos
+        FileNotFoundError: The file does not exist.
+        yaml.YAMLError: The YAML is invalid.
+        pydantic.ValidationError: Configuration values are invalid.
     """
     path = path.expanduser()
     with open(path, encoding="utf-8") as f:
@@ -126,15 +126,15 @@ def load_config_from_dict(
     base_dir: Path | None = None,
 ) -> VaultSearchConfig:
     """
-    Carrega configuração de um dicionário.
+    Load configuration from a dictionary.
 
-    Útil para testes ou configuração programática.
+    Useful for tests or programmatic configuration.
 
-    Parâmetros:
-        data: Dicionário com configuração
+    Parameters:
+        data: Configuration dictionary.
 
-    Retorna:
-        Configuração validada.
+    Returns:
+        The validated configuration.
     """
     config = VaultSearchConfig.model_validate(data)
     return config.resolve_paths(base_dir or Path.cwd())
@@ -143,19 +143,19 @@ def load_config_from_dict(
 @lru_cache(maxsize=1)
 def get_config() -> VaultSearchConfig:
     """
-    Obtém configuração com cache.
+    Get the cached configuration.
 
-    Primeira chamada:
-    - Procura arquivo de configuração
-    - Se encontrado, carrega e valida
-    - Se não encontrado, usa defaults
+    First call:
+    - Look for a configuration file.
+    - Load and validate it when found.
+    - Use defaults when no file exists.
 
-    Chamadas subsequentes retornam a mesma instância (cached).
+    Subsequent calls return the same cached instance.
 
-    Para recarregar, use reload_config().
+    Use ``reload_config()`` to reload it.
 
-    Retorna:
-        Configuração validada e cacheada.
+    Returns:
+        The validated, cached configuration.
     """
     config_path = _find_config_file()
 
@@ -169,12 +169,12 @@ def get_config() -> VaultSearchConfig:
 
 def reload_config() -> VaultSearchConfig:
     """
-    Recarrega configuração limpando o cache.
+    Reload configuration after clearing the cache.
 
-    Útil após modificar o arquivo config.yaml.
+    Useful after modifying ``config.yaml``.
 
-    Retorna:
-        Nova configuração carregada.
+    Returns:
+        The newly loaded configuration.
     """
     get_config.cache_clear()
     return get_config()
@@ -182,9 +182,9 @@ def reload_config() -> VaultSearchConfig:
 
 def get_project_root() -> Path:
     """
-    Retorna a raiz do projeto.
+    Return the project root.
 
-    Retorna:
-        Path absoluto da raiz do projeto.
+    Returns:
+        Absolute path to the project root.
     """
     return _PROJECT_ROOT

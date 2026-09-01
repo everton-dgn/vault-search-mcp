@@ -1,14 +1,14 @@
 """
-Parser de arquivos Canvas (.canvas) do Obsidian.
+Parser for Obsidian Canvas files.
 
-O formato Canvas usa a especificação JSON Canvas 1.0:
-- nodes: cards no canvas (text, file, link, group)
-- edges: conexões entre nodes
+Canvas uses the JSON Canvas 1.0 specification:
+- nodes: Canvas cards (text, file, link, group)
+- edges: connections between nodes
 
-Para busca semântica, extraímos:
-- text de nodes tipo "text" (conteúdo Markdown)
-- label de nodes tipo "group"
-- label de edges
+For semantic search, extract:
+- Text from ``text`` nodes containing Markdown
+- labels from group nodes
+- edge labels
 """
 
 import json
@@ -29,23 +29,23 @@ def parse_canvas(
     raise_on_error: bool = False,
 ) -> list[ChunkRecord]:
     """
-    Processa um arquivo .canvas e retorna lista de chunks com metadados.
+    Process a .canvas file into chunks with metadata.
 
-    Parâmetros:
-        canvas_path: caminho absoluto do arquivo .canvas
-        vault_path: caminho raiz do vault
+    Parameters:
+        canvas_path: Absolute .canvas file path.
+        vault_path: Vault root path.
 
-    Retorna:
-        Lista de ChunkRecord prontos para inserção no LanceDB.
+    Returns:
+        ``ChunkRecord`` entries ready for LanceDB.
     """
-    # Extrair metadados primeiro (valida existência e captura mtime)
+    # Read metadata first to validate existence and capture mtime.
     try:
         meta = extract_file_metadata(canvas_path, vault_path)
     except (OSError, ValueError) as e:
         if raise_on_error:
             raise
         logger.warning(
-            "Falha ao acessar canvas (error_type=%s)",
+            "Failed to access canvas (error_type=%s)",
             type(e).__name__,
         )
         return []
@@ -56,7 +56,7 @@ def parse_canvas(
         if raise_on_error:
             raise
         logger.warning(
-            "Falha ao ler canvas (error_type=%s)",
+            "Failed to read canvas (error_type=%s)",
             type(e).__name__,
         )
         return []
@@ -67,20 +67,20 @@ def parse_canvas(
         if raise_on_error:
             raise
         logger.warning(
-            "Canvas com JSON inválido (error_type=%s)",
+            "Canvas contains invalid JSON (error_type=%s)",
             type(e).__name__,
         )
         return []
 
     if not isinstance(data, dict):
         if raise_on_error:
-            raise ValueError("estrutura de canvas inválida")
-        logger.warning("Canvas com estrutura inesperada")
+            raise ValueError("invalid canvas structure")
+        logger.warning("Canvas has an unexpected structure")
         return []
 
     chunks: list[ChunkRecord] = []
 
-    # Extrair text nodes
+    # Extract text nodes.
     for node in data.get("nodes", []):
         if not isinstance(node, dict):
             continue
@@ -102,7 +102,7 @@ def parse_canvas(
                 continue
             chunk_and_collect(label, f"Group: {label}", meta, chunks)
 
-    # Extrair edge labels
+    # Extract edge labels.
     for edge in data.get("edges", []):
         if not isinstance(edge, dict):
             continue

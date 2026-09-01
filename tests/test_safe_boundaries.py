@@ -1,4 +1,4 @@
-"""Regressões para fronteiras públicas de startup e middleware."""
+"""Regressions for public startup and middleware boundaries."""
 
 from __future__ import annotations
 

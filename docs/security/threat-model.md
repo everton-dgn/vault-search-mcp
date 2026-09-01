@@ -1,115 +1,117 @@
-# Modelo de ameaças
+# Threat model
 
-## Escopo
+## Scope
 
-Este modelo cobre o servidor MCP, o daemon HTTP local, os índices e as operações
-de leitura e escrita em um único vault. Ele assume uma máquina controlada por
-uma pessoa. Exposição pública ou uso multiusuário muda as premissas e exige
-autenticação, autorização e isolamento ainda ausentes.
+This model covers the MCP server, local HTTP daemon, derived indexes, and read
+and write operations for one vault. It assumes one operator on a controlled
+machine. Public exposure or multi-user operation changes the assumptions and
+requires authentication, authorization, and isolation that do not exist today.
 
-## Ativos
+## Assets
 
-- Conteúdo e metadados das notas.
-- Estrutura de pastas, tags, links e histórico implícito.
-- Configuração local, incluindo comandos de enriquecimento externo.
-- Índices LanceDB e catálogos SQLite derivados.
-- Recursos da máquina, principalmente CPU, memória, disco e modelos em cache.
+- Note content and metadata.
+- Folder structure, tags, links, and implicit history.
+- Local configuration, including external enrichment commands.
+- Derived LanceDB indexes and SQLite catalogs.
+- Machine resources, especially CPU, memory, storage, and cached models.
 
-O índice é reconstruível. O vault é a fonte primária e merece o nível mais alto
-de proteção.
+The index is rebuildable. The vault is primary and receives the highest
+protection.
 
-## Fronteiras de confiança
+## Trust boundaries
 
 ```mermaid
 flowchart LR
-    U[Usuário] --> C[Cliente MCP]
-    C -->|stdio| M[Servidor MCP]
-    M --> V[Vault local]
-    M --> I[Índices locais]
-    M -->|HTTP loopback| D[Daemon de modelos]
-    M -. consentimento explícito .-> E[Processo externo opcional]
+    U[Operator] --> C[MCP client]
+    C -->|stdio| M[MCP server]
+    M --> V[Local vault]
+    M --> I[Local indexes]
+    M -->|loopback HTTP| D[Model daemon]
+    M -. explicit consent .-> E[Optional external process]
 ```
 
-| Fronteira | Premissa | Controle esperado |
+| Boundary | Assumption | Required control |
 |---|---|---|
-| Cliente para MCP | Cliente pode enviar input hostil | Validação de tamanho, tipo e caminho |
-| MCP para vault | Processo tem acesso de leitura e escrita | Contenção no vault e escrita atômica |
-| MCP para daemon | Serviço local pode morrer ou ser substituído | Health check semântico e timeout |
-| MCP para processo externo | Conteúdo pode sair da máquina | Desativado por padrão e consentimento explícito |
-| Vault para resposta | Nota pode conter instrução maliciosa | Cliente trata retorno como dado |
+| Client to MCP | Client may send hostile input | Type, size, and path validation |
+| MCP to vault | Process can read and write | Vault containment and atomic replacement |
+| MCP to daemon | Local service may die, redirect, or be replaced | Direct loopback connection, semantic health, identity, and timeout |
+| MCP to external process | Content may leave the machine | Disabled by default and explicit consent |
+| Vault to response | A note may contain hostile instructions | Client treats output as data |
 
-## Ameaças prioritárias
+## Priority threats
 
-### Escape de caminho
+### Path escape
 
-Um caminho relativo, symlink ou diferença de normalização pode apontar para
-fora do vault. Toda operação de arquivo deve resolver o destino, verificar sua
-contenção no vault real e rejeitar links que escapem da raiz.
+A relative path, symlink, or normalization difference can point outside the
+vault. File operations resolve the target, verify containment under the real
+vault root, and reject symlinks that escape it. Checks are repeated near the
+operation where races matter.
 
-### Perda ou corrupção durante escrita
+### Loss or corruption during writes
 
-Interrupção no meio de uma escrita pode truncar uma nota ou índice. Notas devem
-usar arquivo temporário no mesmo sistema de arquivos, flush quando aplicável e
-substituição atômica. Reindexação deve construir uma nova geração antes de
-trocar a referência ativa.
+Interrupted writes can truncate a note or derived index. Note persistence uses
+a temporary file on the same filesystem, flushes where applicable, and replaces
+atomically. Full indexing builds a new generation before changing the active
+reference.
 
-As mutações CRUD serializam paths dentro do processo. Em sistemas com `fcntl`,
-processos cooperativos também usam lock advisory. A revisão por inode,
-`mtime_ns` e tamanho detecta alterações observáveis antes da persistência.
-Escritores externos que ignoram o lock continuam fora dessa garantia; por isso,
-conflitos são retornados ao cliente sem substituir a revisão detectada.
+CRUD mutations serialize paths inside the process. Systems with `fcntl` also
+coordinate cooperating processes. Inode, `mtime_ns`, and size checks detect
+observable changes before persistence. External writers that ignore the lock
+remain outside that guarantee, so conflicts return without replacing the
+detected revision.
 
-### Vazamento por erro ou log
+### Error and log disclosure
 
-Exceções de bibliotecas podem conter caminhos absolutos, consultas ou trechos de
-conteúdo. Respostas públicas usam códigos estáveis e mensagens sanitizadas. Logs
-operacionais evitam conteúdo, caminhos e identificadores desnecessários.
+Library exceptions can contain absolute paths, queries, or content excerpts.
+Public responses use stable codes and sanitized text. Operational logs omit
+content, paths, and unnecessary identifiers.
 
-### Serviço local exposto
+### Exposed local service
 
-O daemon não implementa autenticação. Schema, servidor e cliente aceitam somente
-loopback. Acesso remoto deve continuar rejeitado enquanto não houver TLS,
-autenticação, quotas e um modelo de ameaças próprio para essa fronteira.
+The daemon has no authentication. Configuration, server, and client accept
+loopback only. Remote access stays rejected until TLS, authentication, quotas,
+and a dedicated threat model exist. The client disables environment proxies and
+refuses redirects so requests stay on the configured loopback endpoint.
 
-### Esgotamento de recursos
+### Resource exhaustion
 
-Queries, lotes, documentos, profundidade de navegação e corpos HTTP precisam de
-limites. Timeouts não substituem limites de tamanho. Testes devem cobrir valores
-no limite e acima dele.
+Queries, batches, documents, navigation depth, and HTTP bodies need explicit
+limits. Timeouts do not replace size bounds. Boundary and over-boundary cases
+belong in tests.
 
-### Prompt injection no conteúdo
+### Prompt injection in notes
 
-Uma nota indexada pode pedir que o modelo ignore regras ou execute ações. O
-servidor retorna conteúdo; ele não decide a hierarquia de instruções do cliente.
-Clientes devem delimitar resultados, atribuir a origem e exigir autorização
-separada para qualquer efeito colateral.
+Indexed content can ask a model to ignore rules or execute actions. The server
+returns note data and does not decide an MCP client's instruction hierarchy.
+Clients should delimit results, attribute their source, and require separate
+authorization for every side effect.
 
-### Cadeia de dependências
+### Dependency supply chain
 
-Dependências de ML e parsing processam formatos complexos. O lockfile é parte
-do build, actions de CI ficam fixadas por commit e atualizações automáticas
-passam pelos mesmos gates.
+ML and parsing dependencies handle complex formats. The lockfile participates
+in builds, CI actions are pinned to commits, release artifacts are attested,
+and automated updates pass through the same gates as manual changes.
 
-## Dados que nunca entram no repositório
+## Data excluded from the repository
 
-- `config.yaml`, `.env*` e credenciais.
-- Vaults, notas e fixtures copiadas de dados reais.
-- Índices, bancos SQLite, embeddings gerados e logs.
-- Caminhos de usuário ou nomes de máquina em exemplos.
+- `config.yaml`, `.env*`, and credentials.
+- Vaults, notes, or fixtures copied from real data.
+- Indexes, SQLite databases, generated embeddings, and logs.
+- User paths, machine names, or personal identities in examples.
 
-O script `scripts/check_publication.py` é uma barreira adicional. Ele verifica
-o histórico alcançável por `HEAD` e rejeita e-mails pessoais nos metadados dos
-commits, mas não inspeciona refs separados nem substitui revisão humana.
+`scripts/check_publication.py` is an additional finite barrier. It checks the
+tracked tree, distributions, public text patterns, and reachable commit
+metadata. It does not inspect unrelated refs and does not replace human review.
 
-## Fora do escopo atual
+## Outside current scope
 
-- Servidor público na internet.
-- Isolamento entre vários usuários.
-- Controle de acesso por nota ou pasta.
-- Criptografia do vault em repouso.
-- Garantia contra vazamento feito por um cliente MCP já comprometido.
+- A public internet server.
+- Isolation among several users.
+- Access control by note or folder.
+- At-rest vault encryption.
+- Prevention of disclosure by an already-compromised MCP client.
 
-## Revisão
+## Review trigger
 
-Reavalie este documento quando uma fronteira mudar, especialmente ao adicionar
-transporte de rede, provedor externo, formato executável ou autenticação.
+Revisit this model whenever a boundary changes, especially when adding a
+network transport, external provider, executable format, or authentication.

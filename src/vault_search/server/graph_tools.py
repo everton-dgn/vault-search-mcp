@@ -1,5 +1,5 @@
 """
-Ferramentas MCP de análise de grafo de links.
+MCP tools for link-graph analysis.
 
 Inclui: graph_data, suggest_links, find_link_clusters, find_bridge_notes.
 """
@@ -18,7 +18,7 @@ logger = logging.getLogger("vault-search-mcp")
 
 
 class GraphNode(TypedDict):
-    """Nó serializável do grafo público."""
+    """Serializable public graph node."""
 
     id: str
     label: str
@@ -28,14 +28,14 @@ class GraphNode(TypedDict):
 
 
 class GraphEdge(TypedDict):
-    """Aresta direcionada do grafo público."""
+    """Directed public graph edge."""
 
     source: str
     target: str
 
 
 class GraphStats(TypedDict):
-    """Contagens agregadas do grafo retornado."""
+    """Aggregate counts for a graph response."""
 
     total_nodes: int
     total_edges: int
@@ -43,7 +43,7 @@ class GraphStats(TypedDict):
 
 
 class GraphPayload(TypedDict):
-    """Payload produzido por ``graph_data``."""
+    """Payload produced by ``graph_data``."""
 
     nodes: list[GraphNode]
     edges: list[GraphEdge]
@@ -52,12 +52,12 @@ class GraphPayload(TypedDict):
 
 def register_graph_tools(mcp, indexer, searcher):
     """
-    Registra ferramentas de análise de grafo no servidor MCP.
+    Register graph-analysis tools on the MCP server.
 
-    Parâmetros:
-        mcp: instância do FastMCP
-        indexer: instância do VaultIndexer
-        searcher: instância do VaultSearcher
+    Parameters:
+        mcp: FastMCP instance
+        indexer: VaultIndexer instance
+        searcher: VaultSearcher instance
     """
 
     @mcp.tool()
@@ -66,16 +66,16 @@ def register_graph_tools(mcp, indexer, searcher):
         include_orphans: bool = False,
     ) -> GraphPayload | str:
         """
-        Exporta dados do grafo de links para visualização.
+        Export link-graph data for visualization.
 
-        Formato compatível com D3.js, Obsidian Graph, Gephi.
+        The node-and-edge format can feed D3.js, Obsidian Graph, or Gephi.
 
-        Parâmetros:
-            folder: filtrar por pasta (opcional)
-            include_orphans: incluir notas sem links (padrão: False)
+        Parameters:
+            folder: optional folder filter
+            include_orphans: include notes without links
 
-        Retorna:
-            Dict com nodes e edges prontos para visualização.
+        Returns:
+            Dictionary of visualization-ready nodes and edges.
         """
         logger.info(
             "graph_data folder_filter=%s include_orphans=%s",
@@ -87,7 +87,7 @@ def register_graph_tools(mcp, indexer, searcher):
             links_table = indexer._ensure_links_table()
             catalog = get_catalog()
 
-            # Obter todos os links
+            # Read all internal links.
             where_clause = "link_type != 'external'"
             if folder:
                 escaped = escape_sql_string(folder)
@@ -109,10 +109,10 @@ def register_graph_tools(mcp, indexer, searcher):
 
             links = query.to_list()
 
-            # Construir nodes
+            # Build nodes.
             nodes_map: dict[str, GraphNode] = {}
 
-            # Nodes de origem (sempre incluir)
+            # Always include source nodes.
             for link in links:
                 path = link["from_note_path"]
                 if path not in nodes_map:
@@ -124,12 +124,12 @@ def register_graph_tools(mcp, indexer, searcher):
                     }
                 nodes_map[path]["outlinks"] += 1
 
-            # Nodes de destino (se resolvido)
+            # Include resolved destination nodes.
             for link in links:
                 if link["is_resolved"] and link["to_note_path"]:
                     path = link["to_note_path"]
                     if path not in nodes_map:
-                        # Usar stem do path como título
+                        # Derive a title from the path stem.
                         title = Path(path).stem.replace("-", " ").replace("_", " ").title()
                         nodes_map[path] = {
                             "id": path,
@@ -139,7 +139,7 @@ def register_graph_tools(mcp, indexer, searcher):
                         }
                     nodes_map[path]["backlinks"] += 1
 
-            # Incluir órfãs se solicitado
+            # Include orphan notes when requested.
             if include_orphans:
                 all_notes, _ = catalog.list_notes(folder=folder, limit=10000)
                 for note in all_notes:
@@ -152,9 +152,9 @@ def register_graph_tools(mcp, indexer, searcher):
                             "orphan": True,
                         }
 
-            # Construir edges
+            # Build deduplicated edges.
             edges: list[GraphEdge] = []
-            edge_set: set[tuple[str, str]] = set()  # para deduplicar
+            edge_set: set[tuple[str, str]] = set()
 
             for link in links:
                 if link["is_resolved"] and link["to_note_path"]:
@@ -190,21 +190,20 @@ def register_graph_tools(mcp, indexer, searcher):
         min_similarity: float = 0.7,
     ) -> list[dict[str, object]] | str:
         """
-        Sugere links para uma nota baseado em similaridade semântica.
+        Suggest links for a note based on semantic similarity.
 
-        Encontra notas semanticamente similares que ainda não estão linkadas.
-        Útil para descobrir conexões não óbvias.
+        Finds similar notes that are not already linked.
 
-        Parâmetros:
-            path: caminho da nota
-            limit: máximo de sugestões (padrão: 10)
-            min_similarity: similaridade mínima (padrão: 0.7)
+        Parameters:
+            path: note path
+            limit: maximum number of suggestions
+            min_similarity: minimum similarity score
 
-        Retorna:
-            Lista de notas sugeridas com score de similaridade.
+        Returns:
+            Suggested notes with similarity scores.
         """
         if not path or not path.strip():
-            return "Erro: path não pode ser vazio."
+            return "Error: path cannot be empty."
 
         path = path.strip()
         limit = max(1, min(limit, 50))
@@ -215,13 +214,13 @@ def register_graph_tools(mcp, indexer, searcher):
         )
 
         try:
-            # Buscar notas similares
+            # Find similar notes.
             similar = searcher.find_similar(path, top_k=limit * 3)
 
             if isinstance(similar, str):
-                return similar  # Erro
+                return similar
 
-            # Obter outlinks atuais da nota via índice
+            # Read the note's current outlinks from the index.
             links_table = indexer._ensure_links_table()
             escaped_path = escape_sql_string(path)
 
@@ -234,29 +233,29 @@ def register_graph_tools(mcp, indexer, searcher):
 
             outlinks = outlinks_query.to_list()
 
-            # Notas já linkadas
+            # Collect notes already linked from the source.
             already_linked = set()
             for link in outlinks:
                 if link.get("to_note_path"):
                     already_linked.add(link["to_note_path"])
                 already_linked.add(link["link_target_normalized"])
 
-            # Filtrar sugestões
+            # Filter suggestions.
             suggestions: list[dict[str, object]] = []
             for note in similar:
                 note_path = note.get("note_path", note.get("path", ""))
 
-                # Não sugerir a própria nota
+                # Exclude the source note.
                 if note_path == path:
                     continue
 
-                # Não sugerir notas já linkadas
+                # Exclude existing links.
                 if note_path in already_linked:
                     continue
                 if normalize_link_target(note_path) in already_linked:
                     continue
 
-                # Verificar similaridade mínima
+                # Apply the minimum similarity.
                 score = note.get("similarity_score", note.get("score", 0))
                 if score < min_similarity:
                     continue
@@ -284,17 +283,16 @@ def register_graph_tools(mcp, indexer, searcher):
         folder: str | None = None,
     ) -> dict[str, object] | str:
         """
-        Detecta clusters de notas muito conectadas entre si.
+        Detect clusters of densely connected notes.
 
-        Usa algoritmo de componentes conexos para encontrar
-        grupos de notas que formam ilhas de conhecimento.
+        Uses connected components to find isolated knowledge groups.
 
-        Parâmetros:
-            min_cluster_size: tamanho mínimo do cluster (padrão: 3)
-            folder: filtrar por pasta (opcional)
+        Parameters:
+            min_cluster_size: minimum cluster size
+            folder: optional folder filter
 
-        Retorna:
-            Lista de clusters com notas e estatísticas.
+        Returns:
+            Clusters with notes and statistics.
         """
         min_cluster_size = max(2, min(min_cluster_size, 100))
         logger.info(
@@ -304,7 +302,7 @@ def register_graph_tools(mcp, indexer, searcher):
         )
 
         try:
-            # Obter grafo
+            # Read the graph.
             graph_result = graph_data(folder=folder, include_orphans=False)
             if isinstance(graph_result, str):
                 return graph_result
@@ -319,13 +317,13 @@ def register_graph_tools(mcp, indexer, searcher):
                     "clusters": [],
                 }
 
-            # Construir grafo não-direcionado (para clusters)
+            # Build an undirected graph for connected components.
             adjacency: defaultdict[str, set[str]] = defaultdict(set)
             for edge in edges:
                 adjacency[edge["source"]].add(edge["target"])
                 adjacency[edge["target"]].add(edge["source"])
 
-            # Encontrar componentes conexos (BFS)
+            # Find connected components with breadth-first search.
             visited: set[str] = set()
             clusters: list[list[str]] = []
 
@@ -349,7 +347,7 @@ def register_graph_tools(mcp, indexer, searcher):
                     if len(cluster) >= min_cluster_size:
                         clusters.append(cluster)
 
-            # Enriquecer clusters com dados
+            # Enrich clusters with note data.
             node_map = {n["id"]: n for n in nodes}
             result_clusters: list[dict[str, object]] = []
             sorted_clusters = sorted(clusters, key=len, reverse=True)
@@ -368,7 +366,7 @@ def register_graph_tools(mcp, indexer, searcher):
                     for path in cluster_paths
                 ]
 
-                # Calcular densidade (edges internos / edges possíveis)
+                # Calculate internal edges divided by possible edges.
                 cluster_set = set(cluster_paths)
                 internal_edges = {
                     frozenset((edge["source"], edge["target"]))
@@ -407,17 +405,17 @@ def register_graph_tools(mcp, indexer, searcher):
         folder: str | None = None,
     ) -> dict[str, object] | str:
         """
-        Encontra pontos de articulação do grafo de notas.
+        Find articulation points in the note graph.
 
-        Remover um ponto de articulação aumenta o número de componentes
-        conectados do grafo.
+        Removing an articulation point increases the number of connected
+        components.
 
-        Parâmetros:
-            limit: máximo de notas (padrão: 20)
-            folder: filtrar por pasta (opcional)
+        Parameters:
+            limit: maximum number of notes
+            folder: optional folder filter
 
-        Retorna:
-            Lista de bridge notes ordenadas por importância.
+        Returns:
+            Bridge notes ordered by impact.
         """
         limit = max(1, min(limit, 100))
         logger.info(
@@ -427,7 +425,7 @@ def register_graph_tools(mcp, indexer, searcher):
         )
 
         try:
-            # Obter grafo
+            # Read the graph.
             graph_result = graph_data(folder=folder, include_orphans=False)
             if isinstance(graph_result, str):
                 return graph_result
@@ -443,13 +441,13 @@ def register_graph_tools(mcp, indexer, searcher):
                     "notes": [],
                 }
 
-            # Construir grafo
+            # Build the graph.
             adjacency: defaultdict[str, set[str]] = defaultdict(set)
             for edge in edges:
                 adjacency[edge["source"]].add(edge["target"])
                 adjacency[edge["target"]].add(edge["source"])
 
-            # Tarjan: pontos de articulação em O(V + E).
+            # Tarjan articulation points in O(V + E).
             discovery: dict[str, int] = {}
             low: dict[str, int] = {}
             parent: dict[str, str | None] = {}

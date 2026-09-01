@@ -1,12 +1,12 @@
 """
-TypedDicts para respostas estruturadas das operações CRUD.
+Typed dictionaries for structured CRUD responses.
 """
 
 from typing import Any, NotRequired, TypedDict
 
 
 class NoteContent(TypedDict):
-    """Conteúdo completo de uma nota."""
+    """Complete note content."""
 
     path: str
     content: str
@@ -20,7 +20,7 @@ class NoteContent(TypedDict):
 
 
 class NoteMetadata(TypedDict):
-    """Metadados de uma nota (sem conteúdo)."""
+    """Note metadata without the full content."""
 
     path: str
     frontmatter: dict[str, Any]
@@ -32,7 +32,7 @@ class NoteMetadata(TypedDict):
 
 
 class NoteListItem(TypedDict):
-    """Item na listagem de notas."""
+    """One item in a note listing."""
 
     path: str
     title: str
@@ -43,7 +43,7 @@ class NoteListItem(TypedDict):
 
 
 class NoteListResult(TypedDict):
-    """Resultado paginado de list_notes."""
+    """Paginated list_notes result."""
 
     notes: list[NoteListItem]
     total: int
@@ -53,7 +53,7 @@ class NoteListResult(TypedDict):
 
 
 class OperationResult(TypedDict):
-    """Resultado de operação de escrita/delete."""
+    """Result of a write or delete operation."""
 
     success: bool
     message: str
@@ -69,9 +69,9 @@ class OperationResult(TypedDict):
     _validation_suggestions: NotRequired[list[dict[str, Any]]]
 
 
-# Factory functions para OperationResult
+# OperationResult factories.
 def success_result(path: str, message: str) -> OperationResult:
-    """Cria resultado de sucesso padronizado."""
+    """Create a standardized success result."""
     return OperationResult(success=True, message=message, path=path)
 
 
@@ -81,7 +81,7 @@ def error_result(
     *,
     error_code: str | None = None,
 ) -> OperationResult:
-    """Cria resultado de erro padronizado."""
+    """Create a standardized error result."""
     result = OperationResult(success=False, message=message, path=path)
     if error_code is not None:
         result["error_code"] = error_code

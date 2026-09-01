@@ -1,4 +1,4 @@
-"""Testes unitários para utils.py — chunking, metadata, math."""
+"""Unit tests for utils.py — chunking, metadata, math."""
 
 import numpy as np
 
@@ -10,10 +10,10 @@ from vault_search.utils.metadata import is_empty_text
 
 
 class TestChunkAndCollect:
-    """Testa a função DRY de chunking usada pelos parsers."""
+    """Test a function DRY of chunking used by the parsers."""
 
     def _make_meta(self):
-        """Cria metadata mock para testes."""
+        """Creates metadata mock for tests."""
         return {
             "relative_path": "test.md",
             "folder": "",
@@ -21,16 +21,16 @@ class TestChunkAndCollect:
             "modified_at": "2024-01-01T00:00:00",
         }
 
-    def test_texto_curto_gera_um_chunk(self):
-        """Texto menor que CHUNK_SIZE gera exatamente um chunk."""
+    def test_short_text_generates_one_chunk(self):
+        """Text smaller that CHUNK_SIZE generates exactly a chunk."""
         chunks = []
-        chunk_and_collect("Texto curto.", "Header", self._make_meta(), chunks)
+        chunk_and_collect("Text short.", "Header", self._make_meta(), chunks)
         assert len(chunks) == 1
-        assert chunks[0]["text"] == "Texto curto."
+        assert chunks[0]["text"] == "Text short."
         assert chunks[0]["headers"] == "Header"
 
-    def test_texto_vazio_nao_gera_chunks(self):
-        """Texto vazio ou só whitespace não gera chunks."""
+    def test_empty_text_generates_no_chunks(self):
+        """Empty or whitespace-only text produces no chunks."""
         chunks = []
         chunk_and_collect("", "Header", self._make_meta(), chunks)
         assert chunks == []
@@ -39,22 +39,22 @@ class TestChunkAndCollect:
         chunk_and_collect("   \n  \n  ", "Header", self._make_meta(), chunks)
         assert chunks == []
 
-    def test_tags_propagam(self):
-        """Tags são propagadas para os chunks."""
+    def test_tags_are_propagated(self):
+        """Tags are propagated for the chunks."""
         chunks = []
-        chunk_and_collect("Texto.", "H", self._make_meta(), chunks, tags="python, test")
+        chunk_and_collect("Text.", "H", self._make_meta(), chunks, tags="python, test")
         assert chunks[0]["tags"] == "python, test"
 
-    def test_modifica_lista_inplace(self):
-        """A função modifica a lista passada, não retorna nova."""
+    def test_modifies_list_in_place(self):
+        """The function mutates the supplied list instead of returning a new one."""
         chunks = [{"existing": True}]
-        chunk_and_collect("Novo.", "H", self._make_meta(), chunks)
+        chunk_and_collect("New.", "H", self._make_meta(), chunks)
         assert len(chunks) == 2
-        assert chunks[0] == {"existing": True}  # Original preservado
+        assert chunks[0] == {"existing": True}  # Original item is preserved.
 
-    def test_texto_longo_gera_multiplos_chunks(self):
-        """Texto maior que CHUNK_SIZE gera múltiplos chunks."""
-        # Texto com ~3000 chars (> CHUNK_SIZE=2000)
+    def test_long_text_generates_multiple_chunks(self):
+        """Text larger that CHUNK_SIZE generates multiple chunks."""
+        # Text with ~3000 chars (> CHUNK_SIZE=2000)
         long_text = "Lorem ipsum. " * 300
         chunks = []
         chunk_and_collect(long_text, "Header", self._make_meta(), chunks)
@@ -65,28 +65,28 @@ class TestChunkAndCollect:
 
 
 class TestIsEmptyText:
-    """Testes para a função is_empty_text."""
+    """Tests for a function is_empty_text."""
 
     def test_none_is_empty(self):
-        """None é considerado vazio."""
+        """None is considered empty."""
         assert is_empty_text(None) is True
 
     def test_empty_string_is_empty(self):
-        """String vazia é considerada vazia."""
+        """An empty string is considered empty."""
         assert is_empty_text("") is True
 
     def test_whitespace_only_is_empty(self):
-        """String com apenas whitespace é considerada vazia."""
+        """A whitespace-only string is considered empty."""
         assert is_empty_text("   ") is True
         assert is_empty_text("\n\t  ") is True
 
     def test_non_empty_string(self):
-        """String com conteúdo não é vazia."""
+        """A string containing content is not empty."""
         assert is_empty_text("text") is False
         assert is_empty_text("  text  ") is False
 
     def test_single_char(self):
-        """Único caractere não é vazio."""
+        """Single character is not empty."""
         assert is_empty_text("a") is False
 
 
@@ -94,30 +94,30 @@ class TestIsEmptyText:
 
 
 class TestNormalizeEmbeddings:
-    """Testes para normalização de embeddings."""
+    """Tests for normalization of embeddings."""
 
     def test_normalize_unit_vector(self):
-        """Vetor unitário permanece inalterado."""
+        """A unit vector remains unchanged."""
         arr = np.array([[1.0, 0.0, 0.0]])
         result = normalize_embeddings(arr)
         np.testing.assert_array_almost_equal(result, arr)
 
     def test_normalize_scales_to_unit(self):
-        """Vetores são escalados para norm=1."""
+        """Vectors are scaled to unit norm."""
         arr = np.array([[3.0, 4.0, 0.0]])  # norm = 5
         result = normalize_embeddings(arr)
         expected = np.array([[0.6, 0.8, 0.0]])
         np.testing.assert_array_almost_equal(result, expected)
 
     def test_normalize_handles_zero_vector(self):
-        """Vetor zero não causa divisão por zero."""
+        """A zero vector does not cause division by zero."""
         arr = np.array([[0.0, 0.0, 0.0]])
         result = normalize_embeddings(arr)
-        # Com epsilon, vetor zero permanece zero (divide por 1.0)
+        # With epsilon, a zero vector remains zero because it is divided by 1.0.
         np.testing.assert_array_almost_equal(result, arr)
 
     def test_normalize_batch(self):
-        """Normaliza múltiplos vetores corretamente."""
+        """Multiple vectors are normalized correctly."""
         arr = np.array(
             [
                 [3.0, 4.0, 0.0],  # norm = 5
@@ -127,12 +127,12 @@ class TestNormalizeEmbeddings:
         )
         result = normalize_embeddings(arr)
 
-        # Verificar norms
+        # Verify norms
         norms = np.linalg.norm(result, axis=1)
         np.testing.assert_array_almost_equal(norms, [1.0, 1.0, 1.0])
 
     def test_normalize_preserves_dtype(self):
-        """Preserva dtype float32."""
+        """Preserves dtype float32."""
         arr = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         result = normalize_embeddings(arr)
         assert result.dtype == np.float32
@@ -142,42 +142,42 @@ class TestNormalizeEmbeddings:
 
 
 class TestDistanceToScore:
-    """Testes para conversão de distância para score."""
+    """Tests for conversion of distance for score."""
 
     def test_zero_distance_is_max_score(self):
-        """Distância 0 resulta em score 1.0."""
+        """Distance 0 produces score 1.0."""
         assert distance_to_score(0.0) == 1.0
 
     def test_distance_one_is_half_score(self):
-        """Distância 1 resulta em score 0.5."""
+        """Distance 1 produces score 0.5."""
         assert distance_to_score(1.0) == 0.5
 
     def test_large_distance_approaches_zero(self):
-        """Distância grande resulta em score próximo de 0."""
+        """A large distance produces a score near 0."""
         score = distance_to_score(1000.0)
         assert score < 0.01
         assert score > 0
 
     def test_score_is_rounded(self):
-        """Score é arredondado para SCORE_PRECISION casas."""
+        """The score is rounded to SCORE_PRECISION decimal places."""
         score = distance_to_score(3.0)
         # 1/(1+3) = 0.25
         assert score == 0.25
 
     def test_fractional_distance(self):
-        """Distância fracionária funciona corretamente."""
+        """Distance fractional works correctly."""
         score = distance_to_score(0.5)
         # 1/(1+0.5) = 1/1.5 = 0.6667
         assert score == 0.6667
 
 
 class TestNormalizeTitle:
-    """Testes para normalize_title."""
+    """Tests for normalize_title."""
 
     def test_string_title(self):
         from vault_search.utils.metadata import normalize_title
 
-        assert normalize_title("Meu Título", "fallback") == "Meu Título"
+        assert normalize_title("My Title", "fallback") == "My Title"
 
     def test_empty_string_uses_fallback(self):
         from vault_search.utils.metadata import normalize_title
@@ -192,7 +192,7 @@ class TestNormalizeTitle:
     def test_list_uses_first_element(self):
         from vault_search.utils.metadata import normalize_title
 
-        assert normalize_title(["Título 1", "Título 2"], "fallback") == "Título 1"
+        assert normalize_title(["Title 1", "Title 2"], "fallback") == "Title 1"
 
     def test_empty_list_uses_fallback(self):
         from vault_search.utils.metadata import normalize_title
@@ -202,7 +202,7 @@ class TestNormalizeTitle:
     def test_list_with_empty_first_uses_fallback(self):
         from vault_search.utils.metadata import normalize_title
 
-        assert normalize_title(["", "Título 2"], "fallback") == "fallback"
+        assert normalize_title(["", "Title 2"], "fallback") == "fallback"
 
     def test_none_uses_fallback(self):
         from vault_search.utils.metadata import normalize_title

@@ -1,7 +1,7 @@
 """
-Testes unitários para server.py — validação e helpers.
+Unit tests for server.py — validation and helpers.
 
-Testes rápidos que NÃO precisam de modelos ML nem MCP running.
+Fast tests that do not require ML models or a running MCP server.
 """
 
 import pytest
@@ -11,69 +11,69 @@ from vault_search.server.helpers import clamp_top_k, execute_search, log_query
 
 
 class TestClampTopK:
-    """Testa o helper de produção sem carregar o servidor MCP."""
+    """Test the helper of production without load the server MCP."""
 
-    def test_valor_normal(self):
+    def test_normal_value(self):
         assert clamp_top_k(10) == 10
 
     def test_zero(self):
         assert clamp_top_k(0) == SEARCH_TOP_K_MIN
 
-    def test_negativo(self):
+    def test_negative_value(self):
         assert clamp_top_k(-5) == SEARCH_TOP_K_MIN
 
-    def test_maximo(self):
+    def test_maximum_value(self):
         assert clamp_top_k(SEARCH_TOP_K_MAX) == SEARCH_TOP_K_MAX
 
-    def test_excede_maximo(self):
+    def test_exceeds_maximum(self):
         assert clamp_top_k(200) == SEARCH_TOP_K_MAX
 
-    def test_um(self):
+    def test_one(self):
         assert clamp_top_k(1) == SEARCH_TOP_K_MIN
 
 
 class TestLogQuery:
-    """Testa o contrato de metadados sem conteúdo da query."""
+    """Test the metadata contract without exposing query content."""
 
-    def test_query_curta(self):
-        assert log_query("busca simples") == "[redacted length=13]"
+    def test_short_query(self):
+        assert log_query("search simple") == "[redacted length=13]"
 
-    def test_query_longa_truncada(self):
+    def test_long_query_is_truncated(self):
         result = log_query("a" * 100)
         assert result == "[redacted length=100]"
 
-    def test_query_com_dados_sensiveis(self):
-        """Nenhuma posição da query deve aparecer no retorno para logging."""
-        result = log_query("prefixo SENHA_SECRETA_123 sufixo")
+    def test_query_with_data_sensitive(self):
+        """No query fragment may appear in the logging representation."""
+        result = log_query("prefix SECRET_PASSWORD_123 suffix")
         assert "SENHA" not in result
 
-    def test_query_vazia(self):
+    def test_query_empty(self):
         assert log_query("") == "[redacted length=0]"
 
 
 class TestExecuteSearch:
-    """Testa o helper de produção com bordas simuladas."""
+    """Test the helper of production with boundaries simulated."""
 
-    def test_query_vazia_retorna_erro(self):
+    def test_query_empty_returns_error(self):
         result = execute_search("test", "", 10, lambda **kw: [])
-        assert "Erro" in result
-        assert "vazia" in result
+        assert "Error" in result
+        assert "empty" in result
 
-    def test_query_so_espacos(self):
+    def test_query_so_spaces(self):
         result = execute_search("test", "   ", 10, lambda **kw: [])
-        assert "Erro" in result
+        assert "Error" in result
 
-    def test_query_none_retorna_erro(self):
+    def test_query_none_returns_error(self):
         result = execute_search("test", None, 10, lambda **kw: [])
-        assert "Erro" in result
+        assert "Error" in result
 
-    def test_query_valida_chama_search_fn(self):
+    def test_valid_query_calls_search_function(self):
         from unittest.mock import MagicMock
 
-        mock_fn = MagicMock(return_value=[{"text": "resultado"}])
-        result = execute_search("test", "busca válida", 10, mock_fn)
-        mock_fn.assert_called_once_with("busca válida", top_k=10)
-        assert result == [{"text": "resultado"}]
+        mock_fn = MagicMock(return_value=[{"text": "result"}])
+        result = execute_search("test", "search valid", 10, mock_fn)
+        mock_fn.assert_called_once_with("search valid", top_k=10)
+        assert result == [{"text": "result"}]
 
     def test_top_k_clamped(self):
         from unittest.mock import MagicMock
@@ -82,39 +82,39 @@ class TestExecuteSearch:
         execute_search("test", "query", 999, mock_fn)
         mock_fn.assert_called_once_with("query", top_k=SEARCH_TOP_K_MAX)
 
-    def test_runtime_error_retorna_mensagem(self):
+    def test_runtime_error_returns_message(self):
         def raise_runtime(*args, **kw):
-            raise RuntimeError("Índice não encontrado")
+            raise RuntimeError("Index not found")
 
         result = execute_search("test", "query", 10, raise_runtime)
         assert "search_unavailable" in result
-        assert "Índice não encontrado" not in result
+        assert "Index not found" not in result
 
-    def test_exception_generica_retorna_mensagem(self):
+    def test_exception_generic_returns_message(self):
         def raise_generic(*args, **kw):
-            raise ValueError("algo quebrou")
+            raise ValueError("something broke")
 
         result = execute_search("test", "query", 10, raise_generic)
         assert "internal_error" in result
-        assert "algo quebrou" not in result
+        assert "something broke" not in result
 
-    def test_kwargs_passados_para_search_fn(self):
+    def test_kwargs_are_forwarded_to_search_function(self):
         from unittest.mock import MagicMock
 
         mock_fn = MagicMock(return_value=[])
-        execute_search("test", "query", 10, mock_fn, folder="projetos")
-        mock_fn.assert_called_once_with("query", top_k=10, folder="projetos")
+        execute_search("test", "query", 10, mock_fn, folder="projects")
+        mock_fn.assert_called_once_with("query", top_k=10, folder="projects")
 
-    def test_query_com_espacos_trimmed(self):
+    def test_query_with_spaces_trimmed(self):
         from unittest.mock import MagicMock
 
         mock_fn = MagicMock(return_value=[])
-        execute_search("test", "  query com espaços  ", 10, mock_fn)
-        mock_fn.assert_called_once_with("query com espaços", top_k=10)
+        execute_search("test", "  query with spaces  ", 10, mock_fn)
+        mock_fn.assert_called_once_with("query with spaces", top_k=10)
 
 
 class TestGetRecentNotesParams:
-    """Testes unitários para validação de parâmetros de get_recent_notes."""
+    """Unit tests for validation of parameters of get_recent_notes."""
 
     @staticmethod
     def _clamp_days(days: int) -> int:
@@ -130,13 +130,13 @@ class TestGetRecentNotesParams:
     def test_days_zero(self):
         assert self._clamp_days(0) == 1
 
-    def test_days_negativo(self):
+    def test_negative_days(self):
         assert self._clamp_days(-5) == 1
 
-    def test_days_maximo(self):
+    def test_maximum_days(self):
         assert self._clamp_days(365) == 365
 
-    def test_days_excede_maximo(self):
+    def test_days_exceeds_maximum(self):
         assert self._clamp_days(500) == 365
 
     def test_limit_normal(self):
@@ -145,34 +145,34 @@ class TestGetRecentNotesParams:
     def test_limit_zero(self):
         assert self._clamp_limit(0) == 1
 
-    def test_limit_negativo(self):
+    def test_negative_limit(self):
         assert self._clamp_limit(-10) == 1
 
-    def test_limit_maximo(self):
+    def test_maximum_limit(self):
         assert self._clamp_limit(100) == 100
 
-    def test_limit_excede_maximo(self):
+    def test_limit_exceeds_maximum(self):
         assert self._clamp_limit(200) == 100
 
 
 class TestGetRecentNotesFiltering:
-    """Testes para lógica de filtragem de notas recentes."""
+    """Tests for recent-note filtering logic."""
 
-    def test_filtra_por_data(self):
-        """Notas fora da janela devem ser excluídas."""
+    def test_filters_by_data(self):
+        """Notes outside the time window must be excluded."""
         from datetime import datetime, timedelta
 
         now = datetime.now()
         notes = [
             {
-                "path": "recente.md",
+                "path": "recent.md",
                 "modified_at": (now - timedelta(days=2)).isoformat(),
-                "title": "Recente",
+                "title": "Recent",
             },
             {
-                "path": "antiga.md",
+                "path": "old.md",
                 "modified_at": (now - timedelta(days=30)).isoformat(),
-                "title": "Antiga",
+                "title": "Old",
             },
         ]
 
@@ -180,10 +180,10 @@ class TestGetRecentNotesFiltering:
         recent = [n for n in notes if datetime.fromisoformat(n["modified_at"]) >= cutoff]
 
         assert len(recent) == 1
-        assert recent[0]["path"] == "recente.md"
+        assert recent[0]["path"] == "recent.md"
 
-    def test_ordena_por_data_decrescente(self):
-        """Notas devem vir ordenadas da mais recente para mais antiga."""
+    def test_sorts_by_date_descending(self):
+        """Notes are ordered from most recent to oldest."""
         from datetime import datetime, timedelta
 
         now = datetime.now()
@@ -199,8 +199,8 @@ class TestGetRecentNotesFiltering:
         assert sorted_notes[1]["path"] == "c.md"
         assert sorted_notes[2]["path"] == "b.md"
 
-    def test_calcula_days_ago(self):
-        """days_ago deve calcular corretamente a diferença de dias."""
+    def test_calculates_days_ago(self):
+        """days_ago must calculate correctly a difference of days."""
         from datetime import datetime, timedelta
 
         now = datetime.now()
@@ -209,8 +209,8 @@ class TestGetRecentNotesFiltering:
 
         assert days_ago == 3
 
-    def test_days_ago_hoje(self):
-        """Nota modificada hoje deve ter days_ago=0."""
+    def test_days_ago_today(self):
+        """A note modified today has days_ago=0."""
         from datetime import datetime
 
         now = datetime.now()
@@ -221,7 +221,7 @@ class TestGetRecentNotesFiltering:
 
 
 class TestTagStatsParams:
-    """Testes unitários para validação de parâmetros de tag_stats."""
+    """Unit tests for validation of parameters of tag_stats."""
 
     @staticmethod
     def _clamp_limit(limit: int) -> int:
@@ -233,57 +233,57 @@ class TestTagStatsParams:
     def test_limit_zero(self):
         assert self._clamp_limit(0) == 1
 
-    def test_limit_negativo(self):
+    def test_negative_limit(self):
         assert self._clamp_limit(-10) == 1
 
-    def test_limit_maximo(self):
+    def test_maximum_limit(self):
         assert self._clamp_limit(500) == 500
 
-    def test_limit_excede_maximo(self):
+    def test_limit_exceeds_maximum(self):
         assert self._clamp_limit(1000) == 500
 
 
 class TestTagStatsAggregation:
-    """Testes para lógica de agregação de tags."""
+    """Tests for logic of aggregation of tags."""
 
     def test_parse_tags_string(self):
-        """Tags comma-separated devem ser parseadas corretamente."""
-        tags_str = "projeto, 2024, ideia"
+        """Comma-separated tags must be parsed correctly."""
+        tags_str = "project, 2024, idea"
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
-        assert tags == ["projeto", "2024", "ideia"]
+        assert tags == ["project", "2024", "idea"]
 
-    def test_parse_tags_vazias(self):
-        """String vazia deve retornar lista vazia."""
+    def test_parse_tags_emptys(self):
+        """An empty string returns an empty list."""
         tags_str = ""
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
         assert tags == []
 
-    def test_parse_tags_com_espacos(self):
-        """Espaços extras devem ser removidos."""
+    def test_parse_tags_with_spaces(self):
+        """Extra spaces must be removed."""
         tags_str = "  tag1  ,  tag2  ,  tag3  "
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
         assert tags == ["tag1", "tag2", "tag3"]
 
-    def test_counter_frequencia(self):
-        """Counter deve agregar frequência corretamente."""
+    def test_frequency_counter(self):
+        """The counter must aggregate frequency correctly."""
         from collections import Counter
 
         note_tags = {
-            "nota1.md": {"projeto", "2024"},
-            "nota2.md": {"projeto", "ideia"},
-            "nota3.md": {"projeto"},
+            "note1.md": {"project", "2024"},
+            "note2.md": {"project", "idea"},
+            "note3.md": {"project"},
         }
 
         counter: Counter[str] = Counter()
         for tags in note_tags.values():
             counter.update(tags)
 
-        assert counter["projeto"] == 3
+        assert counter["project"] == 3
         assert counter["2024"] == 1
-        assert counter["ideia"] == 1
+        assert counter["idea"] == 1
 
     def test_most_common(self):
-        """most_common deve retornar ordenado por frequência."""
+        """most_common must return sorted by frequency."""
         from collections import Counter
 
         counter = Counter({"a": 10, "b": 5, "c": 20})
@@ -292,15 +292,15 @@ class TestTagStatsAggregation:
         assert top[0] == ("c", 20)
         assert top[1] == ("a", 10)
 
-    def test_tags_unicas_por_nota(self):
-        """Mesma tag em chunks diferentes da mesma nota deve contar uma vez."""
+    def test_unique_tags_by_note(self):
+        """The same tag in multiple chunks of one note must count once."""
         note_tags: dict[str, set[str]] = {}
 
-        # Simular múltiplos chunks da mesma nota
+        # Simulate multiple chunks of the same note
         chunks = [
-            ("nota1.md", "projeto, 2024"),
-            ("nota1.md", "projeto, ideia"),  # projeto repetido
-            ("nota2.md", "projeto"),
+            ("note1.md", "project, 2024"),
+            ("note1.md", "project, idea"),  # project repeated
+            ("note2.md", "project"),
         ]
 
         for note_path, tags_str in chunks:
@@ -317,14 +317,14 @@ class TestTagStatsAggregation:
         for tags in note_tags.values():
             counter.update(tags)
 
-        # "projeto" aparece em 2 notas (não 3 chunks)
-        assert counter["projeto"] == 2
+        # "project" appears in 2 notes (not 3 chunks)
+        assert counter["project"] == 2
         assert counter["2024"] == 1
-        assert counter["ideia"] == 1
+        assert counter["idea"] == 1
 
 
 class TestFolderTreeParams:
-    """Testes unitários para validação de parâmetros de folder_tree."""
+    """Unit tests for validation of parameters of folder_tree."""
 
     @staticmethod
     def _clamp_max_depth(max_depth: int) -> int:
@@ -336,29 +336,29 @@ class TestFolderTreeParams:
     def test_max_depth_zero(self):
         assert self._clamp_max_depth(0) == 1
 
-    def test_max_depth_negativo(self):
+    def test_negative_max_depth(self):
         assert self._clamp_max_depth(-5) == 1
 
-    def test_max_depth_maximo(self):
+    def test_maximum_max_depth(self):
         assert self._clamp_max_depth(50) == 50
 
-    def test_max_depth_excede_maximo(self):
+    def test_max_depth_exceeds_maximum(self):
         assert self._clamp_max_depth(100) == 50
 
 
 class TestFolderTreeBuilding:
-    """Testes para lógica de construção da árvore de pastas."""
+    """Tests for logic of construction of the tree of folders."""
 
     def test_parse_folder_path(self):
-        """Path de pasta deve ser dividido corretamente."""
-        folder = "projetos/web/frontend"
+        """A folder path must be split correctly."""
+        folder = "projects/web/frontend"
         parts = folder.split("/")
-        assert parts == ["projetos", "web", "frontend"]
+        assert parts == ["projects", "web", "frontend"]
 
     def test_build_tree_single_folder(self):
-        """Pasta única deve criar estrutura simples."""
+        """A single folder creates a simple structure."""
         tree: dict = {}
-        folder = "projetos"
+        folder = "projects"
         count = 10
 
         parts = folder.split("/")
@@ -369,15 +369,15 @@ class TestFolderTreeBuilding:
             current = current[part]
         current["_count"] = count
 
-        assert tree == {"projetos": {"_count": 10}}
+        assert tree == {"projects": {"_count": 10}}
 
     def test_build_tree_nested_folders(self):
-        """Pastas aninhadas devem criar estrutura hierárquica."""
+        """Nested folders create a hierarchical structure."""
         tree: dict = {}
         folders = [
-            ("projetos", 5),
-            ("projetos/web", 10),
-            ("projetos/mobile", 8),
+            ("projects", 5),
+            ("projects/web", 10),
+            ("projects/mobile", 8),
         ]
 
         for folder, count in folders:
@@ -389,15 +389,15 @@ class TestFolderTreeBuilding:
                 current = current[part]
             current["_count"] = current.get("_count", 0) + count
 
-        assert "projetos" in tree
-        assert "web" in tree["projetos"]
-        assert "mobile" in tree["projetos"]
-        assert tree["projetos"]["web"]["_count"] == 10
-        assert tree["projetos"]["mobile"]["_count"] == 8
+        assert "projects" in tree
+        assert "web" in tree["projects"]
+        assert "mobile" in tree["projects"]
+        assert tree["projects"]["web"]["_count"] == 10
+        assert tree["projects"]["mobile"]["_count"] == 8
 
     def test_max_depth_truncates(self):
-        """max_depth deve limitar profundidade da árvore."""
-        folder = "a/b/c/d/e"
+        """max_depth limits tree depth."""
+        folder = "a/b/c/d/and"
         max_depth = 3
 
         parts = folder.split("/")[:max_depth]
@@ -406,9 +406,9 @@ class TestFolderTreeBuilding:
         assert len(parts) == max_depth
 
     def test_root_notes_counted(self):
-        """Notas na raiz devem ser contadas em _count."""
+        """Notes in the root must be counted in _count."""
         tree: dict = {}
-        folder = ""  # Raiz
+        folder = ""  # Root
         count = 15
 
         if not folder:
@@ -417,7 +417,7 @@ class TestFolderTreeBuilding:
         assert tree["_count"] == 15
 
     def test_collect_unique_folders(self):
-        """Todas as pastas intermediárias devem ser contadas."""
+        """All intermediate folders must be counted."""
         folders_set: set[str] = set()
         folder = "a/b/c"
 
@@ -430,11 +430,11 @@ class TestFolderTreeBuilding:
         assert len(folders_set) == 3
 
     def test_without_counts(self):
-        """Sem include_counts, _count não deve aparecer."""
+        """Without include_counts, _count must not appear."""
         tree: dict = {}
         include_counts = False
 
-        folder = "projetos"
+        folder = "projects"
         parts = folder.split("/")
         current = tree
         for part in parts:
@@ -445,35 +445,35 @@ class TestFolderTreeBuilding:
         if include_counts:
             current["_count"] = 10
 
-        assert "_count" not in tree.get("projetos", {})
+        assert "_count" not in tree.get("projects", {})
 
 
 class TestFolderTreeRecursive:
-    """Testes para implementação recursiva com PurePosixPath."""
+    """Tests for the recursive PurePosixPath implementation."""
 
     def test_pure_posix_path_parsing(self):
-        """PurePosixPath deve parsear paths corretamente."""
+        """PurePosixPath must parse paths correctly."""
         from pathlib import PurePosixPath
 
-        path = PurePosixPath("projetos/web/frontend")
-        assert path.parts == ("projetos", "web", "frontend")
+        path = PurePosixPath("projects/web/frontend")
+        assert path.parts == ("projects", "web", "frontend")
 
     def test_pure_posix_path_empty(self):
-        """PurePosixPath com string vazia deve ter parts vazia."""
+        """PurePosixPath created from an empty string has no meaningful parts."""
         from pathlib import PurePosixPath
 
         path = PurePosixPath("")
         assert path.parts == ()
 
     def test_pure_posix_path_single(self):
-        """PurePosixPath com pasta única."""
+        """PurePosixPath with folder single."""
         from pathlib import PurePosixPath
 
-        path = PurePosixPath("projetos")
-        assert path.parts == ("projetos",)
+        path = PurePosixPath("projects")
+        assert path.parts == ("projects",)
 
     def test_defaultdict_to_dict_conversion(self):
-        """defaultdict deve ser convertido para dict normal."""
+        """A defaultdict is converted to a plain dictionary."""
         from collections import defaultdict
 
         def nested_dict():
@@ -496,11 +496,11 @@ class TestFolderTreeRecursive:
         assert result["a"]["b"]["c"]["_count"] == 5
 
     def test_recursive_insert_respects_depth(self):
-        """Inserção recursiva deve respeitar max_depth."""
+        """Recursive insertion must respect max_depth."""
         from pathlib import PurePosixPath
 
         max_depth = 2
-        folder = "a/b/c/d/e"
+        folder = "a/b/c/d/and"
         path = PurePosixPath(folder)
         parts = path.parts[:max_depth]
 
@@ -508,10 +508,10 @@ class TestFolderTreeRecursive:
         assert len(parts) == max_depth
 
     def test_accumulate_counts_at_truncation(self):
-        """Contagens devem acumular na pasta truncada."""
+        """Counts accumulate in the truncated folder."""
         folders = [
-            ("a/b/c", 10),  # truncado para a/b
-            ("a/b/d", 5),  # truncado para a/b
+            ("a/b/c", 10),  # truncated for a/b
+            ("a/b/d", 5),  # truncated for a/b
         ]
         max_depth = 2
 
@@ -524,15 +524,15 @@ class TestFolderTreeRecursive:
                     current[part] = {}
                 current = current[part]
 
-            # Acumular na folha truncada
+            # Accumulate in the leaf truncated
             current["_count"] = current.get("_count", 0) + count
 
-        # Ambos devem acumular em a/b
+        # Both must accumulate in a/b
         assert tree["a"]["b"]["_count"] == 15
 
 
 class TestSearchByTagsParams:
-    """Testes unitários para validação de parâmetros de search_by_tags."""
+    """Unit tests for validation of parameters of search_by_tags."""
 
     @staticmethod
     def _clamp_limit(limit: int) -> int:
@@ -544,82 +544,82 @@ class TestSearchByTagsParams:
     def test_limit_zero(self):
         assert self._clamp_limit(0) == 1
 
-    def test_limit_negativo(self):
+    def test_negative_limit(self):
         assert self._clamp_limit(-10) == 1
 
-    def test_limit_maximo(self):
+    def test_maximum_limit(self):
         assert self._clamp_limit(200) == 200
 
-    def test_limit_excede_maximo(self):
+    def test_limit_exceeds_maximum(self):
         assert self._clamp_limit(500) == 200
 
 
 class TestSearchByTagsNormalization:
-    """Testes para normalização de tags."""
+    """Tests for normalization of tags."""
 
     def test_normalize_tags(self):
-        """Tags devem ser normalizadas para lowercase e stripped."""
-        tags = ["  Projeto  ", "2024", "  WEB  "]
+        """Tags are lowercased and stripped."""
+        tags = ["  Project  ", "2024", "  WEB  "]
         clean = [t.strip().lower() for t in tags if t.strip()]
-        assert clean == ["projeto", "2024", "web"]
+        assert clean == ["project", "2024", "web"]
 
     def test_filter_empty_tags(self):
-        """Tags vazias devem ser filtradas."""
-        tags = ["projeto", "", "  ", "web"]
+        """Empty tags must be filtered."""
+        tags = ["project", "", "  ", "web"]
         clean = [t.strip().lower() for t in tags if isinstance(t, str) and t.strip()]
-        assert clean == ["projeto", "web"]
+        assert clean == ["project", "web"]
 
     def test_truncate_too_many_tags(self):
-        """Lista com mais de 20 tags deve ser truncada."""
+        """A list containing more than 20 tags is truncated."""
         tags = [f"tag{i}" for i in range(30)]
         truncated = tags[:20]
         assert len(truncated) == 20
 
 
 class TestSearchByTagsMatching:
-    """Testes para lógica de matching de tags."""
+    """Tests for logic of matching of tags."""
 
     def test_parse_tags_string(self):
-        """Tags devem ser parseadas de string comma-separated."""
-        tags_str = "projeto, 2024, web"
+        """Tags are parsed from a comma-separated string."""
+        tags_str = "project, 2024, web"
         note_tags = {t.strip().lower() for t in tags_str.split(",") if t.strip()}
-        assert note_tags == {"projeto", "2024", "web"}
+        assert note_tags == {"project", "2024", "web"}
 
     def test_match_any_or_mode(self):
-        """OR mode: nota deve ter QUALQUER uma das tags."""
-        note_tags = {"projeto", "2024"}
+        """OR mode requires any one of the tags."""
+        note_tags = {"project", "2024"}
         search_tags = ["web", "2024"]
         # OR: any tag matches
         matches = any(t in note_tags for t in search_tags)
         assert matches is True
 
-    def test_match_any_no_match(self):
-        """OR mode sem match."""
-        note_tags = {"projeto", "2024"}
+    def test_match_any_in_match(self):
+        """OR mode without match."""
+        note_tags = {"project", "2024"}
         search_tags = ["web", "mobile"]
         matches = any(t in note_tags for t in search_tags)
         assert matches is False
 
     def test_match_all_and_mode(self):
-        """AND mode: nota deve ter TODAS as tags."""
-        note_tags = {"projeto", "2024", "web"}
-        search_tags = ["projeto", "2024"]
+        """AND mode requires all tags."""
+        note_tags = {"project", "2024", "web"}
+        search_tags = ["project", "2024"]
         matches = all(t in note_tags for t in search_tags)
         assert matches is True
 
     def test_match_all_partial(self):
-        """AND mode com match parcial deve falhar."""
-        note_tags = {"projeto", "2024"}
-        search_tags = ["projeto", "web"]
+        """AND mode with match partial must fail."""
+        note_tags = {"project", "2024"}
+        search_tags = ["project", "web"]
         matches = all(t in note_tags for t in search_tags)
         assert matches is False
 
     def test_dedup_by_note_path(self):
-        """Chunks da mesma nota devem ser deduplicados."""
+        """Chunks from the same note are deduplicated."""
         chunks = [
-            ("nota1.md", "projeto, 2024"),
-            ("nota1.md", "projeto, 2024"),  # duplicado
-            ("nota2.md", "web"),
+            ("note1.md", "project, 2024"),
+            ("note1.md", "project, 2024"),  # duplicate
+            ("note2.md", "web"),
         ]
 
         notes_map: dict[str, dict] = {}
@@ -628,122 +628,122 @@ class TestSearchByTagsMatching:
                 notes_map[path] = {"path": path, "tags": tags}
 
         assert len(notes_map) == 2
-        assert "nota1.md" in notes_map
-        assert "nota2.md" in notes_map
+        assert "note1.md" in notes_map
+        assert "note2.md" in notes_map
 
 
 class TestSearchByTagsSQLEscape:
-    """Testes para escape de caracteres SQL."""
+    """Tests for escape of characters SQL."""
 
     def test_escape_single_quote(self):
-        """Aspas simples devem ser escapadas."""
+        """Single quotes must be escaped."""
         tag = "it's"
         escaped = tag.replace("'", "''")
         assert escaped == "it''s"
 
     def test_sql_like_pattern_exact_tag(self):
-        """Pattern LIKE deve encontrar tag exata, não substring."""
+        """Pattern LIKE must find tag exact, not substring."""
         tag = "web"
 
-        # Casos de teste
+        # Cases of test
         test_cases = [
-            ("web", True),  # única
-            ("web, mobile", True),  # primeira
-            ("mobile, web", True),  # última
-            ("a, web, b", True),  # meio
-            ("webapp", False),  # substring - não deve dar match
-            ("webdev, mobile", False),  # substring no início
+            ("web", True),  # single
+            ("web, mobile", True),  # first
+            ("mobile, web", True),  # last
+            ("a, web, b", True),  # middle
+            ("webapp", False),  # substring - must not give match
+            ("webdev, mobile", False),  # substring in the start
         ]
 
-        # Simular matching
+        # Simulate matching
         for tags_str, expected in test_cases:
-            # Simplificação: verificar se tag está como item separado
+            # Simplification: verify that the tag is a separate item.
             tags_list = [t.strip() for t in tags_str.split(",")]
             actual = tag in tags_list
             assert actual == expected, f"tags='{tags_str}' expected {expected}"
 
 
 class TestRandomNoteParams:
-    """Testes unitários para validação de parâmetros de random_note."""
+    """Unit tests for validation of parameters of random_note."""
 
     def test_normalize_folder_empty(self):
-        """Folder vazio ou só espaços deve ser None."""
+        """An empty or whitespace-only folder becomes None."""
         folder = "   "
         result = folder.strip() if folder and folder.strip() else None
         assert result is None
 
     def test_normalize_folder_valid(self):
-        """Folder válido deve ser mantido."""
-        folder = "  projetos  "
+        """A valid folder is preserved."""
+        folder = "  projects  "
         result = folder.strip() if folder and folder.strip() else None
-        assert result == "projetos"
+        assert result == "projects"
 
     def test_normalize_extension_add_dot(self):
-        """Extensão sem ponto deve receber ponto."""
+        """An extension without a leading dot must receive one."""
         ext = "md"
         if not ext.startswith("."):
             ext = f".{ext}"
         assert ext == ".md"
 
     def test_normalize_extension_with_dot(self):
-        """Extensão com ponto deve ser mantida."""
+        """An extension with a leading dot must remain unchanged."""
         ext = ".md"
         if not ext.startswith("."):
             ext = f".{ext}"
         assert ext == ".md"
 
     def test_normalize_extension_lowercase(self):
-        """Extensão deve ser lowercase."""
+        """The extension is lowercased."""
         ext = ".MD"
         ext = ext.lower()
         assert ext == ".md"
 
     def test_validate_extension(self):
-        """Verificar extensões indexáveis."""
+        """Verify extensions indexable."""
         from vault_search.config.search import INDEXABLE_EXTENSIONS
 
-        # Extensões que devem ser indexáveis
+        # Extensions that must be indexable
         assert ".md" in INDEXABLE_EXTENSIONS
         assert ".txt" in INDEXABLE_EXTENSIONS
         assert ".mdx" in INDEXABLE_EXTENSIONS
         assert ".pdf" in INDEXABLE_EXTENSIONS
         assert ".canvas" in INDEXABLE_EXTENSIONS
 
-        # Extensões que NÃO devem ser indexáveis
+        # Extensions that NOT must be indexable
         assert ".jpg" not in INDEXABLE_EXTENSIONS
         assert ".png" not in INDEXABLE_EXTENSIONS
 
 
 class TestRandomNoteSQLQuery:
-    """Testes para construção de query SQL do random_note."""
+    """Tests for construction of query SQL of the random_note."""
 
     def test_order_by_random(self):
-        """Query deve usar ORDER BY RANDOM()."""
+        """The query uses ORDER BY RANDOM()."""
         query = "SELECT * FROM notes ORDER BY RANDOM() LIMIT 1"
         assert "ORDER BY RANDOM()" in query
         assert "LIMIT 1" in query
 
     def test_where_folder_exact_or_subfolders(self):
-        """Filtro de pasta deve incluir pasta exata e subpastas."""
-        folder = "projetos"
+        """A folder filter must include the exact folder and its descendants."""
+        folder = "projects"
         condition = f"(folder = '{folder}' OR folder LIKE '{folder}/%')"
 
-        # Testes
-        assert "folder = 'projetos'" in condition
-        assert "folder LIKE 'projetos/%'" in condition
+        # Tests
+        assert "folder = 'projects'" in condition
+        assert "folder LIKE 'projects/%'" in condition
 
     def test_multiple_conditions_and(self):
-        """Múltiplas condições devem usar AND."""
-        conditions = ["folder = 'projetos'", "extension = '.md'"]
+        """Multiple conditions must use AND."""
+        conditions = ["folder = 'projects'", "extension = '.md'"]
         where = " AND ".join(conditions)
-        assert where == "folder = 'projetos' AND extension = '.md'"
+        assert where == "folder = 'projects' AND extension = '.md'"
 
 
 class TestDailyNoteParams:
-    """Testes unitários para validação de parâmetros de daily_note."""
+    """Unit tests for validation of parameters of daily_note."""
 
     def test_parse_date_iso(self):
-        """Data ISO deve ser parseada corretamente."""
+        """An ISO date must be parsed correctly."""
         from datetime import datetime
 
         date_str = "2024-01-15"
@@ -753,44 +753,44 @@ class TestDailyNoteParams:
         assert parsed.day == 15
 
     def test_parse_date_invalid(self):
-        """Data inválida deve levantar ValueError."""
+        """Invalid data raises ValueError."""
         from datetime import datetime
 
         with pytest.raises(ValueError):
             datetime.fromisoformat("invalid-date")
 
     def test_parse_date_wrong_format(self):
-        """Formato errado deve levantar ValueError."""
+        """An invalid format raises ValueError."""
         from datetime import datetime
 
         with pytest.raises(ValueError):
-            datetime.fromisoformat("15/01/2024")  # DD/MM/YYYY não é ISO
+            datetime.fromisoformat("15/01/2024")  # DD/MM/YYYY is not ISO
 
     def test_default_date_is_today(self):
-        """Data None deve usar hoje."""
+        """A None date uses today."""
         from datetime import date
 
         today = date.today()
         assert today.isoformat()  # YYYY-MM-DD format
 
     def test_normalize_folder_empty(self):
-        """Folder vazio deve usar 'daily'."""
+        """An empty folder uses 'daily'."""
         folder = "   "
         result = folder.strip() if folder and folder.strip() else "daily"
         assert result == "daily"
 
     def test_normalize_folder_valid(self):
-        """Folder válido deve ser mantido."""
+        """A valid folder is preserved."""
         folder = "  journals  "
         result = folder.strip() if folder and folder.strip() else "daily"
         assert result == "journals"
 
 
 class TestDailyNotePath:
-    """Testes para construção de path de daily note."""
+    """Tests for construction of path of daily note."""
 
     def test_build_expected_path(self):
-        """Path esperado deve seguir padrão folder/YYYY-MM-DD.md."""
+        """Path expected must follow default folder/YYYY-MM-DD.md."""
         from datetime import date
 
         d = date(2024, 1, 15)
@@ -801,7 +801,7 @@ class TestDailyNotePath:
         assert expected_path == "daily/2024-01-15.md"
 
     def test_build_path_custom_folder(self):
-        """Pasta customizada deve ser respeitada."""
+        """A custom folder must be respected."""
         from datetime import date
 
         d = date(2024, 1, 15)
@@ -812,14 +812,14 @@ class TestDailyNotePath:
         assert expected_path == "journals/2024/2024-01-15.md"
 
     def test_date_isoformat(self):
-        """isoformat() deve retornar YYYY-MM-DD."""
+        """isoformat() must return YYYY-MM-DD."""
         from datetime import date
 
-        d = date(2024, 1, 5)  # dia com um dígito
+        d = date(2024, 1, 5)  # day with a digit
         assert d.isoformat() == "2024-01-05"  # zero-padded
 
     def test_response_exists_structure(self):
-        """Resposta de nota existente deve ter estrutura correta."""
+        """Resposta of note existing must have structure correct."""
         response = {
             "exists": True,
             "path": "daily/2024-01-15.md",
@@ -835,7 +835,7 @@ class TestDailyNotePath:
         assert "modified_at" in response
 
     def test_response_not_exists_structure(self):
-        """Resposta de nota inexistente deve ter estrutura correta."""
+        """Resposta of note nonexistent must have structure correct."""
         response = {
             "exists": False,
             "expected_path": "daily/2024-01-15.md",

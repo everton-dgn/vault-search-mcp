@@ -1,5 +1,5 @@
 """
-Testes para o módulo de graceful shutdown.
+Tests for graceful shutdown.
 """
 
 import signal
@@ -12,7 +12,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def reset_shutdown_state():
-    """Reseta estado de shutdown antes e depois de cada teste."""
+    """Resets state of shutdown before and after of each test."""
     from vault_search.utils.shutdown import ShutdownManager
 
     ShutdownManager.reset()
@@ -21,26 +21,26 @@ def reset_shutdown_state():
 
 
 class TestShutdownRequested:
-    """Testes para shutdown_requested()."""
+    """Tests for shutdown_requested()."""
 
     def test_shutdown_not_requested_initially(self):
-        """Shutdown não está solicitado no início."""
+        """Shutdown is not requested in the start."""
         from vault_search.utils.shutdown import ShutdownManager, shutdown_requested
 
-        # Reset estado completo
+        # Reset state complete
         ShutdownManager.reset()
 
         assert shutdown_requested() is False
 
     def test_shutdown_requested_after_request(self):
-        """shutdown_requested() retorna True após request_shutdown()."""
+        """shutdown_requested() returns True after request_shutdown()."""
         from vault_search.utils.shutdown import (
             ShutdownManager,
             request_shutdown,
             shutdown_requested,
         )
 
-        # Reset estado completo
+        # Reset state complete
         ShutdownManager.reset()
 
         request_shutdown()
@@ -49,17 +49,17 @@ class TestShutdownRequested:
 
 
 class TestRequestShutdown:
-    """Testes para request_shutdown()."""
+    """Tests for request_shutdown()."""
 
     def test_request_shutdown_sets_event(self):
-        """request_shutdown() define o evento de shutdown."""
+        """request_shutdown() sets the event of shutdown."""
         from vault_search.utils.shutdown import (
             ShutdownManager,
             request_shutdown,
             shutdown_requested,
         )
 
-        # Reset estado completo
+        # Reset state complete
         ShutdownManager.reset()
 
         assert shutdown_requested() is False
@@ -70,10 +70,10 @@ class TestRequestShutdown:
 
 
 class TestProtectedSection:
-    """Testes para protected_section context manager."""
+    """Tests for protected_section context manager."""
 
     def test_protected_section_executes_code(self):
-        """Código dentro de protected_section é executado."""
+        """Code inside of protected_section is executed."""
         from vault_search.utils.shutdown import protected_section
 
         executed = [False]
@@ -84,7 +84,7 @@ class TestProtectedSection:
         assert executed[0] is True
 
     def test_protected_section_propagates_exceptions(self):
-        """Exceções dentro de protected_section são propagadas."""
+        """Exceptions inside of protected_section are propagated."""
         from vault_search.utils.shutdown import protected_section
 
         with pytest.raises(ValueError, match="test error"):
@@ -92,22 +92,22 @@ class TestProtectedSection:
                 raise ValueError("test error")
 
     def test_protected_section_logs_description(self):
-        """protected_section loga a descrição da operação."""
+        """protected_section logs a description of the operation."""
         from vault_search.utils.shutdown import protected_section
 
         with patch("vault_search.utils.shutdown.logger") as mock_logger:
             with protected_section("saving index"):
                 pass
 
-            # Verifica que debug foi chamado com a descrição
+            # Checks that debug was called with a description
             mock_logger.debug.assert_called()
 
 
 class TestDelayedKeyboardInterrupt:
-    """Testes para DelayedKeyboardInterrupt."""
+    """Tests for DelayedKeyboardInterrupt."""
 
     def test_delayed_interrupt_defers_signal(self):
-        """DelayedKeyboardInterrupt adia SIGINT durante seção crítica."""
+        """DelayedKeyboardInterrupt defers SIGINT during a critical section."""
         from vault_search.utils.shutdown import DelayedKeyboardInterrupt
 
         signal_deferred = [False]
@@ -116,11 +116,11 @@ class TestDelayedKeyboardInterrupt:
 
         try:
             with DelayedKeyboardInterrupt():
-                # Simular recebimento de sinal
-                # (não podemos realmente enviar SIGINT no teste)
+                # Simulate receiving a signal.
+                # The test cannot send a real SIGINT.
                 pass
 
-            # Código executa normalmente
+            # Code executes normally.
             signal_deferred[0] = True
 
         finally:
@@ -130,28 +130,28 @@ class TestDelayedKeyboardInterrupt:
 
 
 class TestShutdownManager:
-    """Testes para ShutdownManager."""
+    """Tests for ShutdownManager."""
 
     def test_shutdown_manager_register_callback(self):
-        """ShutdownManager registra callbacks corretamente."""
+        """ShutdownManager registers callbacks correctly."""
         from vault_search.utils.shutdown import ShutdownManager
 
-        # Reset estado
+        # Reset state
         ShutdownManager.reset()
 
-        # Registrar callback
+        # Register callback
         callback = MagicMock()
         ShutdownManager.register_callback(callback)
 
-        # Não podemos acessar _state diretamente, mas podemos verificar
-        # que unregister funciona (implica que foi registrado)
+        # _state is private, so verify it through observable behavior.
+        # Verify unregister behavior after registration.
         ShutdownManager.unregister_callback(callback)
 
     def test_callbacks_executed_in_lifo_order(self):
-        """Callbacks são executados em ordem LIFO via shutdown()."""
+        """shutdown() executes callbacks in LIFO order."""
         from vault_search.utils.shutdown import ShutdownManager
 
-        # Reset estado
+        # Reset state
         ShutdownManager.reset()
 
         execution_order = []
@@ -169,17 +169,17 @@ class TestShutdownManager:
         ShutdownManager.register_callback(callback2)
         ShutdownManager.register_callback(callback3)
 
-        # Executar shutdown que chama callbacks em ordem LIFO
+        # Run shutdown, which calls callbacks in LIFO order.
         ShutdownManager.shutdown()
 
-        # LIFO: último registrado executa primeiro
+        # LIFO: the last registered callback executes first.
         assert execution_order == [3, 2, 1]
 
     def test_callback_exception_doesnt_break_others(self):
-        """Exceção em um callback não impede execução dos outros."""
+        """Exception in a callback not prevents execution of the other."""
         from vault_search.utils.shutdown import ShutdownManager
 
-        # Reset estado
+        # Reset state
         ShutdownManager.reset()
 
         executed = []
@@ -201,13 +201,13 @@ class TestShutdownManager:
         # Executar shutdown
         ShutdownManager.shutdown()
 
-        # Todos devem ter sido chamados (LIFO: another -> bad -> good)
+        # Every callback must run in LIFO order: another, bad, good.
         assert "another" in executed
         assert "bad_start" in executed
         assert "good" in executed
 
     def test_shutdown_respects_total_callback_timeout(self):
-        """Callback travado não impede o processo de concluir o shutdown."""
+        """Callback stuck not prevents the process of complete the shutdown."""
         from vault_search.utils.shutdown import ShutdownManager
 
         release = threading.Event()
@@ -222,7 +222,7 @@ class TestShutdownManager:
         assert elapsed < 0.5
 
     def test_concurrent_shutdown_runs_callbacks_once(self):
-        """Callers concorrentes compartilham uma transição atômica."""
+        """Callers concurrent share a transition atomic."""
         from vault_search.utils.shutdown import ShutdownManager
 
         barrier = threading.Barrier(3)
@@ -247,17 +247,17 @@ class TestShutdownManager:
 
 
 class TestWaitForShutdown:
-    """Testes para wait_for_shutdown()."""
+    """Tests for wait_for_shutdown()."""
 
     def test_wait_for_shutdown_returns_immediately_if_set(self):
-        """wait_for_shutdown retorna imediatamente se shutdown já solicitado."""
+        """wait_for_shutdown returns immediately when shutdown was already requested."""
         from vault_search.utils.shutdown import (
             ShutdownManager,
             request_shutdown,
             wait_for_shutdown,
         )
 
-        # Reset e solicitar shutdown
+        # Reset and request shutdown.
         ShutdownManager.reset()
         request_shutdown()
 
@@ -266,13 +266,13 @@ class TestWaitForShutdown:
         elapsed = time.time() - start
 
         assert result is True
-        assert elapsed < 1.0  # Deve retornar imediatamente
+        assert elapsed < 1.0  # Must return immediately.
 
     def test_wait_for_shutdown_times_out(self):
-        """wait_for_shutdown retorna False após timeout."""
+        """wait_for_shutdown returns False after timeout."""
         from vault_search.utils.shutdown import ShutdownManager, wait_for_shutdown
 
-        # Reset (sem solicitar shutdown)
+        # Reset without requesting shutdown.
         ShutdownManager.reset()
 
         start = time.time()
@@ -282,8 +282,8 @@ class TestWaitForShutdown:
         assert result is False
         assert elapsed >= 0.1
 
-    def test_wait_for_shutdown_no_timeout(self):
-        """wait_for_shutdown sem timeout bloqueia até shutdown."""
+    def test_wait_for_shutdown_in_timeout(self):
+        """wait_for_shutdown without timeout blocks up to shutdown."""
         from vault_search.utils.shutdown import (
             ShutdownManager,
             request_shutdown,
@@ -304,19 +304,19 @@ class TestWaitForShutdown:
         elapsed = time.time() - start
 
         assert result is True
-        assert elapsed >= 0.08  # Tolera a resolução do relógio e o scheduler.
+        assert elapsed >= 0.08  # Allows a resolution of the clock and the scheduler.
         thread.join(timeout=1)
         thread.join()
 
 
 class TestInterruptibleLoop:
-    """Testes para interruptible_loop context manager."""
+    """Tests for interruptible_loop context manager."""
 
     def test_interruptible_loop_normal_execution(self):
-        """Loop interruptível executa normalmente sem shutdown."""
+        """The interruptible loop executes normally without shutdown."""
         from vault_search.utils.shutdown import ShutdownManager, interruptible_loop
 
-        # Reset estado
+        # Reset state
         ShutdownManager.reset()
 
         items_processed = []
@@ -330,14 +330,14 @@ class TestInterruptibleLoop:
         assert items_processed == [0, 1, 2, 3, 4]
 
     def test_interruptible_loop_stops_on_shutdown(self):
-        """Loop interruptível para quando shutdown é solicitado."""
+        """Loop interruptible for when shutdown is requested."""
         from vault_search.utils.shutdown import (
             ShutdownManager,
             interruptible_loop,
             request_shutdown,
         )
 
-        # Reset estado
+        # Reset state
         ShutdownManager.reset()
 
         items_processed = []
@@ -351,40 +351,40 @@ class TestInterruptibleLoop:
                     break
                 items_processed.append(i)
 
-        # Deve parar após o item 3 (quando shutdown foi solicitado)
+        # Must stop after the item 3 (when shutdown was requested)
         assert len(items_processed) <= 4
 
 
 class TestShutdownManagerInitialize:
-    """Testes para ShutdownManager.initialize()."""
+    """Tests for ShutdownManager.initialize()."""
 
     def test_initialize_validates_timeout(self):
-        """initialize() rejeita timeout <= 0."""
+        """initialize() rejects timeout <= 0."""
         from vault_search.utils.shutdown import ShutdownManager
 
         ShutdownManager.reset()
 
-        with pytest.raises(ValueError, match="timeout deve ser > 0"):
+        with pytest.raises(ValueError, match="timeout must be greater than 0"):
             ShutdownManager.initialize(timeout=0)
 
-        with pytest.raises(ValueError, match="timeout deve ser > 0"):
+        with pytest.raises(ValueError, match="timeout must be greater than 0"):
             ShutdownManager.initialize(timeout=-1)
 
     def test_initialize_accepts_positive_timeout(self):
-        """initialize() aceita timeout positivo."""
+        """initialize() accepts timeout positive."""
         from vault_search.utils.shutdown import ShutdownManager
 
         ShutdownManager.reset()
 
-        # Não deve levantar exceção
+        # Must not raise exception
         ShutdownManager.initialize(timeout=0.1)
 
 
 class TestDelayedKeyboardInterruptWarning:
-    """Testes para warning de DelayedKeyboardInterrupt fora da main thread."""
+    """Tests for warning of DelayedKeyboardInterrupt outside of the main thread."""
 
     def test_logs_warning_outside_main_thread(self):
-        """DelayedKeyboardInterrupt loga warning fora da main thread."""
+        """DelayedKeyboardInterrupt logs warning outside of the main thread."""
         from vault_search.utils.shutdown import DelayedKeyboardInterrupt
 
         warning_logged = [False]
@@ -393,7 +393,7 @@ class TestDelayedKeyboardInterruptWarning:
             with patch("vault_search.utils.shutdown.logger") as mock_logger:
                 with DelayedKeyboardInterrupt():
                     pass
-                # Verifica que warning foi chamado
+                # Checks that warning was called
                 if mock_logger.warning.called:
                     warning_logged[0] = True
 
@@ -405,17 +405,17 @@ class TestDelayedKeyboardInterruptWarning:
 
 
 class TestIntegration:
-    """Testes de integração do sistema de shutdown."""
+    """Tests for integration of the system of shutdown."""
 
     def test_full_shutdown_flow(self):
-        """Fluxo completo: initialize -> register -> request -> cleanup."""
+        """Flow complete: initialize -> register -> request -> cleanup."""
         from vault_search.utils.shutdown import (
             ShutdownManager,
             request_shutdown,
             shutdown_requested,
         )
 
-        # Reset completo
+        # Reset complete
         ShutdownManager.reset()
 
         cleanup_executed = [False]
@@ -423,20 +423,20 @@ class TestIntegration:
         def cleanup():
             cleanup_executed[0] = True
 
-        # Registrar callback
+        # Register callback
         ShutdownManager.register_callback(cleanup)
 
-        # Verificar estado inicial
+        # Verify state initial
         assert shutdown_requested() is False
         assert cleanup_executed[0] is False
 
         # Solicitar shutdown
         request_shutdown()
 
-        # Verificar estado após request
+        # Verify state after request
         assert shutdown_requested() is True
 
-        # Executar shutdown (que chama callbacks)
+        # Run shutdown, which calls the callbacks.
         ShutdownManager.shutdown()
 
         assert cleanup_executed[0] is True

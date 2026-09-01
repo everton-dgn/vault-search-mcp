@@ -1,44 +1,44 @@
-# Cache
+# Caches
 
-## Camadas atuais
+## Current layers
 
-| Camada | Chave | Invalidação |
+| Layer | Key | Invalidation |
 |---|---|---|
-| Metadados de nota | path, `mtime_ns` e tamanho | Mudança no stat gera miss; CRUD invalida path |
-| Embedding de query | hash da query normalizada | Limite LRU; reconfiguração exige processo novo |
-| Índices do sistema operacional | arquivos LanceDB acessados | Gerenciado pelo SO; prewarm é opcional |
+| Note metadata | path, `mtime_ns`, and size | Stat change creates a miss; CRUD invalidates the path |
+| Query embedding | normalized-query hash | Bounded LRU; reconfiguration requires a new process |
+| Operating-system file cache | accessed LanceDB files | Managed by the OS; prewarm is optional |
 
-## Cache de metadados
+## Metadata cache
 
-`MetadataCache` usa `OrderedDict` e lock. A chave incorpora metadados do sistema
-de arquivos, então alteração de conteúdo normalmente cria uma chave nova. CRUD
-também remove entradas do path afetado.
+`MetadataCache` uses an `OrderedDict` and lock. The key includes filesystem
+metadata, so a content change normally creates a new entry. CRUD also removes
+entries for the affected path.
 
-Esse mecanismo reduz parsing repetido, mas não elimina corridas entre `stat` e
-leitura. A operação de arquivo continua responsável pela consistência.
+This reduces repeated parsing but does not remove races between `stat` and read.
+File operations remain responsible for consistency.
 
-## Cache de embeddings
+## Embedding cache
 
-`VaultSearcher` mantém embeddings de queries repetidas em memória. O cache tem
-limite e métricas de hits e misses expostas por `system_stats`.
+`VaultSearcher` keeps repeated query embeddings in memory. The cache is bounded
+and exposes hit and miss metrics through `system_stats`.
 
-Não registre a query para explicar um hit. Hash, contagem e duração bastam para
-diagnóstico operacional.
+Never log a query to explain a hit. A hash, count, and duration are enough for
+operational diagnosis.
 
-## O que medir
+## Measure
 
-- tamanho e limite de cada cache;
-- hits, misses e taxa calculada;
-- latência em estado frio e aquecido, separadamente;
-- memória do processo antes e depois do aquecimento;
-- invalidações após escrita, move e reindexação.
+- current and maximum size for each cache;
+- hits, misses, and calculated hit rate;
+- cold and warm latency separately;
+- process memory before and after warming;
+- invalidation after write, move, and reindex.
 
-Use [benchmarking.md](benchmarking.md) antes de publicar números.
+Follow [benchmarking.md](benchmarking.md) before publishing numbers.
 
-## Falhas que testes devem cobrir
+## Required failure tests
 
-- arquivo muda mantendo tamanho;
-- relógio ou resolução de timestamp não diferencia duas escritas;
-- invalidação durante leitura concorrente;
-- limite LRU com acesso paralelo;
-- cache de query depois de troca do índice.
+- content changes while file size stays constant;
+- timestamp resolution cannot distinguish two writes;
+- invalidation races with a read;
+- LRU limit under concurrent access;
+- query cache after an index-generation change.

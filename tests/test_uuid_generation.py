@@ -1,71 +1,72 @@
 """
-Testes para geração automática de UUID v7 em notas.
+Tests for automatic UUIDv7 generation in notes.
 
-Cobre:
-- Geração de UUID v7 válido
-- Auto-geração em create_note
-- ensure_note_id para notas existentes
-- Integração com reindex_note
-- generate_missing_ids em lote
-- Tratamento de erros
+Covers:
+- valid UUIDv7 generation
+- automatic IDs in create_note
+- ensure_note_id for existing notes
+- reindex_note integration
+- batch migration through generate_missing_ids
+- error handling
 """
 
 import re
+from contextlib import nullcontext
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vault_search.type_defs import ParseResult, ParseStatus
+from vault_search.type_defs import ParseResult, ParseStatus, ReindexStatus
 from vault_search.utils.uuid import generate_uuid7
 
 
 class TestGenerateUuid7:
-    """Testes para a função generate_uuid7."""
+    """Tests for generate_uuid7."""
 
     def test_returns_string(self):
-        """UUID deve ser retornado como string."""
+        """UUIDs are returned as strings."""
         result = generate_uuid7()
         assert isinstance(result, str)
 
     def test_valid_uuid_format(self):
-        """UUID deve estar no formato padrão (8-4-4-4-12)."""
+        """UUIDs use the standard 8-4-4-4-12 representation."""
         result = generate_uuid7()
-        # Formato: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        # Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
         pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-        assert re.match(pattern, result), f"UUID inválido: {result}"
+        assert re.match(pattern, result), f"Invalid UUID: {result}"
 
     def test_version_7(self):
-        """UUID deve ser versão 7 (13º caractere = '7')."""
+        """The version nibble identifies UUIDv7."""
         result = generate_uuid7()
-        # Posição 14 (índice 14 após remover hífens ou índice 14 na string com hífens)
-        # Formato: xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx
-        #                        ^ posição 14
-        assert result[14] == "7", f"UUID não é v7: {result}"
+        # Position 14 after removing hyphens, or index 14 in the hyphenated string.
+        # Format: xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx
+        #                        ^ position 14
+        assert result[14] == "7", f"UUID is not v7: {result}"
 
     def test_uniqueness(self):
-        """UUIDs gerados devem ser únicos."""
+        """Generated UUIDs are unique."""
         uuids = [generate_uuid7() for _ in range(1000)]
-        assert len(set(uuids)) == 1000, "UUIDs duplicados detectados"
+        assert len(set(uuids)) == 1000, "Duplicate UUIDs detected"
 
     def test_chronological_order(self):
-        """UUIDs gerados em sequência devem ser ordenáveis cronologicamente."""
+        """Sequentially generated UUIDs must sort chronologically."""
         import time
 
         uuid1 = generate_uuid7()
         time.sleep(0.002)  # 2ms
         uuid2 = generate_uuid7()
 
-        # UUID v7 é ordenável lexicograficamente por tempo
-        assert uuid1 < uuid2, "UUIDs não estão em ordem cronológica"
+        # UUIDv7 values sort lexicographically by time.
+        assert uuid1 < uuid2, "UUIDs are not in chronological order"
 
 
 class TestCreateNoteAutoId:
-    """Testes para auto-geração de ID em create_note."""
+    """Tests for auto-generation of ID in create_note."""
 
     @pytest.fixture
     def mock_vault(self, tmp_path):
-        """Cria vault temporário para testes."""
+        """Create a temporary vault for tests."""
         vault = tmp_path / "vault"
         vault.mkdir()
         with patch("vault_search.crud.validation.VAULT_PATH", vault):
@@ -73,7 +74,7 @@ class TestCreateNoteAutoId:
 
     @pytest.fixture
     def mock_frontmatter_validation(self):
-        """Mocka validação de frontmatter para retornar sucesso."""
+        """Return a successful frontmatter validation result."""
 
         def mock_validate(frontmatter):
             return {
@@ -92,34 +93,34 @@ class TestCreateNoteAutoId:
             yield
 
     def test_auto_generates_id_when_not_provided(self, mock_vault, mock_frontmatter_validation):
-        """create_note deve gerar ID automaticamente se não fornecido."""
+        """create_note must generate an ID automatically when none is provided."""
         from vault_search.crud.write import create_note
-
-        with patch("vault_search.crud.write.validate_for_write") as mock_validate:
-            mock_validate.return_value = mock_vault / "test.md"
-            with patch("vault_search.crud.write.safe_write_text") as mock_write:
-                mock_write.return_value = None  # Sem erro
-
-                result = create_note("test.md", "Conteúdo")
-
-                assert result["success"]
-                # Verificar que safe_write_text foi chamado com frontmatter contendo id
-                call_args = mock_write.call_args
-                content = call_args[0][1]  # Segundo argumento posicional
-                assert "id:" in content
-
-    def test_preserves_user_provided_id(self, mock_vault, mock_frontmatter_validation):
-        """create_note deve preservar ID fornecido pelo usuário."""
-        from vault_search.crud.write import create_note
-
-        user_id = "meu-id-customizado"
 
         with patch("vault_search.crud.write.validate_for_write") as mock_validate:
             mock_validate.return_value = mock_vault / "test.md"
             with patch("vault_search.crud.write.safe_write_text") as mock_write:
                 mock_write.return_value = None
 
-                result = create_note("test.md", "Conteúdo", {"id": user_id})
+                result = create_note("test.md", "Content")
+
+                assert result["success"]
+                # Verify that safe_write_text received frontmatter containing an ID.
+                call_args = mock_write.call_args
+                content = call_args[0][1]  # Second positional argument.
+                assert "id:" in content
+
+    def test_preserves_user_provided_id(self, mock_vault, mock_frontmatter_validation):
+        """create_note must preserve an ID provided by the user."""
+        from vault_search.crud.write import create_note
+
+        user_id = "my-custom-id"
+
+        with patch("vault_search.crud.write.validate_for_write") as mock_validate:
+            mock_validate.return_value = mock_vault / "test.md"
+            with patch("vault_search.crud.write.safe_write_text") as mock_write:
+                mock_write.return_value = None
+
+                result = create_note("test.md", "Content", {"id": user_id})
 
                 assert result["success"]
                 call_args = mock_write.call_args
@@ -127,7 +128,7 @@ class TestCreateNoteAutoId:
                 assert f"id: {user_id}" in content
 
     def test_id_is_uuid7_format(self, mock_vault):
-        """ID auto-gerado deve estar no formato UUID v7."""
+        """Automatically generated IDs use UUIDv7."""
         from vault_search.crud.write import create_note
 
         with patch("vault_search.crud.write.validate_for_write") as mock_validate:
@@ -135,41 +136,41 @@ class TestCreateNoteAutoId:
             with patch("vault_search.crud.write.safe_write_text") as mock_write:
                 mock_write.return_value = None
 
-                create_note("test.md", "Conteúdo")
+                create_note("test.md", "Content")
 
                 content = mock_write.call_args[0][1]
-                # Extrair ID do frontmatter
+                # Extract the ID from frontmatter.
                 match = re.search(r"id: ([^\n]+)", content)
-                assert match, "ID não encontrado no frontmatter"
+                assert match, "ID not found in frontmatter"
 
                 uuid = match.group(1)
-                assert uuid[14] == "7", f"UUID não é v7: {uuid}"
+                assert uuid[14] == "7", f"UUID is not v7: {uuid}"
 
 
 class TestEnsureNoteId:
-    """Testes para ensure_note_id."""
+    """Tests for ensure_note_id."""
 
     @pytest.fixture
     def note_without_id(self, tmp_path):
-        """Cria nota sem ID para testes."""
+        """Create a note without an ID."""
         vault = tmp_path / "vault"
         vault.mkdir()
-        note = vault / "nota.md"
-        note.write_text("---\ntitle: Teste\n---\nConteúdo")
+        note = vault / "note.md"
+        note.write_text("---\ntitle: Test\n---\nContent")
         return note, vault
 
     @pytest.fixture
     def note_with_id(self, tmp_path):
-        """Cria nota com ID para testes."""
+        """Create a note with an existing ID."""
         vault = tmp_path / "vault"
         vault.mkdir()
-        note = vault / "nota.md"
-        note.write_text("---\nid: existing-id\ntitle: Teste\n---\nConteúdo")
+        note = vault / "note.md"
+        note.write_text("---\nid: existing-id\ntitle: Test\n---\nContent")
         return note, vault
 
     @pytest.fixture
     def mock_frontmatter_validation(self):
-        """Mocka validação de frontmatter para retornar sucesso."""
+        """Return successful frontmatter validation results."""
 
         def mock_validate_result(frontmatter):
             return {
@@ -182,7 +183,7 @@ class TestEnsureNoteId:
             }
 
         def mock_validate_tuple(frontmatter):
-            # validate_frontmatter_schema retorna tupla
+            # validate_frontmatter_schema returns a tuple.
             return (frontmatter, [], [], [])
 
         with patch(
@@ -196,25 +197,25 @@ class TestEnsureNoteId:
                 yield
 
     def test_adds_id_to_note_without_id(self, note_without_id, mock_frontmatter_validation):
-        """ensure_note_id deve adicionar ID a nota sem ID."""
+        """ensure_note_id must add an ID to a note without one."""
         note_path, vault = note_without_id
 
         with patch("vault_search.crud.write.resolve_path", return_value=note_path):
             with patch("vault_search.crud.validation.VAULT_PATH", vault):
                 from vault_search.crud.write import ensure_note_id
 
-                result = ensure_note_id("nota.md")
+                result = ensure_note_id("note.md")
 
                 assert result["success"]
                 assert result["id_added"] is True
                 assert "id" in result
 
-                # Verificar que ID foi escrito no arquivo
+                # Verify that the ID was written to the file.
                 content = note_path.read_text()
                 assert "id:" in content
 
     def test_does_not_modify_note_with_id(self, note_with_id):
-        """ensure_note_id não deve modificar nota que já tem ID."""
+        """ensure_note_id must not modify note that already has ID."""
         note_path, vault = note_with_id
         original_content = note_path.read_text()
 
@@ -222,143 +223,317 @@ class TestEnsureNoteId:
             with patch("vault_search.crud.validation.VAULT_PATH", vault):
                 from vault_search.crud.write import ensure_note_id
 
-                result = ensure_note_id("nota.md")
+                result = ensure_note_id("note.md")
 
             assert result["success"]
             assert result["id_added"] is False
             assert result["id"] == "existing-id"
 
-            # Arquivo não deve ter sido modificado
+            # The file must not have been modified.
             assert note_path.read_text() == original_content
 
     def test_id_placed_at_top_of_frontmatter(self, note_without_id, mock_frontmatter_validation):
-        """ID deve ser colocado no topo do frontmatter."""
+        """The generated ID is the first frontmatter field."""
         note_path, vault = note_without_id
 
         with patch("vault_search.crud.write.resolve_path", return_value=note_path):
             with patch("vault_search.crud.validation.VAULT_PATH", vault):
                 from vault_search.crud.write import ensure_note_id
 
-                ensure_note_id("nota.md")
+                ensure_note_id("note.md")
 
             content = note_path.read_text()
             lines = content.split("\n")
-            # Primeira linha após --- deve ser id:
-            assert lines[1].startswith("id:"), f"ID não está no topo: {lines[:5]}"
+            # First line after --- must be id:
+            assert lines[1].startswith("id:"), f"ID is not at the top: {lines[:5]}"
 
     def test_error_for_nonexistent_file(self, tmp_path):
-        """ensure_note_id deve retornar erro para arquivo inexistente."""
+        """ensure_note_id returns an error for a missing file."""
         vault = tmp_path / "vault"
         vault.mkdir()
         with patch("vault_search.crud.write.resolve_path") as mock_resolve:
-            mock_resolve.return_value = vault / "nao-existe.md"
+            mock_resolve.return_value = vault / "does-not-exist.md"
 
             with patch("vault_search.crud.validation.VAULT_PATH", vault):
                 from vault_search.crud.write import ensure_note_id
 
-                result = ensure_note_id("nao-existe.md")
+                result = ensure_note_id("does-not-exist.md")
 
             assert result["success"] is False
-            assert "não encontrada" in result["message"].lower()
+            assert "not found" in result["message"].lower()
 
     def test_error_for_non_md_file(self):
-        """ensure_note_id deve rejeitar arquivos não-.md."""
+        """ensure_note_id rejects non-Markdown files."""
         from vault_search.crud.write import ensure_note_id
 
-        result = ensure_note_id("arquivo.pdf")
+        result = ensure_note_id("file.pdf")
 
         assert result["success"] is False
         assert ".md" in result["message"]
 
 
 class TestReindexNoteAutoId:
-    """Testes para auto-geração de ID no reindex_note."""
+    """Tests for automatic IDs during incremental reindexing."""
 
-    def test_calls_ensure_note_id_for_md_files(self):
-        """reindex_note deve chamar ensure_note_id para arquivos .md."""
-        with patch("vault_search.core.indexer.validate_relative_path", return_value=True):
-            with patch("vault_search.core.indexer.VAULT_PATH", Path("/vault")):
-                with patch("vault_search.core.indexer.ensure_note_id") as mock_ensure:
-                    mock_ensure.return_value = {"success": True, "id_added": True, "id": "test-id"}
+    @staticmethod
+    def _empty_note(tmp_path: Path) -> Path:
+        note = tmp_path / "note.md"
+        note.write_text("", encoding="utf-8")
+        return note
 
-                    with patch(
-                        "vault_search.core.indexer.parse_file_result",
-                        return_value=ParseResult(status=ParseStatus.EMPTY),
-                    ):
-                        from vault_search.core.indexer import VaultIndexer
+    @staticmethod
+    def _indexer_with_empty_apply():
+        from vault_search.core.indexer import VaultIndexer
 
-                        indexer = VaultIndexer()
-                        with patch.object(indexer, "_ensure_table"):
-                            with patch("vault_search.core.indexer.Path.exists", return_value=True):
-                                with patch("vault_search.core.indexer.Path.suffix", ".md"):
-                                    # Mock mínimo para o teste passar
-                                    pass
+        indexer = VaultIndexer()
+        table = MagicMock()
+        return indexer, table
 
-    def test_skips_ensure_note_id_when_disabled(self):
-        """reindex_note com auto_generate_id=False não deve chamar ensure_note_id."""
-        with patch("vault_search.core.indexer.ensure_note_id"):
-            with patch("vault_search.core.indexer.validate_relative_path", return_value=True):
-                with patch("vault_search.core.indexer.VAULT_PATH", Path("/vault")):
-                    with patch(
-                        "vault_search.core.indexer.parse_file_result",
-                        return_value=ParseResult(status=ParseStatus.EMPTY),
-                    ):
-                        # Nota: este é um teste de integração parcial
-                        # Em produção, testaríamos com vault real
-                        pass
+    def test_calls_ensure_note_id_for_md_files(self, tmp_path):
+        """reindex_note ensures an ID before parsing a Markdown note."""
+        self._empty_note(tmp_path)
+        indexer, table = self._indexer_with_empty_apply()
 
-    def test_handles_permission_error_gracefully(self):
-        """reindex_note deve continuar indexação mesmo se ensure_note_id falhar com PermissionError."""
-        # Teste de comportamento resiliente
-        pass
+        with (
+            patch("vault_search.core.indexer.VAULT_PATH", tmp_path),
+            patch(
+                "vault_search.core.indexer.ensure_note_id",
+                return_value={"success": True, "id_added": True, "id": "test-id"},
+            ) as mock_ensure,
+            patch(
+                "vault_search.core.indexer.parse_file_result",
+                return_value=ParseResult(status=ParseStatus.EMPTY),
+            ),
+            patch.object(indexer, "_apply_note_records", return_value=(table, 0, 0)),
+            patch.object(indexer, "_record_incremental_operation", return_value=False),
+        ):
+            result = indexer.reindex_note("note.md")
 
-    def test_handles_file_not_found_during_ensure(self):
-        """reindex_note deve tratar FileNotFoundError de ensure_note_id."""
-        # Arquivo pode ser deletado entre verificação e ensure_note_id
-        pass
+        mock_ensure.assert_called_once_with("note.md")
+        assert result["status"] is ReindexStatus.EMPTY
+
+    def test_skips_ensure_note_id_when_disabled(self, tmp_path):
+        """auto_generate_id=False leaves the note untouched before parsing."""
+        self._empty_note(tmp_path)
+        indexer, table = self._indexer_with_empty_apply()
+
+        with (
+            patch("vault_search.core.indexer.VAULT_PATH", tmp_path),
+            patch("vault_search.core.indexer.ensure_note_id") as mock_ensure,
+            patch(
+                "vault_search.core.indexer.parse_file_result",
+                return_value=ParseResult(status=ParseStatus.EMPTY),
+            ) as mock_parse,
+            patch.object(indexer, "_apply_note_records", return_value=(table, 0, 0)),
+            patch.object(indexer, "_record_incremental_operation", return_value=False),
+        ):
+            result = indexer.reindex_note("note.md", auto_generate_id=False)
+
+        mock_ensure.assert_not_called()
+        mock_parse.assert_called_once_with(tmp_path / "note.md", tmp_path)
+        assert result["status"] is ReindexStatus.EMPTY
+
+    def test_handles_permission_error_gracefully(self, tmp_path):
+        """A denied ID write does not prevent the existing note from being indexed."""
+        self._empty_note(tmp_path)
+        indexer, table = self._indexer_with_empty_apply()
+
+        with (
+            patch("vault_search.core.indexer.VAULT_PATH", tmp_path),
+            patch("vault_search.core.indexer.ensure_note_id", side_effect=PermissionError),
+            patch(
+                "vault_search.core.indexer.parse_file_result",
+                return_value=ParseResult(status=ParseStatus.EMPTY),
+            ) as mock_parse,
+            patch.object(indexer, "_apply_note_records", return_value=(table, 0, 0)),
+            patch.object(indexer, "_record_incremental_operation", return_value=False),
+        ):
+            result = indexer.reindex_note("note.md")
+
+        mock_parse.assert_called_once_with(tmp_path / "note.md", tmp_path)
+        assert result["status"] is ReindexStatus.EMPTY
+
+    def test_handles_file_not_found_during_ensure(self, tmp_path):
+        """A note removed during ID generation is removed from every index."""
+        self._empty_note(tmp_path)
+        indexer, table = self._indexer_with_empty_apply()
+
+        with (
+            patch("vault_search.core.indexer.VAULT_PATH", tmp_path),
+            patch("vault_search.core.indexer.ensure_note_id", side_effect=FileNotFoundError),
+            patch("vault_search.core.indexer.parse_file_result") as mock_parse,
+            patch.object(
+                indexer,
+                "_apply_note_records",
+                return_value=(table, 0, 0),
+            ) as mock_apply,
+            patch.object(indexer, "_record_incremental_operation", return_value=False),
+        ):
+            result = indexer.reindex_note("note.md")
+
+        mock_apply.assert_called_once_with("note.md", [], [], [])
+        mock_parse.assert_not_called()
+        assert result["status"] is ReindexStatus.DELETED
 
 
 class TestGenerateMissingIds:
-    """Testes para generate_missing_ids (migração em lote)."""
+    """Tests for the generate_missing_ids batch migration tool."""
 
-    def test_dry_run_returns_preview(self):
-        """dry_run=True deve retornar preview sem modificar arquivos."""
-        with patch("vault_search.server.crud_tools.scan_vault") as mock_scan:
-            with patch("vault_search.server.crud_tools.read_frontmatter_only") as mock_read_fm:
-                mock_scan.return_value = [
-                    Path("/vault/nota1.md"),
-                    Path("/vault/nota2.md"),
-                ]
-                mock_read_fm.side_effect = [
-                    ({}, 0),  # nota1 sem ID
-                    ({"id": "existing"}, 0),  # nota2 com ID
-                ]
+    @pytest.fixture
+    def tool_and_queue(self):
+        from vault_search.server.crud_tools import register_crud_tools
 
-                # Nota: requer setup completo do MCP para teste de integração
+        class FakeMCP:
+            def __init__(self):
+                self.tools = {}
 
-    def test_adds_ids_to_notes_without_id(self):
-        """generate_missing_ids deve adicionar IDs a notas sem ID."""
-        pass
+            def tool(self):
+                def decorator(function):
+                    self.tools[function.__name__] = function
+                    return function
 
-    def test_skips_notes_with_existing_id(self):
-        """generate_missing_ids deve pular notas que já têm ID."""
-        pass
+                return decorator
 
-    def test_filters_by_folder(self):
-        """generate_missing_ids deve filtrar por pasta quando especificado."""
-        pass
+        mcp = FakeMCP()
+        with (
+            patch("vault_search.server.crud_tools.FrontmatterEnrichmentJobManager"),
+            patch("vault_search.server.crud_tools.ReindexQueue") as queue_class,
+            patch("vault_search.server.crud_tools.ShutdownManager.register_callback"),
+        ):
+            register_crud_tools(mcp, MagicMock(), MagicMock())
+        return mcp.tools["generate_missing_ids"], queue_class.return_value
 
-    def test_returns_summary_with_counts(self):
-        """generate_missing_ids deve retornar resumo com contagens."""
-        pass
+    def test_dry_run_returns_preview(self, tmp_path, tool_and_queue):
+        """dry_run=True previews missing IDs without writing or reindexing."""
+        tool, queue = tool_and_queue
+        notes = [tmp_path / "note1.md", tmp_path / "note2.md"]
+
+        with (
+            patch("vault_search.server.crud_tools.VAULT_PATH", tmp_path),
+            patch("vault_search.server.crud_tools.scan_vault", return_value=notes),
+            patch(
+                "vault_search.server.crud_tools.read_frontmatter_only",
+                side_effect=[({}, 0), ({"id": "existing"}, 0)],
+            ),
+            patch("vault_search.server.crud_tools.crud_ensure_note_id") as mock_ensure,
+        ):
+            result = tool(dry_run=True)
+
+        assert result == {
+            "dry_run": True,
+            "total_scanned": 2,
+            "missing_ids": 1,
+            "would_add": 1,
+            "notes": ["note1.md"],
+            "truncated": False,
+        }
+        mock_ensure.assert_not_called()
+        queue.enqueue_sync.assert_not_called()
+
+    def test_adds_ids_to_notes_without_id(self, tmp_path, tool_and_queue):
+        """The tool adds UUIDs to every selected note that lacks one."""
+        tool, queue = tool_and_queue
+        queue.enqueue_sync.return_value = "completed"
+
+        with (
+            patch("vault_search.server.crud_tools.VAULT_PATH", tmp_path),
+            patch(
+                "vault_search.server.crud_tools.scan_vault",
+                return_value=[tmp_path / "note.md"],
+            ),
+            patch("vault_search.server.crud_tools.read_frontmatter_only", return_value=({}, 0)),
+            patch(
+                "vault_search.server.crud_tools.crud_ensure_note_id",
+                return_value={"success": True, "id_added": True, "id": "generated-id"},
+            ) as mock_ensure,
+        ):
+            result = tool()
+
+        mock_ensure.assert_called_once_with("note.md")
+        queue.enqueue_sync.assert_called_once_with()
+        assert result["ids_added"] == 1
+        assert result["added"] == [{"path": "note.md", "id": "generated-id"}]
+        assert result["reindex_status"] == "completed"
+
+    def test_skips_notes_with_existing_id(self, tmp_path, tool_and_queue):
+        """Notes with existing IDs are excluded from the write phase."""
+        tool, queue = tool_and_queue
+
+        with (
+            patch("vault_search.server.crud_tools.VAULT_PATH", tmp_path),
+            patch(
+                "vault_search.server.crud_tools.scan_vault",
+                return_value=[tmp_path / "note.md"],
+            ),
+            patch(
+                "vault_search.server.crud_tools.read_frontmatter_only",
+                return_value=({"id": "existing"}, 0),
+            ),
+            patch("vault_search.server.crud_tools.crud_ensure_note_id") as mock_ensure,
+        ):
+            result = tool()
+
+        mock_ensure.assert_not_called()
+        queue.enqueue_sync.assert_not_called()
+        assert result["missing_ids"] == 0
+        assert result["ids_added"] == 0
+        assert result["reindex_status"] == "not_needed"
+
+    def test_filters_by_complete_folder_component(self, tmp_path, tool_and_queue):
+        """A folder selector excludes sibling names that share its prefix."""
+        tool, _ = tool_and_queue
+        project_note = tmp_path / "projects" / "note.md"
+        prefixed_sibling = tmp_path / "projects-archive" / "note.md"
+
+        with (
+            patch("vault_search.server.crud_tools.VAULT_PATH", tmp_path),
+            patch(
+                "vault_search.server.crud_tools.scan_vault",
+                return_value=[project_note, prefixed_sibling],
+            ),
+            patch("vault_search.server.crud_tools.read_frontmatter_only", return_value=({}, 0)),
+        ):
+            result = tool(folder="projects", dry_run=True)
+
+        assert result["total_scanned"] == 1
+        assert result["notes"] == ["projects/note.md"]
+
+    def test_returns_summary_with_counts(self, tmp_path, tool_and_queue):
+        """The write result separates successful additions from failures."""
+        tool, queue = tool_and_queue
+        queue.enqueue_sync.return_value = "completed"
+        notes = [tmp_path / "one.md", tmp_path / "two.md", tmp_path / "existing.md"]
+
+        with (
+            patch("vault_search.server.crud_tools.VAULT_PATH", tmp_path),
+            patch("vault_search.server.crud_tools.scan_vault", return_value=notes),
+            patch(
+                "vault_search.server.crud_tools.read_frontmatter_only",
+                side_effect=[({}, 0), ({}, 0), ({"id": "existing"}, 0)],
+            ),
+            patch(
+                "vault_search.server.crud_tools.crud_ensure_note_id",
+                side_effect=[
+                    {"success": True, "id_added": True, "id": "generated-id"},
+                    {"success": False, "id_added": False, "message": "write failed"},
+                ],
+            ),
+        ):
+            result = tool()
+
+        assert result["total_scanned"] == 3
+        assert result["missing_ids"] == 2
+        assert result["ids_added"] == 1
+        assert result["errors"] == 1
+        assert result["error_details"] == [{"path": "two.md", "error": "write failed"}]
 
 
 class TestIgnoreNextChange:
-    """Testes para mecanismo de ignorar mudanças do watcher."""
+    """Tests for the watcher change-ignore mechanism."""
 
     @pytest.fixture
     def mock_frontmatter_validation(self):
-        """Mocka validação de frontmatter para retornar sucesso."""
+        """Return successful frontmatter validation results."""
 
         def mock_validate_result(frontmatter):
             return {
@@ -371,7 +546,7 @@ class TestIgnoreNextChange:
             }
 
         def mock_validate_tuple(frontmatter):
-            # validate_frontmatter_schema retorna tupla
+            # validate_frontmatter_schema returns a tuple.
             return (frontmatter, [], [], [])
 
         with patch(
@@ -385,49 +560,49 @@ class TestIgnoreNextChange:
                 yield
 
     def test_ignore_next_change_prevents_enqueue(self, tmp_path):
-        """ignore_next_change deve evitar que o watcher enfileire o evento."""
-        from vault_search.server.event_handler import (
+        """ignore_next_change prevents the watcher from enqueuing the event."""
+        from vault_search.watching.event_handler import (
             _check_and_clear_ignore,
             ignore_next_change,
         )
 
-        note = tmp_path / "nota.md"
-        note.write_text("revisão própria")
+        note = tmp_path / "note.md"
+        note.write_text("own revision")
 
-        with patch("vault_search.server.event_handler.VAULT_PATH", tmp_path):
-            ignore_next_change("nota.md")
+        with patch("vault_search.watching.event_handler.VAULT_PATH", tmp_path):
+            ignore_next_change("note.md")
 
-            assert _check_and_clear_ignore("nota.md", note) is True
-            assert _check_and_clear_ignore("nota.md", note) is False
+            assert _check_and_clear_ignore("note.md", note) is True
+            assert _check_and_clear_ignore("note.md", note) is False
 
     def test_ignore_is_path_specific(self, tmp_path):
-        """ignore_next_change deve ser específico por path."""
-        from vault_search.server.event_handler import (
+        """ignore_next_change is scoped to one path."""
+        from vault_search.watching.event_handler import (
             _check_and_clear_ignore,
             ignore_next_change,
         )
 
-        note1 = tmp_path / "nota1.md"
-        note1.write_text("revisão própria")
+        note1 = tmp_path / "note1.md"
+        note1.write_text("own revision")
 
-        with patch("vault_search.server.event_handler.VAULT_PATH", tmp_path):
-            ignore_next_change("nota1.md")
+        with patch("vault_search.watching.event_handler.VAULT_PATH", tmp_path):
+            ignore_next_change("note1.md")
 
-            assert _check_and_clear_ignore("nota2.md", tmp_path / "nota2.md") is False
-            assert _check_and_clear_ignore("nota1.md", note1) is True
+            assert _check_and_clear_ignore("note2.md", tmp_path / "note2.md") is False
+            assert _check_and_clear_ignore("note1.md", note1) is True
 
     def test_ensure_note_id_marks_path_for_ignore(self, tmp_path, mock_frontmatter_validation):
-        """ensure_note_id deve marcar o path para ignorar antes de escrever."""
-        from vault_search.server.event_handler import (
+        """ensure_note_id must mark the path to ignore before writing."""
+        from vault_search.watching.event_handler import (
             _ignore_lock,
             _ignore_next_change,
         )
 
-        # Criar nota sem ID
-        note = tmp_path / "nota.md"
+        # Create note without ID
+        note = tmp_path / "note.md"
         note.write_text("---\ntitle: Test\n---\nBody")
 
-        # Limpar estado
+        # Clear state
         with _ignore_lock:
             _ignore_next_change.clear()
 
@@ -435,33 +610,50 @@ class TestIgnoreNextChange:
             with patch("vault_search.crud.validation.VAULT_PATH", tmp_path):
                 from vault_search.crud.write import ensure_note_id
 
-                result = ensure_note_id("nota.md")
+                result = ensure_note_id("note.md")
 
             assert result.get("id_added") is True
 
-            # Verificar que o path foi marcado para ignorar
-            # (a flag é consumida pelo check, então verificamos se estava lá)
-            # Como ensure_note_id já chamou ignore_next_change, a flag deve estar lá
-            # a menos que algo a tenha consumido
-            # Na verdade, precisamos verificar se a flag foi setada ANTES de ser consumida
-            # Vamos verificar que o arquivo foi modificado e tem ID
+            # Verify that the path was marked for ignoring.
+            # The check consumes the flag, so verify that it existed first.
+            # ensure_note_id already called ignore_next_change, so the flag must exist.
+            # Unless another consumer has already consumed it.
+            # Verify that the flag was set before it was consumed.
+            # Verify that the file was modified and now has an ID.
             content = note.read_text()
             assert "id:" in content
 
 
 class TestUuidIntegration:
-    """Testes de integração para fluxo completo de UUID."""
+    """Integration tests for the complete UUID flow."""
 
-    def test_create_note_generates_indexable_id(self):
-        """ID gerado em create_note deve ser extraído corretamente na indexação."""
-        # Verifica que o campo 'id' é extraído pelo frontmatter parser
-        pass
+    def test_create_note_generates_indexable_id(self, tmp_path):
+        """The parser extracts the same UUID generated by create_note."""
+        from vault_search.crud.write import create_note
+        from vault_search.parsers.frontmatter import extract_frontmatter_fields, parse_frontmatter
+
+        with (
+            patch("vault_search.crud.write.validate_for_write", return_value=tmp_path / "note.md"),
+            patch("vault_search.crud.write.file_revision", return_value=None),
+            patch("vault_search.crud.write.advisory_path_lock", return_value=nullcontext()),
+            patch("vault_search.crud.write.safe_write_text", return_value=None) as mock_write,
+        ):
+            result = create_note("note.md", "Body", validate_schema=False)
+
+        serialized = mock_write.call_args.args[1]
+        frontmatter, body = parse_frontmatter(serialized)
+        indexed_fields = extract_frontmatter_fields(frontmatter)
+
+        assert result["success"] is True
+        assert body == "Body"
+        assert indexed_fields["id"] == frontmatter["id"]
+        assert indexed_fields["id"][14] == "7"
 
     def test_watcher_ignores_auto_generated_id_change(self, tmp_path):
-        """Watcher deve ignorar mudança quando ensure_note_id adiciona ID."""
+        """The watcher ignores the change made when ensure_note_id adds an ID."""
         import threading
 
-        from vault_search.server.event_handler import (
+        from vault_search.watching.event_handler import (
             VaultEventHandler,
             ignore_next_change,
         )
@@ -470,27 +662,27 @@ class TestUuidIntegration:
         lock = threading.Lock()
         handler = VaultEventHandler(pending, lock)
 
-        note = tmp_path / "notas" / "teste.md"
+        note = tmp_path / "notes" / "test.md"
         note.parent.mkdir()
-        note.write_text("revisão própria")
+        note.write_text("own revision")
 
-        # Simular evento de modificação
+        # Simulate a file modification event.
         with patch.object(handler, "_should_process", return_value=True):
-            with patch("vault_search.server.event_handler.VAULT_PATH", tmp_path):
+            with patch("vault_search.watching.event_handler.VAULT_PATH", tmp_path):
                 from watchdog.events import FileModifiedEvent
 
-                ignore_next_change("notas/teste.md")
+                ignore_next_change("notes/test.md")
                 event = FileModifiedEvent(str(note))
                 handler.on_modified(event)
 
-        # Evento não deve estar na fila (foi ignorado)
-        assert "notas/teste.md" not in pending
+        # The ignored event must not reach the pending queue.
+        assert "notes/test.md" not in pending
 
     def test_uuid7_is_chronologically_sortable(self):
-        """UUIDs gerados devem permitir ordenação cronológica das notas."""
+        """Generated UUIDs must allow chronological note sorting."""
         uuids = []
         for _ in range(10):
             uuids.append(generate_uuid7())
 
-        # UUIDs já devem estar ordenados (gerados em sequência)
-        assert uuids == sorted(uuids), "UUIDs não estão em ordem cronológica"
+        # Sequentially generated UUIDs must already be ordered.
+        assert uuids == sorted(uuids), "UUIDs are not in chronological order"

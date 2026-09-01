@@ -1,11 +1,8 @@
 """
-Catálogo SQLite de notas para list_notes() rápido.
+SQLite note catalog for bounded list_notes queries.
 
-Substitui scan O(N) do filesystem por query SQL instantânea.
-Mantido sincronizado via:
-- Scan inicial no startup
-- Updates incrementais via watcher
-- Reconciliação periódica (default: 2min)
+Avoids a full filesystem scan on each request. It stays synchronized through
+an initial scan, incremental watcher updates, and periodic reconciliation.
 """
 
 import logging
@@ -25,15 +22,15 @@ from vault_search.utils.security import escape_like_pattern
 
 logger = logging.getLogger(__name__)
 
-# Configurações
+# Catalog settings.
 CATALOG_DB_PATH = DB_DIR / "notes_catalog.db"
-RECONCILE_INTERVAL_SECONDS = 120  # 2 minutos
+RECONCILE_INTERVAL_SECONDS = 120
 
 CatalogRow = tuple[str, str, str, str, int, int]
 
 
 class CatalogStats(TypedDict):
-    """Estatísticas públicas agregadas por extensão."""
+    """Public catalog statistics aggregated by extension."""
 
     total_notes: int
     by_extension: dict[str, int]
@@ -41,18 +38,18 @@ class CatalogStats(TypedDict):
 
 class NotesCatalog:
     """
-    Catálogo SQLite de notas do vault.
+    SQLite catalog of vault notes.
 
-    Permite list_notes() em O(1) ao invés de O(N) filesystem scan.
+    Serves list_notes without scanning the filesystem for every request.
 
-    Uso:
+    Example:
         catalog = NotesCatalog()
-        catalog.initialize()  # Scan inicial
-        notes = catalog.list_notes(folder="projetos", limit=20)
+        catalog.initialize()  # Initial scan.
+        notes = catalog.list_notes(folder="projects", limit=20)
 
-        # Quando arquivo muda (via watcher):
-        catalog.upsert("pasta/nota.md")
-        catalog.delete("pasta/deletada.md")
+        # When the watcher observes a file change:
+        catalog.upsert("folder/note.md")
+        catalog.delete("folder/deleted.md")
     """
 
     def __init__(self, db_path: Path | None = None):
@@ -65,7 +62,7 @@ class NotesCatalog:
 
     @contextmanager
     def _connection(self):
-        """Context manager para conexão SQLite."""
+        """Open a configured SQLite connection."""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self._db_path), timeout=10.0)
         conn.row_factory = sqlite3.Row
@@ -80,7 +77,7 @@ class NotesCatalog:
             conn.close()
 
     def _create_schema(self):
-        """Cria tabela e índices se não existirem."""
+        """Create the table and indexes when absent."""
         with self._connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS notes_catalog (
@@ -92,7 +89,7 @@ class NotesCatalog:
                     size INTEGER NOT NULL
                 )
             """)
-            # Índices para queries comuns
+            # Index common query predicates.
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_folder
                 ON notes_catalog(folder)
@@ -108,24 +105,24 @@ class NotesCatalog:
 
     def initialize(self, force_rebuild: bool = False):
         """
-        Inicializa catálogo com scan completo do vault.
+        Initialize the catalog with a complete vault scan.
 
-        Parâmetros:
-            force_rebuild: se True, apaga e reconstrói do zero
+        Parameters:
+            force_rebuild: rebuild the catalog from scratch when true
         """
         with self._lock:
             if self._initialized and not force_rebuild:
                 return
 
-            logger.info("Inicializando notes_catalog...")
+            logger.info("Initializing notes_catalog...")
             start = time.perf_counter()
 
             self._create_schema()
 
-            # Scan completo do vault
+            # Scan the complete vault.
             notes_data = self._scan_vault()
 
-            # Inserir em batch
+            # Insert in one batch.
             with self._connection() as conn:
                 if force_rebuild:
                     conn.execute("DELETE FROM notes_catalog")
@@ -140,12 +137,16 @@ class NotesCatalog:
                 )
 
             elapsed = time.perf_counter() - start
-            logger.info(f"notes_catalog inicializado: {len(notes_data)} notas em {elapsed:.2f}s")
+            logger.info(
+                "notes_catalog initialized notes=%d elapsed_seconds=%.2f",
+                len(notes_data),
+                elapsed,
+            )
 
             self._initialized = True
 
     def _scan_vault(self) -> list[CatalogRow]:
-        """Scan do vault retornando dados para inserção."""
+        """Scan the vault and return rows ready for insertion."""
         notes_data: list[CatalogRow] = []
         stack: list[Path] = [VAULT_PATH]
 
@@ -190,7 +191,7 @@ class NotesCatalog:
                                 relative_path,
                                 folder,
                                 ext,
-                                name[:dot_idx],  # title = filename sem extensão
+                                name[:dot_idx],  # Title defaults to the filename stem.
                                 stat.st_mtime_ns,
                                 stat.st_size,
                             )
@@ -203,9 +204,9 @@ class NotesCatalog:
 
     def upsert(self, relative_path: str):
         """
-        Insere ou atualiza uma nota no catálogo.
+        Insert or update a note in the catalog.
 
-        Chamado pelo watcher quando arquivo é criado/modificado.
+        The watcher calls this for created and modified files.
         """
         file_path = VAULT_PATH / relative_path
 
@@ -247,10 +248,10 @@ class NotesCatalog:
 
     def _upsert_batch(self, notes_data: list[CatalogRow]) -> None:
         """
-        Insere ou atualiza múltiplas notas de uma vez (batch).
+        Insert or update multiple notes in one batch.
 
-        Usado por _reconcile para evitar stat() duplicado.
-        notes_data é lista de tuplas (path, folder, ext, title, mtime_ns, size).
+        Reconciliation uses this to avoid duplicate stat calls. Each tuple is
+        (path, folder, extension, title, mtime_ns, size).
         """
         if not notes_data:
             return
@@ -265,13 +266,13 @@ class NotesCatalog:
                 notes_data,
             )
 
-        logger.debug(f"catalog._upsert_batch: {len(notes_data)} notas")
+        logger.debug("catalog_upsert_batch notes=%d", len(notes_data))
 
     def delete(self, relative_path: str):
         """
-        Remove uma nota do catálogo.
+        Remove a note from the catalog.
 
-        Chamado pelo watcher quando arquivo é deletado.
+        The watcher calls this when a file is deleted.
         """
         with self._connection() as conn:
             conn.execute("DELETE FROM notes_catalog WHERE path = ?", (relative_path,))
@@ -285,17 +286,16 @@ class NotesCatalog:
         offset: int = 0,
     ) -> tuple[list[NoteListItem], int]:
         """
-        Lista notas do catálogo com filtros e paginação.
+        List catalog notes with filters and pagination.
 
-        Retorna:
-            Tupla (lista de notas, total sem paginação)
+        Returns:
+            Tuple of page results and total matches before pagination.
         """
         conditions: list[str] = []
         params: list[str | int] = []
 
         if folder:
-            # Pasta exata ou subpastas
-            # Mantém consistência para filtros LIKE com subpastas.
+            # Match an exact folder and its descendants.
             conditions.append("(folder = ? OR folder LIKE ? ESCAPE '\\')")
             escaped_folder = escape_like_pattern(folder)
             params.extend([folder, f"{escaped_folder}/%"])
@@ -333,7 +333,7 @@ class NotesCatalog:
 
     @staticmethod
     def _row_to_note(row: sqlite3.Row) -> NoteListItem:
-        """Converte uma linha SQLite no contrato público de listagem."""
+        """Convert a SQLite row to the public listing contract."""
         return NoteListItem(
             path=row["path"],
             folder=row["folder"],
@@ -344,7 +344,7 @@ class NotesCatalog:
         )
 
     def get_all_folders(self) -> list[str]:
-        """Lista pastas distintas sem expor o path absoluto do vault."""
+        """List distinct folders without exposing the absolute vault path."""
         with self._connection() as conn:
             rows = conn.execute(
                 """
@@ -357,7 +357,7 @@ class NotesCatalog:
         return [str(row["folder"]) for row in rows]
 
     def get_recent_notes(self, days: int = 7, limit: int = 50) -> list[NoteListItem]:
-        """Retorna as notas mais recentes dentro de uma janela fechada."""
+        """Return the most recent notes inside a bounded time window."""
         safe_days = max(1, min(days, 3650))
         safe_limit = max(1, min(limit, 5000))
         cutoff_ns = time.time_ns() - safe_days * 86_400 * 1_000_000_000
@@ -375,7 +375,7 @@ class NotesCatalog:
         return [self._row_to_note(row) for row in rows]
 
     def start_reconciliation(self, interval: int = RECONCILE_INTERVAL_SECONDS) -> bool:
-        """Inicia reconciliação se nenhuma geração anterior estiver viva."""
+        """Start reconciliation if no previous generation is alive."""
         with self._reconcile_lifecycle_lock:
             if self._reconcile_thread is not None and self._reconcile_thread.is_alive():
                 logger.warning("catalog_reconcile_start_rejected reason=previous_generation_alive")
@@ -390,11 +390,11 @@ class NotesCatalog:
             )
             thread.start()
             self._reconcile_thread = thread
-        logger.info(f"Reconciliação iniciada (intervalo: {interval}s)")
+        logger.info("catalog_reconciliation started interval_seconds=%d", interval)
         return True
 
     def stop_reconciliation(self) -> bool:
-        """Solicita parada e preserva referência se a thread exceder o prazo."""
+        """Request shutdown and retain the thread if it misses the deadline."""
         with self._reconcile_lifecycle_lock:
             self._stop_event.set()
             thread = self._reconcile_thread
@@ -407,11 +407,11 @@ class NotesCatalog:
                 return False
 
             self._reconcile_thread = None
-        logger.info("Reconciliação parada")
+        logger.info("catalog_reconciliation stopped")
         return True
 
     def _reconcile_loop(self, interval: int):
-        """Loop de reconciliação periódica."""
+        """Run periodic reconciliation until shutdown."""
         while not self._stop_event.is_set():
             self._stop_event.wait(timeout=interval)
             if self._stop_event.is_set():
@@ -427,47 +427,44 @@ class NotesCatalog:
 
     def _reconcile(self):
         """
-        Reconcilia catálogo com filesystem.
+        Reconcile the catalog with the filesystem.
 
-        Detecta:
-        - Arquivos novos não no catálogo
-        - Arquivos deletados ainda no catálogo
-        - Arquivos modificados (mtime diferente)
+        Detect new, deleted, and modified files.
         """
-        logger.debug("Iniciando reconciliação...")
+        logger.debug("catalog_reconciliation started")
         start = time.perf_counter()
 
-        # Scan atual do filesystem - já inclui todos os dados necessários
+        # Scan the filesystem once and retain all data needed for the batch.
         scan_data = self._scan_vault()
         current_files = {}
         scan_by_path = {}
         for data in scan_data:
             path, folder, ext, title, mtime_ns, size = data
             current_files[path] = (mtime_ns, size)
-            scan_by_path[path] = data  # Guardar dados completos para batch upsert
+            scan_by_path[path] = data
 
-        # Obter estado do catálogo
+        # Read the current catalog state.
         with self._connection() as conn:
             rows = conn.execute("SELECT path, mtime_ns, size FROM notes_catalog").fetchall()
             catalog_files = {row["path"]: (row["mtime_ns"], row["size"]) for row in rows}
 
-        # Detectar diferenças
-        to_upsert_data = []  # Agora é lista de dados completos, não só paths
+        # Compute the reconciliation delta.
+        to_upsert_data = []
         to_delete = []
 
-        # Novos ou modificados - usar dados do scan (evita stat() duplicado)
+        # Use retained scan data for new and modified files.
         for path, (mtime_ns, size) in current_files.items():
             if path not in catalog_files:
                 to_upsert_data.append(scan_by_path[path])
             elif catalog_files[path] != (mtime_ns, size):
                 to_upsert_data.append(scan_by_path[path])
 
-        # Deletados
+        # Deleted files.
         for path in catalog_files:
             if path not in current_files:
                 to_delete.append(path)
 
-        # Aplicar mudanças em batch (evita stat() duplicado)
+        # Apply changes in batches without duplicate stat calls.
         if to_upsert_data:
             self._upsert_batch(to_upsert_data)
 
@@ -477,11 +474,14 @@ class NotesCatalog:
         elapsed = time.perf_counter() - start
         if to_upsert_data or to_delete:
             logger.info(
-                f"Reconciliação: +{len(to_upsert_data)} -{len(to_delete)} em {elapsed:.2f}s"
+                "catalog_reconciliation upserted=%d deleted=%d elapsed_seconds=%.2f",
+                len(to_upsert_data),
+                len(to_delete),
+                elapsed,
             )
 
     def stats(self) -> CatalogStats:
-        """Retorna estatísticas do catálogo."""
+        """Return catalog statistics."""
         with self._connection() as conn:
             total = int(conn.execute("SELECT COUNT(*) FROM notes_catalog").fetchone()[0])
 
@@ -498,10 +498,10 @@ class NotesCatalog:
 
     def is_available(self) -> bool:
         """
-        Verifica se o catálogo está disponível e funcionando.
+        Check whether the catalog is initialized and queryable.
 
-        Retorna:
-            True se o catálogo está inicializado e pode ser consultado.
+        Returns:
+            True when the catalog is initialized and queryable.
         """
         if not self._initialized:
             return False
@@ -520,7 +520,7 @@ _catalog_lock = threading.Lock()
 
 
 def get_catalog() -> NotesCatalog:
-    """Obtém instância singleton do catálogo."""
+    """Return the process-wide catalog instance."""
     global _catalog
     with _catalog_lock:
         if _catalog is None:

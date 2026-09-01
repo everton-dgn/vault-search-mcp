@@ -1,15 +1,15 @@
 """
-Testes para as ferramentas de links indexados (Fase 2).
+Tests for indexed-link tools (Phase 2).
 
-Testa get_backlinks, get_outlinks, find_broken_links, find_orphan_notes, link_stats.
+Test get_backlinks, get_outlinks, find_broken_links, find_orphan_notes, link_stats.
 """
 
 
 class TestGetBacklinksIndexed:
-    """Testes para get_backlinks usando índice."""
+    """Tests for get_backlinks using index."""
 
     def test_finds_backlinks_via_index(self, tmp_path, monkeypatch):
-        """get_backlinks deve encontrar backlinks via índice."""
+        """get_backlinks must find backlinks via index."""
         import vault_search.core.indexer as idx
         from vault_search.config.embedding import EMBEDDING_DIMENSION
 
@@ -23,7 +23,7 @@ class TestGetBacklinksIndexed:
 
         indexer = VaultIndexer()
 
-        # Criar tabela de chunks
+        # Create table of chunks
         indexer._ensure_table(
             data=[
                 {
@@ -67,7 +67,7 @@ class TestGetBacklinksIndexed:
             ]
         )
 
-        # Indexar link de source -> target
+        # Index link of source -> target
         links = [
             {
                 "from_note_path": "source.md",
@@ -80,21 +80,21 @@ class TestGetBacklinksIndexed:
                 "alias": "",
                 "heading": "",
                 "block_ref": "",
-                "context": "Link para [[target]]",
+                "context": "Link for [[target]]",
                 "modified_at": "2026-01-01T00:00:00",
             },
         ]
         indexer._index_links(links)
 
-        # Testar via função interna (não via MCP server)
+        # Test through the internal function instead of the MCP server.
         links_table = indexer._ensure_links_table()
         results = links_table.search().where("to_note_path = 'target.md'").to_list()
 
         assert len(results) == 1
         assert results[0]["from_note_path"] == "source.md"
 
-    def test_no_self_reference(self, tmp_path, monkeypatch):
-        """Nota não deve aparecer como seu próprio backlink."""
+    def test_in_self_reference(self, tmp_path, monkeypatch):
+        """A note does not appear as its own backlink."""
         import vault_search.core.indexer as idx
         from vault_search.config.embedding import EMBEDDING_DIMENSION
 
@@ -131,7 +131,7 @@ class TestGetBacklinksIndexed:
             ]
         )
 
-        # Link da nota para si mesma
+        # Self-link from the note.
         links = [
             {
                 "from_note_path": "note.md",
@@ -150,20 +150,20 @@ class TestGetBacklinksIndexed:
         ]
         indexer._index_links(links)
 
-        # Verificar que o link existe mas é self-reference
+        # Verify that the link exists but is self-reference
         links_table = indexer._ensure_links_table()
         results = links_table.search().where("to_note_path = 'note.md'").to_list()
 
         assert len(results) == 1
         assert results[0]["from_note_path"] == "note.md"
-        # get_backlinks filtra self-references na lógica
+        # get_backlinks filters self-references in the logic
 
 
 class TestFindBrokenLinks:
-    """Testes para find_broken_links."""
+    """Tests for find_broken_links."""
 
     def test_finds_broken_links(self, tmp_path, monkeypatch):
-        """Deve encontrar links não resolvidos."""
+        """Must find links not resolved."""
         import vault_search.core.indexer as idx
 
         monkeypatch.setattr(idx, "DATA_DIR", tmp_path / "data")
@@ -175,36 +175,36 @@ class TestFindBrokenLinks:
 
         indexer = VaultIndexer()
 
-        # Link quebrado (is_resolved=False)
+        # Broken link (is_resolved=False).
         links = [
             {
                 "from_note_path": "source.md",
                 "from_note_title": "Source",
                 "link_type": "wikilink",
-                "link_target": "inexistente",
-                "link_target_normalized": "inexistente",
+                "link_target": "nonexistent",
+                "link_target_normalized": "nonexistent",
                 "to_note_path": "",
                 "is_resolved": False,
                 "alias": "",
                 "heading": "",
                 "block_ref": "",
-                "context": "[[inexistente]]",
+                "context": "[[nonexistent]]",
                 "modified_at": "2026-01-01T00:00:00",
             },
         ]
         indexer._index_links(links)
 
-        # Query links quebrados
+        # Query links broken
         links_table = indexer._ensure_links_table()
         broken = (
             links_table.search().where("is_resolved = false AND link_type != 'external'").to_list()
         )
 
         assert len(broken) == 1
-        assert broken[0]["link_target"] == "inexistente"
+        assert broken[0]["link_target"] == "nonexistent"
 
     def test_folder_filter(self, tmp_path, monkeypatch):
-        """Deve filtrar por pasta."""
+        """The tool must filter by folder."""
         import vault_search.core.indexer as idx
 
         monkeypatch.setattr(idx, "DATA_DIR", tmp_path / "data")
@@ -218,7 +218,7 @@ class TestFindBrokenLinks:
 
         links = [
             {
-                "from_note_path": "projetos/a.md",
+                "from_note_path": "projects/a.md",
                 "from_note_title": "A",
                 "link_type": "wikilink",
                 "link_target": "x",
@@ -232,7 +232,7 @@ class TestFindBrokenLinks:
                 "modified_at": "2026-01-01T00:00:00",
             },
             {
-                "from_note_path": "outros/b.md",
+                "from_note_path": "other/b.md",
                 "from_note_title": "B",
                 "link_type": "wikilink",
                 "link_target": "y",
@@ -248,10 +248,10 @@ class TestFindBrokenLinks:
         ]
         indexer._index_links(links)
 
-        # Query com filtro de pasta
+        # Query with filter of folder
         from vault_search.utils.security import escape_sql_string
 
-        folder = "projetos"
+        folder = "projects"
         escaped = escape_sql_string(folder)
 
         links_table = indexer._ensure_links_table()
@@ -262,14 +262,14 @@ class TestFindBrokenLinks:
         )
 
         assert len(filtered) == 1
-        assert filtered[0]["from_note_path"].startswith("projetos/")
+        assert filtered[0]["from_note_path"].startswith("projects/")
 
 
 class TestLinkStats:
-    """Testes para link_stats."""
+    """Tests for link_stats."""
 
     def test_counts_links_correctly(self, tmp_path, monkeypatch):
-        """Deve contar links corretamente."""
+        """Must count links correctly."""
         import vault_search.core.indexer as idx
 
         monkeypatch.setattr(idx, "DATA_DIR", tmp_path / "data")
@@ -282,7 +282,7 @@ class TestLinkStats:
         indexer = VaultIndexer()
 
         links = [
-            # 2 links resolvidos
+            # 2 links resolved
             {
                 "from_note_path": "a.md",
                 "from_note_title": "A",
@@ -311,7 +311,7 @@ class TestLinkStats:
                 "context": "",
                 "modified_at": "2026-01-01T00:00:00",
             },
-            # 1 link quebrado
+            # One broken link.
             {
                 "from_note_path": "b.md",
                 "from_note_title": "B",
@@ -326,7 +326,7 @@ class TestLinkStats:
                 "context": "",
                 "modified_at": "2026-01-01T00:00:00",
             },
-            # 1 link externo
+            # 1 link external
             {
                 "from_note_path": "c.md",
                 "from_note_title": "C",
@@ -344,7 +344,7 @@ class TestLinkStats:
         ]
         indexer._index_links(links)
 
-        # Contar
+        # Count
         links_table = indexer._ensure_links_table()
         all_links = links_table.search().to_list()
 
@@ -361,7 +361,7 @@ class TestLinkStats:
         assert external == 1
 
     def test_most_referenced_sorted(self, tmp_path, monkeypatch):
-        """Most referenced deve estar ordenado por backlinks."""
+        """Most referenced must be sorted by backlinks."""
         import vault_search.core.indexer as idx
 
         monkeypatch.setattr(idx, "DATA_DIR", tmp_path / "data")
@@ -373,7 +373,7 @@ class TestLinkStats:
 
         indexer = VaultIndexer()
 
-        # Hub note com 3 backlinks
+        # Hub note with 3 backlinks
         links = [
             {
                 "from_note_path": "a.md",
@@ -417,7 +417,7 @@ class TestLinkStats:
                 "context": "",
                 "modified_at": "2026-01-01T00:00:00",
             },
-            # Nota com 1 backlink
+            # Note with 1 backlink
             {
                 "from_note_path": "a.md",
                 "from_note_title": "A",
@@ -435,7 +435,7 @@ class TestLinkStats:
         ]
         indexer._index_links(links)
 
-        # Contar backlinks
+        # Count backlinks
         links_table = indexer._ensure_links_table()
         all_links = links_table.search().to_list()
 
@@ -458,10 +458,10 @@ class TestLinkStats:
 
 
 class TestGetOutlinksIndexed:
-    """Testes para get_outlinks usando índice."""
+    """Tests for get_outlinks using index."""
 
     def test_returns_all_link_types(self, tmp_path, monkeypatch):
-        """Deve retornar todos os tipos de links."""
+        """Must return all the types of links."""
         import vault_search.core.indexer as idx
 
         monkeypatch.setattr(idx, "DATA_DIR", tmp_path / "data")

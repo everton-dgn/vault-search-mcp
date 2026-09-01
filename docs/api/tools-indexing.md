@@ -1,9 +1,8 @@
-# Tools de indexação
+# Indexing tools
 
-As seis tools deste grupo operam sobre o índice derivado em LanceDB. Elas não
-substituem backups do vault. `reindex_vault`, `reindex_note`, `sync_vault` e
-`compact_index` alteram dados derivados; `vault_stats` e
-`vector_index_status` são leituras.
+These six tools operate on the derived LanceDB index. They never replace vault
+backups. `reindex_vault`, `reindex_note`, `sync_vault`, and `compact_index`
+change derived data. `vault_stats` and `vector_index_status` are read-only.
 
 ## `vault_stats`
 
@@ -11,7 +10,7 @@ substituem backups do vault. `reindex_vault`, `reindex_note`, `sync_vault` e
 vault_stats() -> dict
 ```
 
-Retorna:
+An empty index returns:
 
 ```python
 {
@@ -21,40 +20,36 @@ Retorna:
 }
 ```
 
-Os valores acima representam um índice vazio. Em uso, as contagens e a data
-refletem o estado local no momento da chamada.
+In use, counts and timestamps reflect local state at call time.
 
 ## `reindex_vault`
 
 ```python
-reindex_vault(
-    dry_run: bool = False,
-    require_daemon: bool = False,
-) -> dict | str
+reindex_vault(dry_run: bool = False, require_daemon: bool = False) -> dict | str
 ```
 
-Reconstrói chunks, links e aliases em tabelas de staging. O índice anterior é
-mantido quando parsing ou commit falham. A troca para as tabelas novas ocorre
-somente depois que o conjunto foi processado.
+Builds chunks, links, and aliases in staging tables. A parsing or commit failure
+preserves the previous index. New tables become active only after the complete
+set has been processed.
 
-Use primeiro:
+Start with:
 
 ```python
 reindex_vault(dry_run=True)
 ```
 
-O dry run escaneia arquivos e devolve `would_index`, distribuição por extensão
-e batch calculado. São contagens observadas no scan atual. Ele não faz parsing,
-não gera chunks, não carrega modelos e não modifica o índice. Portanto, o
-retorno não estima duração nem quantidade futura de chunks.
+The dry run scans files and returns `would_index`, extension distribution, and
+calculated batch size. It does not parse files, generate chunks, load models,
+or change the index. Its output is not an estimate of duration or future chunk
+count.
 
-Na execução real, o retorno inclui `status`, `total_notes`, `total_chunks` e
-`duration_seconds`. Campos adicionais descrevem links, aliases, índice vetorial,
-erros de parsing ou preservação do índice anterior.
+A real run reports `status`, `total_notes`, `total_chunks`, and
+`duration_seconds`. Additional fields describe links, aliases, vector-index
+state, parsing errors, or preservation of the old index.
 
-Com `require_daemon=True`, a execução espera até 30 segundos pelo daemon e
-retorna erro público se ele continuar indisponível. `dry_run=True` não exige
-modelos.
+With `require_daemon=True`, the operation waits up to 30 seconds and returns a
+sanitized error if the daemon remains unavailable. Dry runs do not require a
+model backend.
 
 ## `reindex_note`
 
@@ -62,25 +57,21 @@ modelos.
 reindex_note(path: str) -> dict | str
 ```
 
-Atualiza uma nota de forma incremental. O path precisa ser relativo e ter uma
-extensão habilitada. Se o arquivo deixou de existir, os registros antigos são
-retirados do índice.
+Updates one note incrementally. The path must be relative and use an enabled
+extension. If the file disappeared, stale index rows are removed.
 
-O retorno informa `status` e `chunks_indexed`. Estados possíveis cobrem
-atualização, remoção, arquivo vazio, rejeição de path ou extensão, erro de
-parsing e falha de escrita.
+The result includes `status` and `chunks_indexed`. Status values cover update,
+removal, empty content, invalid path or extension, parse errors, and write
+failures.
 
 ## `sync_vault`
 
 ```python
-sync_vault(
-    dry_run: bool = False,
-    require_daemon: bool = False,
-) -> dict
+sync_vault(dry_run: bool = False, require_daemon: bool = False) -> dict
 ```
 
-Compara o scan atual com `note_path` e `modified_at` do índice. Detecta arquivos
-novos, alterados e ausentes. O retorno contém:
+Compares the current scan with indexed `note_path` and `modified_at` values to
+detect new, modified, and deleted files.
 
 ```python
 {
@@ -93,12 +84,12 @@ novos, alterados e ausentes. O retorno contém:
 }
 ```
 
-As contagens acima ilustram um vault e índice vazios. `dry_run=True` relata as
-diferenças observadas, deixa `synced` em zero e não reindexa. Na execução normal,
-removidos são tratados primeiro, seguidos por novos e modificados.
+The values above illustrate an empty vault and index. `dry_run=True` reports
+observed differences, keeps `synced` at zero, and performs no reindex. A real
+run handles deletions before new and modified files.
 
-`require_daemon` tem o mesmo contrato de `reindex_vault`. A variável
-`VAULT_SEARCH_REQUIRE_DAEMON=1` também força esse comportamento.
+`require_daemon` follows the `reindex_vault` contract. The environment variable
+`VAULT_SEARCH_REQUIRE_DAEMON=1` also enforces it.
 
 ## `compact_index`
 
@@ -106,10 +97,9 @@ removidos são tratados primeiro, seguidos por novos e modificados.
 compact_index() -> dict | str
 ```
 
-Solicita a otimização das tabelas LanceDB após várias atualizações incrementais.
-O formato exato das estatísticas depende da versão do backend. Rode a operação
-em um período sem escrita concorrente e verifique o retorno antes de automatizar
-decisões.
+Requests LanceDB table optimization after many incremental updates. Exact
+statistics depend on the backend version. Run it outside a concurrent write
+window and inspect the result before automating follow-up decisions.
 
 ## `vector_index_status`
 
@@ -117,26 +107,26 @@ decisões.
 vector_index_status() -> dict
 ```
 
-Retorna `exists`, `auto_create_enabled`, `threshold`, `total_chunks` e
-`would_create`. `would_create` indica o que a configuração faria ao reconstruir
-o índice; ele não cria o índice durante a consulta.
+Returns `exists`, `auto_create_enabled`, `threshold`, `total_chunks`, and
+`would_create`. `would_create` describes the configured rebuild decision; this
+read does not create an ANN index.
 
-## Escolha operacional
+## Operational choice
 
-| Situação | Tool indicada |
+| Situation | Tool |
 |---|---|
-| Uma nota mudou | `reindex_note` |
-| Servidor ficou parado durante alterações | `sync_vault(dry_run=True)` e depois `sync_vault()` |
-| Configuração de parsing ou embedding mudou | `reindex_vault(dry_run=True)` e depois `reindex_vault()` |
-| Muitas atualizações incrementais ocorreram | `compact_index` |
-| Precisa conferir o índice ANN | `vector_index_status` |
+| One note changed | `reindex_note` |
+| Changes occurred while the server was stopped | `sync_vault(dry_run=True)`, then `sync_vault()` |
+| Parsing or embedding configuration changed | `reindex_vault(dry_run=True)`, then `reindex_vault()` |
+| Many incremental updates accumulated | `compact_index` |
+| ANN state needs inspection | `vector_index_status` |
 
-## Recuperação
+## Recovery
 
-Se uma reindexação completa retornar `previous_index_preserved: true`, o índice
-anterior continua canônico. Corrija o erro de parsing ou escrita e execute
-novamente. Caso o processo tenha sido interrompido, confira `status` e
-`timed_out` antes de decidir a próxima tentativa.
+When a full rebuild returns `previous_index_preserved: true`, the old index
+remains canonical. Correct the parsing or write error and retry. After an
+interrupted process, inspect `status` and `timed_out` before deciding the next
+action.
 
-Veja [Solução de problemas](../operation/troubleshooting.md) para falhas de
-daemon, permissão e índice ausente.
+See [troubleshooting](../operation/troubleshooting.md) for daemon, permission,
+and missing-index failures.

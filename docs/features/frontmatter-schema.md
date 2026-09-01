@@ -1,176 +1,145 @@
-# Validação do schema de frontmatter
+# Frontmatter schema validation
 
-O vault-search-mcp suporta validação configurável do frontmatter de notas markdown usando Pydantic.
+vault-search-mcp can validate Markdown frontmatter through a configurable
+Pydantic schema.
 
-## Visão geral
+## Capabilities
 
-A validação permite:
-- Definir tipos esperados para cada campo
-- Auto-gerar valores (UUID v7, timestamps)
-- Coerção automática de tipos
-- Campos obrigatórios, opcionais ou sugeridos
-- Aliases para nomes alternativos de campos
+- expected type per field;
+- automatic UUID v7 and datetime generation;
+- explicit type coercion with warnings;
+- required, suggested, optional, and ignored fields;
+- aliases for alternative field names;
+- string, number, enum, URL, and list constraints.
 
-## Configuração
-
-### Habilitando no `config.yaml`
+## Configuration
 
 ```yaml
 frontmatter:
   enabled: true
-  mode: lenient        # strict | lenient | warn_only
+  mode: "lenient"        # strict | lenient | warn_only
   allow_extra_fields: true
 
   schema:
     id:
-      type: uuid
-      on_missing: auto
+      type: "uuid"
+      on_missing: "auto"
 
     created_at:
-      type: datetime
-      on_missing: auto
+      type: "datetime"
+      on_missing: "auto"
       aliases: [created, date]
 
     status:
-      type: enum
+      type: "enum"
       values: [draft, review, published, archived]
-      on_missing: suggest
+      on_missing: "suggest"
 
     title:
-      type: string
-      on_missing: require
+      type: "string"
+      on_missing: "require"
       max_length: 200
 ```
 
-## Tipos suportados
+## Supported types
 
-| Tipo | Descrição | Validações |
-|------|-----------|------------|
-| `string` | Texto | `min_length`, `max_length`, `pattern` |
-| `int` | Número inteiro | `minimum`, `maximum` |
-| `float` | Número decimal | `minimum`, `maximum` |
-| `bool` | Booleano | - |
-| `date` | Data ISO (YYYY-MM-DD) | - |
-| `datetime` | Data/hora ISO | - |
-| `uuid` | UUID v4/v7 | - |
-| `url` | URL HTTP(S) | - |
-| `enum` | Valor de lista | `values`, `case_insensitive` |
-| `list` | Lista de valores | `item_type`, `min_items`, `max_items` |
+| Type | Meaning | Constraints |
+|---|---|---|
+| `string` | Text | `min_length`, `max_length`, `pattern` |
+| `int` | Integer | `minimum`, `maximum` |
+| `float` | Decimal number | `minimum`, `maximum` |
+| `bool` | Boolean | none |
+| `date` | ISO date | none |
+| `datetime` | ISO date and time | none |
+| `uuid` | Valid UUID | none |
+| `url` | HTTP or HTTPS URL | none |
+| `enum` | Member of an allowed list | `values`, `case_insensitive` |
+| `list` | List of values | `item_type`, `min_items`, `max_items` |
 
-## Comportamento `on_missing`
+## Missing-field behavior
 
-Define o que fazer quando um campo está ausente:
+| Value | Behavior |
+|---|---|
+| `auto` | Generate a value; supported only for `uuid` and `datetime` |
+| `suggest` | Accept the object and return a suggestion |
+| `require` | Report a blocking error when absent |
+| `ignore` | Ignore absence; this is the default |
 
-| Comportamento | Descrição |
-|---------------|-----------|
-| `auto` | Gera valor automaticamente (só `uuid` e `datetime`) |
-| `suggest` | Aceita, mas retorna sugestão para adicionar |
-| `require` | Bloqueia operação se ausente |
-| `ignore` | Silenciosamente ignora (default) |
+## Validation modes
 
-## Modos de validação
+| Mode | Behavior |
+|---|---|
+| `strict` | Blocking errors make the result invalid |
+| `lenient` | Blocking errors remain invalid and warnings are reported |
+| `warn_only` | Validation errors become warnings |
 
-| Modo | Descrição |
-|------|-----------|
-| `strict` | Bloqueia operação se houver erros |
-| `lenient` | Bloqueia erros, mas reporta warnings |
-| `warn_only` | Converte todos os erros em warnings |
+In the current implementation, `strict` and `lenient` compute `valid` the same
+way. The difference remains documentary until a tested contract changes it.
 
-Na implementação atual, `strict` e `lenient` calculam `valid` da mesma forma.
-Mantenha essa equivalência em mente até que uma diferença de contrato seja
-definida e testada.
-
-## Coerção de tipos
-
-O validador tenta converter valores automaticamente:
+## Type coercion
 
 ```yaml
-# YAML
-priority: "3"     # String → int
-active: "yes"     # String → bool
-tags: "a, b, c"   # String → list
+priority: "3"     # string to int
+active: "yes"     # string to bool
+tags: "a, b, c"   # string to list
 ```
 
-### Conversões suportadas
+| Input | Target | Result |
+|---|---|---|
+| numeric string | `int` or `float` | parsed number |
+| float | `int` | truncated integer with warning |
+| `true`, `yes`, `1`, `on` | `bool` | `True` |
+| `false`, `no`, `0`, `off` | `bool` | `False` |
+| date | `datetime` | midnight is added |
+| comma-separated string | `list` | trimmed items |
+| case variant | `enum` | canonical allowed spelling |
 
-| De | Para | Exemplo |
-|----|------|---------|
-| string numérica | int/float | `"42"` → `42` |
-| float | int (trunca) | `3.7` → `3` |
-| "true"/"yes"/"1" | bool | → `True` |
-| "false"/"no"/"0" | bool | → `False` |
-| date | datetime | adiciona `T00:00:00` |
-| string c/ vírgulas | list | `"a,b,c"` → `["a","b","c"]` |
-| UPPER CASE | enum | normaliza para valor canônico |
-
-### Valores rejeitados
-
-Alguns valores são rejeitados para evitar problemas em JSON/busca:
-
-| Tipo | Valores Rejeitados |
-|------|-------------------|
-| `int` | NaN, Infinity, -Infinity |
-| `float` | NaN, Infinity, -Infinity |
+NaN and infinity are rejected for integers and floats so JSON and search
+behavior stay deterministic.
 
 ## Aliases
-
-Permite múltiplos nomes para o mesmo campo:
 
 ```yaml
 schema:
   created_at:
-    type: datetime
+    type: "datetime"
     aliases: [created, date, timestamp]
 ```
 
-Qualquer alias é aceito e normalizado para o nome canônico:
-- `created: 2024-01-15` → `created_at: 2024-01-15T00:00:00`
-
-### Conflito de aliases
-
-Se o campo canônico e um alias estiverem ambos presentes, o valor canônico é usado e um warning é gerado:
+An alias is normalized to the canonical field. If both are present, the
+canonical value wins and validation emits a warning.
 
 ```python
-# Input
-{"created_at": "2024-01-15", "created": "2024-01-20"}
-
-# Result
-# created_at = "2024-01-15" (canônico vence)
-# warning: "Conflito: alias 'created' ignorado porque campo 'created_at' já existe"
+{"created_at": "2026-01-15", "created": "2026-01-20"}
+# validated_data["created_at"] uses 2026-01-15
 ```
 
-## Resultado da validação
+## Validation result
 
 ```python
 {
     "valid": True,
-    "errors": [],           # Erros que bloqueiam
-    "warnings": [],         # Coerções aplicadas
-    "suggestions": [],      # Campos sugeridos
-    "auto_generated": {     # Campos gerados automaticamente
+    "errors": [],
+    "warnings": [],
+    "suggestions": [],
+    "auto_generated": {
         "id": "019c503c-08e7-707f-9441-f4e6c5d0dd61",
-        "created_at": "2024-01-15T10:30:00"
+        "created_at": "2026-01-15T10:30:00",
     },
-    "validated_data": {...} # Dados finais após validação
+    "validated_data": {},
 }
 ```
 
-## API
+## MCP and Python APIs
 
-### Ferramenta MCP: `validate_frontmatter`
+Provide exactly one selector to `validate_frontmatter`:
 
 ```python
-# Validar nota existente
-validate_frontmatter(path="notes/minha-nota.md")
-
-# Validar dict diretamente
-validate_frontmatter(frontmatter={
-    "status": "draft",
-    "tags": ["ai", "python"]
-})
+validate_frontmatter(path="notes/example.md")
+validate_frontmatter(frontmatter={"status": "draft", "tags": ["ai", "python"]})
 ```
 
-### Python
+Direct Python use:
 
 ```python
 from vault_search.frontmatter import FrontmatterValidator
@@ -185,163 +154,88 @@ config = FrontmatterSchemaConfig(
 )
 
 validator = FrontmatterValidator(config)
-result = validator.validate({"title": "Minha Nota"})
+result = validator.validate({"title": "Example note"})
 ```
 
-## Integração com CRUD
+## CRUD integration
 
-### `create_note`
-
-Validação automática no `create_note`:
+`create_note` and `update_frontmatter` always apply configured validation. The
+MCP tools do not expose a per-call bypass.
 
 ```python
 create_note(
-    path="notes/nova.md",
-    content="# Conteúdo",
+    path="notes/new.md",
+    content="# Content",
     frontmatter={"status": "draft"},
 )
-```
 
-A tool MCP sempre executa a validação configurada; ela não expõe um argumento
-para desativá-la por chamada.
-
-Se validação falhar:
-- Modo `strict`/`lenient`: retorna erro
-- Modo `warn_only`: prossegue com warnings
-
-### `update_frontmatter`
-
-Validação também disponível no `update_frontmatter`:
-
-```python
 update_frontmatter(
-    path="notes/existente.md",
+    path="notes/existing.md",
     metadata={"status": "published"},
     merge=True,
 )
 ```
 
-### `ensure_note_id`
+`strict` and `lenient` block errors; `warn_only` continues with warnings.
 
-`ensure_note_id` é uma função interna usada pela indexação. No contrato MCP,
-use `generate_missing_ids(dry_run=True)` para revisar um lote ou `reindex_note`
-para processar uma nota.
+For existing notes, use `generate_missing_ids(dry_run=True)` to preview UUID
+generation or `reindex_note` for one note. Fields with `on_missing: auto` are
+persisted during supported write flows.
 
-```python
-generate_missing_ids(folder="notes", dry_run=True)
-```
+## Example schemas
 
-### Geração automática de campos
-
-Campos com `on_missing: auto` são gerados automaticamente:
-
-```python
-# Input
-create_note("note.md", "# Hi", frontmatter={})
-
-# Output (frontmatter gerado)
----
-id: 019c503c-08e7-707f-9441-f4e6c5d0dd61
-created_at: 2024-01-15T10:30:00
----
-```
-
-## Exemplos de schema
-
-### Blog/Artigos
+### Published content
 
 ```yaml
 schema:
   id:
-    type: uuid
-    on_missing: auto
-
+    type: "uuid"
+    on_missing: "auto"
   title:
-    type: string
-    on_missing: require
+    type: "string"
+    on_missing: "require"
     max_length: 200
-
   status:
-    type: enum
+    type: "enum"
     values: [draft, review, published]
-    on_missing: suggest
-    default: draft
-
-  published_at:
-    type: datetime
-    on_missing: ignore
-
+    on_missing: "suggest"
   tags:
-    type: list
-    item_type: string
-    on_missing: ignore
-
-  author:
-    type: string
-    on_missing: suggest
-```
-
-### Notas diárias
-
-```yaml
-schema:
-  id:
-    type: uuid
-    on_missing: auto
-
-  date:
-    type: date
-    on_missing: require
-    aliases: [created, dia]
-
-  mood:
-    type: enum
-    values: [great, good, okay, bad]
-    on_missing: ignore
-
-  energy:
-    type: int
-    minimum: 1
-    maximum: 10
-    on_missing: ignore
-```
-
-### Documentação técnica
-
-```yaml
-schema:
-  id:
-    type: uuid
-    on_missing: auto
-
-  version:
-    type: string
-    pattern: "^\\d+\\.\\d+\\.\\d+$"  # semver
-    on_missing: suggest
-
-  deprecated:
-    type: bool
-    on_missing: ignore
-    default: false
-
+    type: "list"
+    item_type: "string"
+    on_missing: "ignore"
   source:
-    type: url
-    on_missing: ignore
+    type: "url"
+    on_missing: "ignore"
 ```
 
-## Arquitetura
+### Technical documentation
 
+```yaml
+schema:
+  id:
+    type: "uuid"
+    on_missing: "auto"
+  version:
+    type: "string"
+    pattern: "^\\d+\\.\\d+\\.\\d+$"
+    on_missing: "suggest"
+  deprecated:
+    type: "bool"
+    on_missing: "ignore"
+    default: false
 ```
+
+## Package map
+
+```text
 src/vault_search/frontmatter/
-├── __init__.py       # Exports públicos
-├── types.py          # TypedDicts (ValidationError, ValidationResult)
-├── schema.py         # Modelos Pydantic (FieldSchema, FrontmatterSchemaConfig)
-├── coercion.py       # Funções de coerção para cada tipo
-└── validator.py      # FrontmatterValidator principal
+├── __init__.py       # public exports
+├── types.py          # validation result contracts
+├── schema.py         # Pydantic field and schema models
+├── coercion.py       # type-specific conversions
+├── validator.py      # validation engine
+└── enrichment.py     # optional external command
 ```
 
-## Veja também
-
-- [UUID v7 nas notas](uuid-system.md)
-- [Tools de CRUD e frontmatter](../api/tools-crud.md)
-- [Configuração YAML](../config/yaml.md)
+See [UUID v7](uuid-system.md), [CRUD tools](../api/tools-crud.md), and
+[YAML configuration](../config/yaml.md).

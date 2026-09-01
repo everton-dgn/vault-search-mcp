@@ -1,135 +1,135 @@
-# Catálogo MCP
+# MCP catalog
 
-O servidor registra 43 tools e 6 resources. A lista abaixo deriva dos
-decoradores em `src/vault_search/server/` e é validada pelo check de publicação.
+The server registers 43 tools and 6 resources. This catalog follows the
+decorators in `src/vault_search/server/` and is checked during publication.
 
-## Escolha da busca
+## Choose a search tool
 
-| Necessidade | Tool |
+| Need | Tool |
 |---|---|
-| Relação semântica | `search_vault` |
-| Termo exato e semântica | `search_vault_hybrid` |
-| Restringir a uma pasta | `search_by_folder` |
-| Combinar filtros estruturados | `search_advanced` |
-| Encontrar notas parecidas | `find_similar_notes` |
-| Filtrar por tags | `search_by_tags` |
-| Detectar conteúdo duplicado | `search_duplicates` |
+| Semantic relationships | `search_vault` |
+| Exact terms plus semantics | `search_vault_hybrid` |
+| One folder and its descendants | `search_by_folder` |
+| Structured filters | `search_advanced` |
+| Notes similar to a reference note | `find_similar_notes` |
+| Exact tag filtering | `search_by_tags` |
+| Duplicate or near-duplicate content | `search_duplicates` |
 
-Detalhes: [tools-search.md](tools-search.md).
+Details: [tools-search.md](tools-search.md).
 
-## Busca: 7
+## Search: 7 tools
 
-| Tool | Propósito |
+| Tool | Purpose |
 |---|---|
-| `search_vault` | Recuperação vetorial com reranking |
-| `search_vault_hybrid` | Combina recuperação vetorial e FTS |
-| `search_by_folder` | Busca semântica sob uma pasta |
-| `find_similar_notes` | Usa uma nota como referência |
-| `search_duplicates` | Agrupa notas por similaridade |
-| `search_advanced` | Aplica filtros de pasta, data e frontmatter |
-| `search_by_tags` | Seleciona notas por tags |
+| `search_vault` | Vector retrieval with reranking |
+| `search_vault_hybrid` | Vector retrieval combined with FTS |
+| `search_by_folder` | Semantic search below one folder |
+| `find_similar_notes` | Use one note as the search reference |
+| `search_duplicates` | Group notes by similarity |
+| `search_advanced` | Apply folder, date, and frontmatter filters |
+| `search_by_tags` | Select notes by exact tags |
 
-## Navegação: 10
+## Navigation: 10 tools
 
-| Tool | Propósito |
+| Tool | Purpose |
 |---|---|
-| `get_backlinks` | Links que apontam para uma nota |
-| `get_outlinks` | Links que saem de uma nota |
-| `find_broken_links` | Alvos sem nota resolvida |
-| `find_orphan_notes` | Notas sem ligações conhecidas |
-| `link_stats` | Estatísticas do índice de links |
-| `get_recent_notes` | Notas alteradas em uma janela |
-| `tag_stats` | Frequência e distribuição de tags |
-| `folder_tree` | Árvore agregada de pastas |
-| `random_note` | Amostra uma nota com filtros |
-| `daily_note` | Localiza ou descreve nota diária |
+| `get_backlinks` | Links that point to a note |
+| `get_outlinks` | Links that leave a note |
+| `find_broken_links` | Targets without a resolved note |
+| `find_orphan_notes` | Notes without known links |
+| `link_stats` | Link-index statistics |
+| `get_recent_notes` | Notes changed within a time window |
+| `tag_stats` | Tag frequency and distribution |
+| `folder_tree` | Aggregated folder tree |
+| `random_note` | Sample one note with optional filters |
+| `daily_note` | Find or describe a daily note |
 
-Detalhes: [tools-navigation.md](tools-navigation.md).
+Details: [tools-navigation.md](tools-navigation.md).
 
-## Indexação: 6
+## Indexing: 6 tools
 
-| Tool | Efeito |
+| Tool | Effect |
 |---|---|
-| `vault_stats` | Lê estatísticas do índice |
-| `reindex_vault` | Reconstrói o índice completo |
-| `reindex_note` | Atualiza uma nota no índice |
-| `sync_vault` | Compara vault e índice, com dry run |
-| `compact_index` | Compacta artefatos LanceDB |
-| `vector_index_status` | Lê estado do índice ANN |
+| `vault_stats` | Read index statistics |
+| `reindex_vault` | Rebuild the complete derived index |
+| `reindex_note` | Incrementally update one note |
+| `sync_vault` | Compare vault and index, with dry-run support |
+| `compact_index` | Compact LanceDB artifacts |
+| `vector_index_status` | Read ANN index state |
 
-Detalhes: [tools-indexing.md](tools-indexing.md).
+Details: [tools-indexing.md](tools-indexing.md).
 
-## CRUD e frontmatter: 13
+## CRUD and frontmatter: 13 tools
 
-| Tool | Efeito |
+| Tool | Effect |
 |---|---|
-| `read_note` | Lê conteúdo e metadados |
-| `get_note_metadata` | Lê metadados sem conteúdo integral |
-| `list_notes` | Lista notas com filtros e paginação |
-| `create_note` | Cria nota nova |
-| `write_note` | Substitui conteúdo de nota |
-| `append_note` | Acrescenta conteúdo |
-| `update_frontmatter` | Mescla ou substitui frontmatter |
-| `delete_note` | Move nota para `.trash` |
-| `move_note` | Move ou renomeia nota |
-| `generate_missing_ids` | Adiciona UUID a notas sem ID |
-| `validate_frontmatter` | Valida nota ou conjunto contra schema |
-| `enrich_frontmatter` | Agenda enriquecimento externo autorizado |
-| `enrich_frontmatter_status` | Consulta job de enriquecimento |
+| `read_note` | Read content and metadata |
+| `get_note_metadata` | Read metadata without the full body |
+| `list_notes` | List notes with filters and pagination |
+| `create_note` | Create a new note |
+| `write_note` | Replace complete note content |
+| `append_note` | Append content |
+| `update_frontmatter` | Merge or replace frontmatter |
+| `delete_note` | Move a note into `.trash` |
+| `move_note` | Move or rename a note |
+| `generate_missing_ids` | Add UUIDs to notes without identifiers |
+| `validate_frontmatter` | Validate a note or object against the schema |
+| `enrich_frontmatter` | Schedule explicitly authorized enrichment |
+| `enrich_frontmatter_status` | Read enrichment job state |
 
-Detalhes: [tools-crud.md](tools-crud.md).
+Details: [tools-crud.md](tools-crud.md).
 
-## Grafo: 4
+## Graph: 4 tools
 
-| Tool | Propósito |
+| Tool | Purpose |
 |---|---|
-| `graph_data` | Exporta nós e arestas com limites |
-| `suggest_links` | Sugere relações por similaridade |
-| `find_link_clusters` | Componentes conexos e densidade de grafo simples |
-| `find_bridge_notes` | Pontos de articulação por Tarjan iterativo |
+| `graph_data` | Export bounded nodes and edges |
+| `suggest_links` | Suggest relationships by semantic similarity |
+| `find_link_clusters` | Connected components and simple-graph density |
+| `find_bridge_notes` | Articulation points using iterative Tarjan traversal |
 
-Detalhes: [tools-graph.md](tools-graph.md).
+Details: [tools-graph.md](tools-graph.md).
 
-## Sistema: 3
+## System: 3 tools
 
-| Tool | Propósito |
+| Tool | Purpose |
 |---|---|
-| `system_stats` | Métricas internas e cache |
-| `health_check` | Saúde agregada dos componentes |
-| `benchmark_search` | Amostra latência no ambiente atual |
+| `system_stats` | Internal, model, and cache metrics |
+| `health_check` | Aggregated component health |
+| `benchmark_search` | Sample latency in the current environment |
 
-Detalhes: [tools-system.md](tools-system.md).
+Details: [tools-system.md](tools-system.md).
 
 ## Resources: 6
 
-| URI | Conteúdo |
+| URI | Content |
 |---|---|
-| `vault://stats` | Estado resumido do índice |
-| `vault://folders` | Árvore de pastas |
-| `vault://notes` | Lista de notas |
-| `vault://notes/{path*}` | Conteúdo de uma nota por path relativo |
-| `vault://search/recent` | Notas recentes |
-| `vault://tags` | Estatísticas de tags |
+| `vault://stats` | Summarized index state |
+| `vault://folders` | Folder tree |
+| `vault://notes` | Bounded note list |
+| `vault://notes/{path*}` | Note content by relative path |
+| `vault://search/recent` | Recently changed notes |
+| `vault://tags` | Tag statistics |
 
-Detalhes: [tools-resources.md](tools-resources.md).
+Details: [tools-resources.md](tools-resources.md).
 
-## Efeitos e autorização
+## Effects and authorization
 
-Tools de leitura não alteram notas. Indexação modifica apenas artefatos
-derivados, salvo geração explícita de UUID. CRUD, geração de IDs e enriquecimento
-podem modificar o vault e devem passar pela política de autorização do cliente.
+Read tools do not change notes. Indexing changes only derived artifacts unless
+UUID generation is explicitly requested. CRUD, ID generation, and enrichment
+can modify the vault and should pass through the client's authorization policy.
 
-`delete_note` usa a pasta `.trash` do vault. Não existe exclusão permanente no
-contrato público.
+`delete_note` uses the vault's `.trash` directory. The public contract has no
+permanent-delete operation.
 
-## Erros
+## Errors
 
-Clientes devem tratar o formato de sucesso e erro como dados estruturados. Uma
-mensagem pública não deve conter stack trace, path absoluto, consulta completa
-ou conteúdo de nota. Veja [errors.md](errors.md).
+Clients should treat success and failure values as structured data. A public
+message must not contain a stack trace, absolute path, complete query, or note
+body. See [errors.md](errors.md).
 
-## Compatibilidade
+## Compatibility
 
-A versão 0.1 é alpha. Mudança em nome, argumento, default ou retorno deve entrar
-no changelog e nos testes de contrato. A estabilidade compatível passa a ser
-obrigatória a partir da versão 1.0.
+The 0.x line is alpha. A change to a name, argument, default, or return shape
+must appear in the changelog and contract tests. Backward-compatible stability
+becomes mandatory at version 1.0.

@@ -1,8 +1,9 @@
 """
-Ferramentas MCP de CRUD para notas.
+MCP tools for note CRUD.
 """
 
 import logging
+from pathlib import Path
 
 from vault_search.config.paths import VAULT_PATH
 from vault_search.core.scanner import scan_vault
@@ -43,6 +44,7 @@ from vault_search.parsers.frontmatter import read_frontmatter_only
 from vault_search.server.errors import public_error
 from vault_search.server.frontmatter_jobs import FrontmatterEnrichmentJobManager
 from vault_search.server.reindex_queue import ReindexQueue
+from vault_search.utils.security import validate_relative_path
 from vault_search.utils.shutdown import ShutdownManager
 
 logger = logging.getLogger("vault-search-mcp")
@@ -51,16 +53,29 @@ type ToolResult = dict[str, object] | str
 type FrontmatterInput = dict[str, object]
 
 
+def _folder_selector(folder: str) -> Path:
+    """Return a validated vault-relative folder selector."""
+    normalized = folder.strip()
+    if not validate_relative_path(normalized):
+        raise ValueError("Folder must be a non-empty vault-relative path")
+    return Path(normalized)
+
+
+def _path_is_in_folder(relative_path: str, folder: Path) -> bool:
+    """Match one complete path component instead of a string prefix."""
+    return Path(relative_path).is_relative_to(folder)
+
+
 def _safe_reindex(
     scheduler: ReindexQueue,
     path: str,
     result: dict[str, object],
 ) -> dict[str, object]:
     """
-    Reindexar nota em background, sem bloquear a operação.
+    Schedule note reindexing without blocking the mutation.
 
-    A escrita já foi concluída - disparamos o reindex em thread separada
-    para não bloquear o retorno. Se falhar, o file watcher pegará depois.
+    The write is already durable. A bounded worker updates the index, while the
+    filesystem watcher provides eventual recovery after a failure.
     """
     result["reindex_status"] = scheduler.enqueue(path)
     return result
@@ -68,12 +83,12 @@ def _safe_reindex(
 
 def register_crud_tools(mcp, indexer, searcher):
     """
-    Registra ferramentas CRUD no servidor MCP.
+    Register CRUD tools on the MCP server.
 
-    Parâmetros:
-        mcp: instância do FastMCP
-        indexer: instância do VaultIndexer
-        searcher: instância do VaultSearcher
+    Parameters:
+        mcp: FastMCP instance
+        indexer: VaultIndexer instance
+        searcher: VaultSearcher instance
     """
     enrichment_jobs = FrontmatterEnrichmentJobManager(indexer, searcher, logger)
     reindex_queue = ReindexQueue(indexer, searcher, logger)
@@ -87,15 +102,16 @@ def register_crud_tools(mcp, indexer, searcher):
     @mcp.tool()
     def read_note(path: str) -> ToolResult:
         """
-        Lê conteúdo completo de uma nota markdown com frontmatter parseado.
+        Read a complete Markdown note with parsed frontmatter.
 
-        Apenas .md é suportado. Para PDFs/Canvas, use search_vault.
+        Only .md is supported. Use search_vault for PDF or Canvas content.
 
-        Parâmetros:
-            path: caminho relativo no vault (ex: 'pasta/nota.md')
+        Parameters:
+            path: vault-relative path, such as 'folder/note.md'
 
-        Retorna:
-            Dict com content, frontmatter, body, tags, title, folder, modified_at, size_bytes.
+        Returns:
+            Dictionary with content, frontmatter, body, tags, title, folder,
+            modified_at, and size_bytes.
         """
         try:
             return dict(crud_read_note(path))
@@ -105,7 +121,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "read_note",
                 e,
                 code="invalid_request",
-                message="A nota não existe ou o path é inválido.",
+                message="The note does not exist or the path is invalid.",
             )
         except Exception as e:
             return public_error(logger, "read_note", e)
@@ -113,15 +129,16 @@ def register_crud_tools(mcp, indexer, searcher):
     @mcp.tool()
     def get_note_metadata(path: str) -> ToolResult:
         """
-        Retorna metadados de uma nota markdown (sem corpo).
+        Return Markdown note metadata without the body.
 
-        Apenas .md é suportado. Retorna frontmatter parseado, tags extraídas e info do arquivo.
+        Returns parsed frontmatter, extracted tags, and file metadata for .md.
 
-        Parâmetros:
-            path: caminho relativo no vault (ex: 'pasta/nota.md')
+        Parameters:
+            path: vault-relative path, such as 'folder/note.md'
 
-        Retorna:
-            Dict com frontmatter, tags, title, folder, modified_at, size_bytes.
+        Returns:
+            Dictionary with frontmatter, tags, title, folder, modified_at,
+            and size_bytes.
         """
         try:
             return dict(crud_get_note_metadata(path))
@@ -131,7 +148,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "get_note_metadata",
                 e,
                 code="invalid_request",
-                message="A nota não existe ou o path é inválido.",
+                message="The note does not exist or the path is invalid.",
             )
         except Exception as e:
             return public_error(logger, "get_note_metadata", e)
@@ -144,20 +161,20 @@ def register_crud_tools(mcp, indexer, searcher):
         offset: int = 0,
     ) -> ToolResult:
         """
-        Lista notas do vault com filtros e paginação.
+        List vault notes with filters and pagination.
 
-        Lista .md, .pdf, .canvas. NOTA: apenas .md pode ser lido via read_note.
-        Para PDFs/Canvas, use search_vault.
+        Lists .md, .pdf, and .canvas. Only .md can be read with read_note.
+        For PDF and Canvas files, use search_vault.
 
-        Parâmetros:
-            folder: filtrar por pasta (ex: 'projetos', 'estudos/python')
-            extension: filtrar por extensão (ex: '.md' para apenas markdown)
-            limit: máximo de notas a retornar (default: 500, max: 5000)
-            offset: pular N primeiras notas (para paginação)
+        Parameters:
+            folder: optional folder filter, such as 'projects' or 'research/python'
+            extension: optional extension filter, such as '.md'
+            limit: maximum number of notes to return
+            offset: number of matching notes to skip
 
-        Retorna:
-            Dict com notes (lista), total, limit, offset, has_more.
-            Notas ordenadas por modified_at (mais recente primeiro).
+        Returns:
+            Dictionary with notes, total, limit, offset, and has_more. Notes are
+            ordered by modified_at, newest first.
         """
         try:
             return dict(
@@ -174,7 +191,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "list_notes",
                 e,
                 code="invalid_request",
-                message="Os filtros informados são inválidos.",
+                message="The supplied filters are invalid.",
             )
         except Exception as e:
             return public_error(logger, "list_notes", e)
@@ -186,17 +203,17 @@ def register_crud_tools(mcp, indexer, searcher):
         frontmatter: FrontmatterInput | None = None,
     ) -> ToolResult:
         """
-        Cria uma nova nota markdown. Erro se já existir.
+        Create a Markdown note and fail if it already exists.
 
-        Apenas .md é suportado.
+        Only .md is supported.
 
-        Parâmetros:
-            path: caminho relativo no vault (ex: 'pasta/nova-nota.md')
-            content: conteúdo da nota (corpo, sem frontmatter)
-            frontmatter: metadados YAML opcionais (ex: {"title": "Minha Nota", "tags": ["tag1"]})
+        Parameters:
+            path: vault-relative path, such as 'folder/new-note.md'
+            content: note body without frontmatter
+            frontmatter: optional YAML metadata
 
-        Retorna:
-            Dict com success, message, path e reindex_status quando o índice foi agendado.
+        Returns:
+            Dictionary with success, message, path, and optional reindex_status.
         """
         try:
             result: dict[str, object] = dict(crud_create_note(path, content, frontmatter))
@@ -213,7 +230,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "create_note",
                 e,
                 code="invalid_request",
-                message="O conteúdo, frontmatter ou path é inválido.",
+                message="The content, frontmatter, or path is invalid.",
             )
         except Exception as e:
             return public_error(logger, "create_note", e)
@@ -221,16 +238,16 @@ def register_crud_tools(mcp, indexer, searcher):
     @mcp.tool()
     def write_note(path: str, content: str) -> ToolResult:
         """
-        Sobrescreve ou cria nota markdown com conteúdo completo.
+        Overwrite or create a Markdown note from complete content.
 
-        Apenas .md é suportado. Use quando já tem o conteúdo completo (incluindo frontmatter).
+        Use this when the caller already has the complete .md content.
 
-        Parâmetros:
-            path: caminho relativo no vault (ex: 'pasta/nota.md')
-            content: conteúdo completo da nota
+        Parameters:
+            path: vault-relative path, such as 'folder/note.md'
+            content: complete note content
 
-        Retorna:
-            Dict com success, message, path e reindex_status quando o índice foi agendado.
+        Returns:
+            Dictionary with success, message, path, and optional reindex_status.
         """
         try:
             result: dict[str, object] = dict(crud_write_note(path, content))
@@ -243,7 +260,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "write_note",
                 e,
                 code="invalid_request",
-                message="O conteúdo ou path é inválido.",
+                message="The content or path is invalid.",
             )
         except Exception as e:
             return public_error(logger, "write_note", e)
@@ -255,17 +272,17 @@ def register_crud_tools(mcp, indexer, searcher):
         separator: str = "\n\n",
     ) -> ToolResult:
         """
-        Adiciona conteúdo ao final de uma nota markdown existente.
+        Append content to an existing Markdown note.
 
-        Apenas .md é suportado.
+        Only .md is supported.
 
-        Parâmetros:
-            path: caminho relativo no vault (ex: 'pasta/nota.md')
-            content: conteúdo a adicionar
-            separator: separador entre existente e novo (default: "\\n\\n")
+        Parameters:
+            path: vault-relative path, such as 'folder/note.md'
+            content: content to append
+            separator: separator between existing and appended content (default: "\\n\\n")
 
-        Retorna:
-            Dict com success, message, path e reindex_status quando o índice foi agendado.
+        Returns:
+            Dictionary with success, message, path, and optional reindex_status.
         """
         try:
             result: dict[str, object] = dict(crud_append_note(path, content, separator))
@@ -278,7 +295,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "append_note",
                 e,
                 code="invalid_request",
-                message="O conteúdo ou path é inválido.",
+                message="The content or path is invalid.",
             )
         except Exception as e:
             return public_error(logger, "append_note", e)
@@ -290,17 +307,17 @@ def register_crud_tools(mcp, indexer, searcher):
         merge: bool = True,
     ) -> ToolResult:
         """
-        Atualiza frontmatter YAML de uma nota markdown existente.
+        Update YAML frontmatter on an existing Markdown note.
 
-        Apenas .md é suportado. Merge é shallow (arrays/objetos são substituídos, não mesclados).
+        Only .md is supported. Merge is shallow, so arrays and objects are replaced.
 
-        Parâmetros:
-            path: caminho relativo no vault (ex: 'pasta/nota.md')
-            metadata: novos metadados (ex: {"status": "done", "priority": 1})
-            merge: se True (default), mescla shallow; se False, substitui tudo
+        Parameters:
+            path: vault-relative path, such as 'folder/note.md'
+            metadata: new metadata, such as {"status": "done", "priority": 1}
+            merge: shallow-merge when true, otherwise replace all frontmatter
 
-        Retorna:
-            Dict com success, message, path e reindex_status quando o índice foi agendado.
+        Returns:
+            Dictionary with success, message, path, and optional reindex_status.
         """
         try:
             result: dict[str, object] = dict(crud_update_frontmatter(path, metadata, merge))
@@ -313,7 +330,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "update_frontmatter",
                 e,
                 code="invalid_request",
-                message="O frontmatter ou path é inválido.",
+                message="The frontmatter or path is invalid.",
             )
         except Exception as e:
             return public_error(logger, "update_frontmatter", e)
@@ -321,21 +338,20 @@ def register_crud_tools(mcp, indexer, searcher):
     @mcp.tool()
     def delete_note(path: str) -> ToolResult:
         """
-        Deleta uma nota do vault (.md, .pdf ou .canvas), movendo para lixeira.
+        Delete a .md, .pdf, or .canvas note by moving it to vault trash.
 
-        Por segurança, deleção permanente não é suportada.
-        Arquivos deletados ficam em .trash/ e podem ser recuperados.
+        Permanent deletion is unsupported. Files remain recoverable in .trash.
 
-        Parâmetros:
-            path: caminho relativo no vault
+        Parameters:
+            path: path relative to the vault
 
-        Retorna:
-            Dict com success, message, path e reindex_status quando o índice foi agendado.
+        Returns:
+            Dictionary with success, message, path, and optional reindex_status.
         """
         try:
             result: dict[str, object] = dict(crud_delete_note(path))
             if result["success"]:
-                # Reindex remove chunks do índice (arquivo não existe mais)
+                # Reindexing removes chunks for the now-missing file.
                 _safe_reindex(reindex_queue, path, result)
             return result
         except ValueError as e:
@@ -344,7 +360,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "delete_note",
                 e,
                 code="invalid_request",
-                message="A nota não existe ou o path é inválido.",
+                message="The note does not exist or the path is invalid.",
             )
         except Exception as e:
             return public_error(logger, "delete_note", e)
@@ -352,21 +368,21 @@ def register_crud_tools(mcp, indexer, searcher):
     @mcp.tool()
     def move_note(from_path: str, to_path: str) -> ToolResult:
         """
-        Move ou renomeia uma nota para destino .md.
+        Move or rename a note.
 
-        Destino deve ser .md e não pode ser pasta ignorada (.trash, .obsidian, etc).
+        Source and destination extensions must match, and ignored folders are blocked.
 
-        Parâmetros:
-            from_path: caminho atual relativo no vault
-            to_path: novo caminho relativo no vault (ex: 'nova-pasta/nota.md')
+        Parameters:
+            from_path: current vault-relative path
+            to_path: new vault-relative path, such as 'new-folder/note.md'
 
-        Retorna:
-            Dict com success, message, path e reindex_status quando o índice foi agendado.
+        Returns:
+            Dictionary with success, message, path, and optional reindex_status.
         """
         try:
             result: dict[str, object] = dict(crud_move_note(from_path, to_path))
             if result["success"]:
-                # Reindex from_path (remove chunks antigos) e to_path (adiciona novos)
+                # Remove old chunks and add destination chunks.
                 _safe_reindex(reindex_queue, from_path, result)
                 _safe_reindex(reindex_queue, to_path, result)
             return result
@@ -376,7 +392,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "move_note",
                 e,
                 code="invalid_request",
-                message="A origem ou o destino é inválido.",
+                message="The source or destination is invalid.",
             )
         except Exception as e:
             return public_error(logger, "move_note", e)
@@ -387,36 +403,34 @@ def register_crud_tools(mcp, indexer, searcher):
         dry_run: bool = False,
     ) -> ToolResult:
         """
-        Adiciona UUID v7 a todas as notas .md que não têm 'id' no frontmatter.
+        Add UUIDv7 ids to Markdown notes that lack a frontmatter id.
 
-        Útil para migração de vaults existentes. IDs são gerados com UUID v7
-        (ordenável por tempo, RFC 9562).
+        UUIDv7 values follow RFC 9562 and are time-ordered.
 
-        Parâmetros:
-            folder: processar apenas notas em pasta específica (opcional)
-            dry_run: se True, apenas lista notas sem ID (não modifica)
+        Parameters:
+            folder: optional folder scope
+            dry_run: list notes without ids without modifying them
 
-        Retorna:
-            Dict com total_scanned, missing_ids, ids_added (ou would_add se dry_run),
-            e lista de notas processadas.
+        Returns:
+            Dictionary with totals and processed note paths.
         """
         try:
-            # Escanear vault
+            # Scan the vault once.
             all_notes = scan_vault(VAULT_PATH)
 
-            # Filtrar apenas .md
+            # Keep only Markdown files.
             md_notes = [n for n in all_notes if n.suffix.lower() == ".md"]
 
-            # Filtrar por pasta se especificado
+            # Apply the optional folder scope.
             if folder:
-                folder_normalized = folder.strip("/")
+                folder_path = _folder_selector(folder)
                 md_notes = [
                     n
                     for n in md_notes
-                    if str(n.relative_to(VAULT_PATH)).startswith(folder_normalized)
+                    if _path_is_in_folder(str(n.relative_to(VAULT_PATH)), folder_path)
                 ]
 
-            # Verificar quais não têm ID
+            # Find notes that have no id.
             notes_without_id = []
             for note_path in md_notes:
                 try:
@@ -436,11 +450,11 @@ def register_crud_tools(mcp, indexer, searcher):
                     "total_scanned": len(md_notes),
                     "missing_ids": len(notes_without_id),
                     "would_add": len(notes_without_id),
-                    "notes": notes_without_id[:100],  # Limitar output
+                    "notes": notes_without_id[:100],  # Bound response size.
                     "truncated": len(notes_without_id) > 100,
                 }
 
-            # Adicionar IDs
+            # Add ids.
             added = []
             errors = []
             for rel_path in notes_without_id:
@@ -458,7 +472,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "ids_added": len(added),
                 "errors": len(errors),
                 "reindex_status": reindex_status,
-                "added": added[:50],  # Limitar output
+                "added": added[:50],  # Bound response size.
                 "error_details": errors[:10] if errors else [],
             }
 
@@ -471,36 +485,36 @@ def register_crud_tools(mcp, indexer, searcher):
         frontmatter: FrontmatterInput | None = None,
     ) -> ToolResult:
         """
-        Valida frontmatter de uma nota ou dict direto contra o schema configurado.
+        Validate note frontmatter or a supplied dictionary against the schema.
 
-        Use para testar validação antes de criar/atualizar notas.
+        Use this before creating or updating notes.
 
-        Parâmetros:
-            path: caminho relativo de nota existente para validar (opcional)
-            frontmatter: dict de frontmatter para validar diretamente (opcional)
+        Parameters:
+            path: optional path of an existing note
+            frontmatter: optional frontmatter dictionary to validate directly
 
-        Retorna:
-            Dict com valid, errors, warnings, suggestions, auto_generated, validated_data.
+        Returns:
+            Validation result with final data, errors, warnings, and suggestions.
 
-        Nota: Forneça path OU frontmatter, não ambos.
+        Supply exactly one of path or frontmatter.
         """
         try:
-            # Validar parâmetros
+            # Validate mutually exclusive inputs.
             if path and frontmatter:
-                return "Erro: Forneça 'path' ou 'frontmatter', não ambos."
+                return "Error: provide either 'path' or 'frontmatter', not both."
             if not path and not frontmatter:
-                return "Erro: Forneça 'path' ou 'frontmatter'."
+                return "Error: provide 'path' or 'frontmatter'."
 
-            # Se path, ler frontmatter da nota
+            # Read frontmatter from the note when a path is supplied.
             if path:
                 file_path = resolve_path(path)
                 if not file_path.exists():
-                    return "Erro [not_found]: nota não encontrada."
+                    return "Error [not_found]: note not found."
 
                 fm, _ = read_frontmatter_only(file_path)
                 frontmatter = fm
 
-            # Validar
+            # Validate.
             validator = get_frontmatter_validator()
             result = validator.validate(frontmatter)
 
@@ -519,7 +533,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "validate_frontmatter",
                 e,
                 code="invalid_request",
-                message="O frontmatter ou path é inválido.",
+                message="The frontmatter or path is invalid.",
             )
         except Exception as e:
             return public_error(logger, "validate_frontmatter", e)
@@ -532,21 +546,20 @@ def register_crud_tools(mcp, indexer, searcher):
         limit: int = 100,
     ) -> ToolResult:
         """
-        Enfileira enriquecimento de frontmatter obrigatório em background.
+        Enqueue required-frontmatter enrichment in the background.
 
-        Sempre assíncrono: retorna job_id imediatamente e processa depois.
-        Use `enrich_frontmatter_status` para acompanhar o andamento.
+        Returns a job id immediately. Use enrich_frontmatter_status to inspect it.
 
-        Parâmetros:
-            path: nota única (opcional)
-            paths: lista de notas (opcional)
-            folder: enfileira notas .md de uma pasta (opcional)
-            limit: limite quando usar folder (default: 100, max: 1000)
+        Parameters:
+            path: optional single note
+            paths: optional list of notes
+            folder: optional folder of .md notes
+            limit: folder selection limit
         """
         try:
             selectors = sum([1 if path else 0, 1 if paths else 0, 1 if folder else 0])
             if selectors != 1:
-                return "Erro: Forneça exatamente um seletor: path, paths ou folder."
+                return "Error: provide exactly one selector: path, paths, or folder."
 
             selected_paths: list[str] = []
             if path:
@@ -554,17 +567,17 @@ def register_crud_tools(mcp, indexer, searcher):
             elif paths:
                 selected_paths = paths
             elif folder is not None:
-                folder_normalized = folder.strip("/")
+                folder_path = _folder_selector(folder)
                 note_paths = [
                     str(note.relative_to(VAULT_PATH))
                     for note in scan_vault(VAULT_PATH)
                     if note.suffix.lower() == ".md"
                 ]
                 selected_paths = [
-                    item for item in note_paths if item.startswith(folder_normalized)
+                    item for item in note_paths if _path_is_in_folder(item, folder_path)
                 ][: max(1, min(limit, 1000))]
             else:
-                return "Erro: Forneça exatamente um seletor: path, paths ou folder."
+                return "Error: provide exactly one selector: path, paths, or folder."
 
             result = enrichment_jobs.enqueue(selected_paths, reason="manual_tool")
             result["selected_paths"] = len(selected_paths)
@@ -575,7 +588,7 @@ def register_crud_tools(mcp, indexer, searcher):
                 "enrich_frontmatter",
                 e,
                 code="invalid_request",
-                message="Os seletores informados são inválidos.",
+                message="The supplied selectors are invalid.",
             )
         except Exception as e:
             return public_error(logger, "enrich_frontmatter", e)
@@ -586,11 +599,11 @@ def register_crud_tools(mcp, indexer, searcher):
         limit: int = 20,
     ) -> ToolResult:
         """
-        Consulta status de jobs de enriquecimento de frontmatter.
+        Return the status of frontmatter enrichment jobs.
 
-        Parâmetros:
-            job_id: id do job específico (opcional)
-            limit: quantidade de jobs recentes quando job_id não for informado
+        Parameters:
+            job_id: optional job id
+            limit: number of recent jobs when job_id is omitted
         """
         try:
             return enrichment_jobs.get_status(job_id=job_id, limit=limit)

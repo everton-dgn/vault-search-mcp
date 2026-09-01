@@ -1,14 +1,14 @@
 """
-Configurações centralizadas do vault-search.
+Centralized vault-search configuration.
 
-Novo sistema (recomendado):
+New system (recommended):
     from vault_search.config import get_config
 
     config = get_config()
     print(config.search.top_k)
     print(config.paths.vault_path)
 
-Imports legados (compatibilidade):
+Legacy imports (compatibility):
     from vault_search.config.paths import VAULT_PATH, DATA_DIR
     from vault_search.config.search import SEARCH_TOP_K, FTS_LANGUAGE
     from vault_search.config.security import RiskLevel

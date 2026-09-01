@@ -1,10 +1,14 @@
 [build-system]
-requires = ["hatchling>=1.27"]
+requires = [
+    "hatchling==1.32.0",
+    "hatch-vcs==0.5.0",
+    "setuptools-scm==10.2.1",
+]
 build-backend = "hatchling.build"
 
 [project]
 name = "vault-search-mcp"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Local MCP search layer for Markdown knowledge bases and Obsidian vaults"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -51,6 +55,11 @@ vault-search-daemon = "vault_search.cli:daemon_main"
 vault-search-config = "vault_search.cli:config_main"
 
 [dependency-groups]
+build = [
+    "hatchling==1.32.0",
+    "hatch-vcs==0.5.0",
+    "setuptools-scm==10.2.1",
+]
 dev = [
     "hypothesis>=6.151.6",
     "mypy>=1.19.0",
@@ -79,16 +88,26 @@ exclude = [
     "/.python-version",
     "/AGENTS.md",
     "/CLAUDE.md",
+    "/docs/assets/vault-search-social-preview.png",
     "/vaults",
     "/vaults/**",
 ]
+
+[tool.hatch.version]
+source = "vcs"
+tag-pattern = "^v(?P<version>(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*))$"
+fallback-version = "0.0.0"
+
+[tool.hatch.version.raw-options]
+version_scheme = "no-guess-dev"
+local_scheme = "node-and-date"
 
 [tool.pytest.ini_options]
 addopts = ["--strict-config", "--strict-markers", "-ra"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 markers = [
-    "slow: testes que carregam modelos ou executam operações de longa duração",
+    "slow: tests that load models or execute long-running operations",
 ]
 
 [tool.coverage.run]

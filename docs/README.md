@@ -1,102 +1,105 @@
-# Documentação
+# Documentation
 
-Este diretório separa tarefas de usuário, referência de contratos, operação e
-decisões. Cada afirmação de comportamento deve apontar para código ou teste. Os
-números de desempenho seguem o protocolo de benchmark, com ambiente e amostra.
+This directory separates user workflows, public contracts, operations, design
+decisions, security, and reproducible performance work. Behavioral claims
+should point to code or tests. Performance numbers require the environment and
+sample information defined by the benchmark protocol.
 
-## Primeira leitura
+## Start here
 
-1. [Instalação](operation/installation.md)
-2. [Configuração YAML](config/yaml.md)
-3. [Catálogo das tools MCP](api/tools.md)
-4. [Modelo de ameaças](security/threat-model.md)
+1. [Installation](operation/installation.md)
+2. [YAML configuration](config/yaml.md)
+3. [MCP tool catalog](api/tools.md)
+4. [Threat model](security/threat-model.md)
 
-## Operação
+## Operations
 
-| Tarefa | Documento |
+| Task | Document |
 |---|---|
-| Instalar e indexar | [operation/installation.md](operation/installation.md) |
-| Manter modelos em um daemon | [daemon-setup.md](daemon-setup.md) |
-| Diagnosticar uma falha | [operation/troubleshooting.md](operation/troubleshooting.md) |
-| Observar saúde e métricas | [operation/monitoring.md](operation/monitoring.md) |
+| Install and index | [operation/installation.md](operation/installation.md) |
+| Keep models in a daemon | [daemon-setup.md](daemon-setup.md) |
+| Diagnose a failure | [operation/troubleshooting.md](operation/troubleshooting.md) |
+| Observe health and metrics | [operation/monitoring.md](operation/monitoring.md) |
 
-## Configuração
+## Configuration
 
-| Tema | Documento |
+| Topic | Document |
 |---|---|
-| Arquivo canônico e precedência | [config/yaml.md](config/yaml.md) |
-| Variáveis de ambiente | [config/variables.md](config/variables.md) |
-| Caminhos e dados locais | [config/paths.md](config/paths.md) |
-| Ajustes por hardware | [config/tuning.md](config/tuning.md) |
+| Canonical file and precedence | [config/yaml.md](config/yaml.md) |
+| Environment variables | [config/variables.md](config/variables.md) |
+| Paths and local data | [config/paths.md](config/paths.md) |
+| Hardware-aware tuning | [config/tuning.md](config/tuning.md) |
 
-## Referência MCP
+## MCP reference
 
-- [Catálogo completo](api/tools.md)
-- [Busca](api/tools-search.md)
-- [CRUD e frontmatter](api/tools-crud.md)
-- [Indexação](api/tools-indexing.md)
-- [Navegação](api/tools-navigation.md)
-- [Grafo](api/tools-graph.md)
-- [Sistema](api/tools-system.md)
+- [Complete catalog](api/tools.md)
+- [Search](api/tools-search.md)
+- [CRUD and frontmatter](api/tools-crud.md)
+- [Indexing](api/tools-indexing.md)
+- [Navigation](api/tools-navigation.md)
+- [Graph](api/tools-graph.md)
+- [System](api/tools-system.md)
 - [Resources](api/tools-resources.md)
-- [Tipos](api/types.md)
-- [Erros](api/errors.md)
+- [Types](api/types.md)
+- [Errors](api/errors.md)
 
-O catálogo deve declarar `43 tools` e `6 resources`. O check de publicação
-compara esses valores com os decoradores em `src/vault_search/server/`.
+The catalog must declare `43 tools` and `6 resources`. The publication check
+derives both counts from decorators in `src/vault_search/server/`.
 
-## Arquitetura
+## Architecture
 
-- [Visão geral](architecture/overview.md)
-- [Mapa dos módulos](architecture/modules.md)
-- [Diagramas](architecture/diagrams.md)
-- [Registros de decisão](architecture/decisions.md)
+- [Overview](architecture/overview.md)
+- [Module map](architecture/modules.md)
+- [Diagrams](architecture/diagrams.md)
+- [Decision records](architecture/decisions.md)
 
-### ADRs
+### Architecture decision records
 
-- [ADR-0001: vault como fonte primária](architecture/adr/0001-vault-as-source-of-truth.md)
-- [ADR-0002: daemon local de modelos](architecture/adr/0002-local-model-daemon.md)
-- [ADR-0003: configuração YAML canônica](architecture/adr/0003-canonical-configuration.md)
-- [ADR-0004: evidência de desempenho](architecture/adr/0004-performance-evidence.md)
+- [ADR-0001: the vault is the source of truth](architecture/adr/0001-vault-as-source-of-truth.md)
+- [ADR-0002: local model daemon](architecture/adr/0002-local-model-daemon.md)
+- [ADR-0003: canonical YAML configuration](architecture/adr/0003-canonical-configuration.md)
+- [ADR-0004: evidence-based performance claims](architecture/adr/0004-performance-evidence.md)
 
-## Funcionalidades
+## Features
 
-- [Formatos de arquivo](features/file-formats.md)
-- [Schema de frontmatter](features/frontmatter-schema.md)
+- [File formats](features/file-formats.md)
+- [Frontmatter schema](features/frontmatter-schema.md)
 - [UUID v7](features/uuid-system.md)
-- [Índice de links](features/link-index.md)
-- [Busca facetada](features/faceted-search.md)
-- [Enriquecimento externo](features/ai-enrichment.md)
+- [Link index](features/link-index.md)
+- [Faceted search](features/faceted-search.md)
+- [External enrichment](features/ai-enrichment.md)
 
-## Desempenho
+## Performance
 
-- [Como medir](performance/benchmarking.md)
-- [Indexação](performance/indexing.md)
+- [Measurement protocol](performance/benchmarking.md)
+- [Indexing](performance/indexing.md)
 - [Cache](performance/cache.md)
-- [Catálogo auxiliar](performance/catalog.md)
-- [Prewarm](performance/prewarm.md)
-- [Instrumentação](performance/metrics.md)
-- [Otimizações implementadas](performance/optimizations.md)
+- [Auxiliary catalog](performance/catalog.md)
+- [Prewarming](performance/prewarm.md)
+- [Instrumentation](performance/metrics.md)
+- [Implemented optimizations](performance/optimizations.md)
 
-Documentos de desempenho explicam mecanismos. Resultados numéricos só podem ser
-tratados como baseline quando registram o ambiente exigido pelo protocolo.
+Performance documents explain mechanisms. Treat numeric results as a baseline
+only when they include the environment required by the protocol.
 
-## Desenvolvimento e manutenção
+## Development and maintenance
 
-- [Estratégia de testes](development/testing.md)
-- [Checklist de release](development/release-checklist.md)
-- [Política de segurança](../SECURITY.md)
-- [Como contribuir](../CONTRIBUTING.md)
+- [Testing strategy](development/testing.md)
+- [Release process](development/release-checklist.md)
+- [Security policy](../SECURITY.md)
+- [Contributing](../CONTRIBUTING.md)
 - [Changelog](../CHANGELOG.md)
 
-## Regra de atualização
+## Documentation contract
 
-Uma mudança em tool, resource, configuração, comportamento de segurança ou
-comando operacional atualiza a documentação no mesmo pull request. Execute:
+A change to a tool, resource, configuration key, security behavior, or
+operational command updates its documentation in the same pull request. Run:
 
 ```bash
 uv run python scripts/check_publication.py
 ```
 
-O script verifica links locais, placeholders públicos, caminhos pessoais,
-comandos destrutivos e contagens MCP.
+The check validates local links, public placeholders, personal paths, unsafe
+commands, common secret patterns, distribution contents, and MCP registry
+counts. It complements human review; it is not a proof that every private value
+has been found.

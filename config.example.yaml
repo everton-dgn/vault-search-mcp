@@ -1,10 +1,9 @@
-# Configuração canônica do vault-search-mcp.
+# Canonical vault-search-mcp configuration.
 #
-# Copie para config.yaml e ajuste somente os campos necessários. Caminhos
-# relativos são resolvidos a partir do diretório do arquivo de configuração.
-# A configuração efetiva é fixada no primeiro import; reinicie MCP e daemon
-# depois de alterar o arquivo. config.yaml e config.yml ficam fora do controle
-# de versão por padrão.
+# Copy this file to config.yaml and change only the required fields. Relative
+# paths are resolved from the configuration file's directory. The effective
+# configuration is captured on first import; restart the MCP process and daemon
+# after changing it. config.yaml and config.yml are ignored by Git by default.
 
 paths:
   vault_path: "vaults/obsidian_vault"
@@ -39,8 +38,8 @@ indexing:
     - ".git"
 
 fts:
-  # O default neutro funciona em vaults multilíngues. Defina, por exemplo,
-  # "Portuguese" ou "English" somente quando o stemming específico for desejado.
+  # The language-neutral default works with multilingual vaults. Set a language
+  # such as "English" only when language-specific stemming is intentional.
   language: null
 
 prewarm:
@@ -52,7 +51,7 @@ prewarm:
 embedding:
   model: "BAAI/bge-m3"
   reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
-  # null + auto escolhem precisão e backend compatíveis em runtime.
+  # null plus auto select compatible precision and backend settings at runtime.
   use_fp16: null
   device: "auto"
   batch_size: 32
@@ -85,7 +84,7 @@ watcher:
 
 pdf:
   ocr_enabled: true
-  ocr_languages: "por+eng"
+  ocr_languages: "eng"
   ocr_dpi: 150
 
 vector_index:
@@ -100,7 +99,7 @@ navigation:
   folder_tree_max_depth_limit: 50
 
 daemon:
-  # Somente loopback é aceito. O protocolo HTTP interno não é público.
+  # Only loopback hosts are accepted. The internal HTTP protocol is not public.
   host: "127.0.0.1"
   port: 9847
   timeout: 120.0
@@ -118,9 +117,9 @@ frontmatter:
     allow_external_processing: false
     provider: null
     allow_defer_required_on_create: true
-    # Somente {model} é aceito. O conteúdo da nota segue por stdin.
+    # Only {model} is accepted. Note content is sent through stdin.
     command: []
-    # Defina os identificadores aceitos pelo provider somente ao habilitar o recurso.
+    # Set provider-specific model identifiers only when enabling this feature.
     primary_model: null
     fallback_model: null
     timeout_seconds: 8.0

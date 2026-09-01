@@ -1,49 +1,49 @@
-# Política de segurança
+# Security policy
 
-## Versões atendidas
+## Supported versions
 
-O projeto está em fase alpha. Correções de segurança são aplicadas somente à
-linha de desenvolvimento atual até que exista a primeira release estável.
+The project is alpha software. Security fixes apply to the current development
+line until the first stable release exists.
 
-## Como reportar
+## Reporting a vulnerability
 
-Use o recurso de relato privado de vulnerabilidade da plataforma que hospeda o
-repositório. Se ele estiver indisponível, abra uma issue sem detalhes técnicos e
-peça um canal privado aos mantenedores.
+Use the hosting platform's private vulnerability-reporting feature. If it is
+unavailable, open an issue without technical details and ask the maintainers for
+a private channel.
 
-Não publique prova de conceito, conteúdo de vault, credenciais, caminhos da
-máquina ou logs brutos antes da correção e da coordenação de divulgação.
+Do not publish a proof of concept, vault content, credentials, machine paths, or
+raw logs before remediation and coordinated disclosure.
 
-Inclua no relato privado:
+Include in the private report:
 
-- versão ou commit afetado;
-- pré-condições e superfície atingida;
-- passos mínimos com fixtures sintéticas;
-- impacto observado;
-- mitigação temporária, quando conhecida.
+- affected version or commit;
+- preconditions and exposed surface;
+- minimal steps using synthetic fixtures;
+- observed impact;
+- temporary mitigation, when known.
 
-## Limite de confiança suportado
+## Supported trust boundary
 
-O servidor MCP e o daemon foram desenhados para uma única pessoa, em uma
-máquina controlada. O daemon deve permanecer em loopback. O projeto não fornece
-autenticação, autorização multiusuário nem proteção para publicação direta na
-internet.
+The MCP server and daemon are designed for one operator on a controlled machine.
+The daemon must remain on loopback. The project provides no authentication,
+multi-user authorization, or protection for direct internet exposure.
 
-Acesso remoto não é suportado. Essa fronteira exige TLS, autenticação, quotas e
-uma revisão específica do modelo de ameaças antes de entrar no contrato público.
+Remote access is unsupported. That boundary requires TLS, authentication,
+quotas, and a dedicated threat-model review before it can enter the public
+contract.
 
-O conteúdo recuperado do vault é dado não confiável. Clientes devem impedir que
-trechos de notas substituam instruções de sistema ou autorização do usuário.
+Retrieved vault content is untrusted data. Clients must prevent note excerpts
+from replacing system instructions or user authorization.
 
-O enriquecimento externo de frontmatter começa desativado. Quando habilitado
-explicitamente, o operador assume que o conteúdo enviado ao processo externo
-segue a política desse provedor.
+External frontmatter enrichment starts disabled. When an operator enables it,
+note content sent to the external process becomes subject to that provider's
+data policy.
 
-O [modelo de ameaças](docs/security/threat-model.md) descreve ativos, fronteiras
-e premissas com mais detalhes.
+The [threat model](docs/security/threat-model.md) describes assets, boundaries,
+and assumptions in detail.
 
-## Resposta esperada
+## Response expectations
 
-Um mantenedor deve confirmar o recebimento, avaliar reprodutibilidade e combinar
-uma janela de correção. Prazos variam conforme gravidade e disponibilidade. O
-projeto evita prometer um SLA que ainda não consegue sustentar.
+A maintainer should acknowledge the report, evaluate reproducibility, and agree
+on a remediation window. Timing depends on severity and availability. This
+project does not promise an SLA it cannot sustain.

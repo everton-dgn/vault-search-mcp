@@ -1,18 +1,16 @@
-# Instalação
+# Installation
 
-## Suporte atual
+## Current support
 
-| Item | Suporte |
+| Item | Support |
 |---|---|
-| Python | 3.14 ou superior |
-| Gerenciador | uv com `uv.lock` |
-| Servidor MCP | Qualquer cliente com transporte `stdio` |
-| Daemon | macOS launchd e Linux systemd de usuário |
-| Windows | Core sem validação em CI; daemon sem instalador |
+| Python | 3.14 or newer |
+| Environment manager | `uv` with `uv.lock` |
+| MCP server | Any client with `stdio` transport |
+| Daemon | macOS launchd and user-level Linux systemd |
+| Windows | Core lacks CI evidence; daemon has no installer |
 
-## 1. Instale as dependências
-
-Clone o código e instale o ambiente bloqueado pelo lockfile:
+## 1. Install the locked environment
 
 ```bash
 git clone https://github.com/everton-dgn/vault-search-mcp.git
@@ -20,17 +18,17 @@ cd vault-search-mcp
 uv sync --locked
 ```
 
-`--locked` impede alteração silenciosa do lockfile. O comando instala o pacote
-editável e registra os entry points `vault-search` e `vault-search-daemon`.
+`--locked` prevents silent lockfile changes. The command installs the editable
+package and exposes `vault-search`, `vault-search-config`, and
+`vault-search-daemon`.
 
-## 2. Configure um vault
+## 2. Configure a vault
 
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-Edite `paths.vault_path`. Um caminho relativo usa o diretório de `config.yaml`
-como base. Neste fluxo, o arquivo está na raiz da cópia local.
+Edit `paths.vault_path`. A relative path uses the directory of `config.yaml`.
 
 ```yaml
 paths:
@@ -38,57 +36,56 @@ paths:
   data_dir: "data"
 ```
 
-Alternativamente, use um override operacional:
+Or use an operational override:
 
 ```bash
 export VAULT_SEARCH_VAULT_PATH="$PWD/vaults/obsidian_vault"
 ```
 
-`config.yaml`, `data/` e o conteúdo de `vaults/` são ignorados pelo Git. Não use
-um vault real como fixture de teste.
+Local configuration, `data/`, and vault contents are ignored by Git. Never use
+a real vault as a test fixture.
 
-## 3. Valide a configuração
+## 3. Validate configuration
 
 ```bash
 uv run vault-search-config
 ```
 
-O comando termina com código 0 e imprime somente `vault-search configuration:
-ok`. Uma falha recebe tipo e referência, sem traceback, valor ou path resolvido.
-Use `uv run python -m vault_search config` como fronteira equivalente.
+Success exits with code zero and prints only
+`vault-search configuration: ok`. Failure prints a sanitized type and reference
+without values, tracebacks, or resolved paths. The equivalent module entry point
+is `uv run python -m vault_search config`.
 
-## 4. Construa o índice
+## 4. Build the index
 
 ```bash
 uv run python -m vault_search.core.indexer
 ```
 
-O índice fica em `paths.data_dir`. A primeira execução pode baixar modelos. O
-tempo e o espaço variam por plataforma, cache e versões resolvidas.
+The index is stored below `paths.data_dir`. A first run may download models;
+duration and disk use depend on platform, cache, and resolved versions.
 
-Modos opcionais:
+Optional modes:
 
 ```bash
-# Falha se o daemon não estiver saudável
+# Fail unless the daemon is healthy.
 uv run python -m vault_search.core.indexer --require-daemon
 
-# Aguarda por até 60 segundos
+# Wait for up to 60 seconds.
 uv run python -m vault_search.core.indexer --wait-daemon 60
 ```
 
-## 5. Inicie o MCP
+## 5. Start MCP
 
 ```bash
 uv run vault-search
-# Fronteira equivalente:
+# Equivalent module entry point:
 uv run python -m vault_search
 ```
 
-O servidor usa `stdio`. Logs e banners não devem escrever no canal de protocolo.
-O cliente MCP precisa executar o comando com a raiz do repositório como diretório
-de trabalho.
-
-Configuração mínima em clientes que aceitam JSON:
+The server uses `stdio`. Logs and banners must not enter the protocol channel.
+The client launches the process with the repository root as its working
+directory.
 
 ```json
 {
@@ -101,24 +98,23 @@ Configuração mínima em clientes que aceitam JSON:
 }
 ```
 
-Se o cliente inicia em outro diretório, use sua opção nativa de `cwd` ou de
-diretório do projeto. Não copie caminhos absolutos de outra máquina.
+When a client starts elsewhere, use its native `cwd` or project-directory
+option. Do not copy absolute paths from another machine.
 
-## 6. Verifique
+## 6. Verify the integration
 
-No cliente MCP:
+From the MCP client:
 
-1. liste as tools;
-2. execute `health_check`;
-3. execute `vault_stats`;
-4. faça uma busca com uma query sintética.
+1. list tools and resources;
+2. run `health_check`;
+3. run `vault_stats`;
+4. search for a synthetic phrase.
 
-O registro esperado contém 43 tools e 6 resources.
+The expected registry contains 43 tools and 6 resources.
 
-## Daemon opcional
+## Optional daemon
 
-O daemon mantém modelos carregados entre processos MCP. Instale depois que a
-indexação local funcionar:
+Install the daemon after local indexing works:
 
 ```bash
 # macOS
@@ -130,34 +126,33 @@ indexação local funcionar:
 curl --fail http://127.0.0.1:9847/health
 ```
 
-Para executar manualmente, use `uv run vault-search-daemon` ou
-`uv run python -m vault_search daemon`.
+For an interactive run, use `uv run vault-search-daemon` or
+`uv run python -m vault_search daemon`. During warmup, `/health` returns 503.
+Installers wait for `ready` and restore the previous service if the deadline
+expires. Read [the daemon guide](../daemon-setup.md) before changing host or
+service behavior.
 
-Durante o warmup, `/health` retorna 503. O instalador aguarda o estado `ready`;
-uma falha depois da janela restaura a unidade anterior.
+## Optional OCR
 
-Leia [../daemon-setup.md](../daemon-setup.md) antes de alterar host ou serviço.
-
-## OCR opcional
-
-PDF com texto nativo usa PyMuPDF. PDF composto apenas por imagens requer
-Tesseract no sistema.
+PyMuPDF reads native PDF text. Image-only documents require system Tesseract.
 
 ```bash
 # macOS
-brew install tesseract tesseract-lang
+brew install tesseract
 
-# Debian e Ubuntu
-sudo apt install tesseract-ocr tesseract-ocr-por tesseract-ocr-eng
+# Debian and Ubuntu
+sudo apt install tesseract-ocr tesseract-ocr-eng
 ```
 
-Confirme os idiomas disponíveis:
+Confirm available languages:
 
 ```bash
 tesseract --list-langs
 ```
 
-## Ambiente de desenvolvimento
+Set `pdf.ocr_languages` only to installed Tesseract language identifiers.
+
+## Development environment
 
 ```bash
 uv run ruff check src tests scripts
@@ -169,5 +164,5 @@ uv run python scripts/check_publication.py
 uv build
 ```
 
-Consulte [../../CONTRIBUTING.md](../../CONTRIBUTING.md) para contratos de
-segurança, documentação e pull request.
+See [CONTRIBUTING.md](../../CONTRIBUTING.md) for security, documentation, and
+pull-request contracts.

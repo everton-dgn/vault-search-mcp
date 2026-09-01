@@ -1,8 +1,8 @@
 """
-Configurações de busca e indexação.
+Search and indexing settings.
 
-NOTA: Este módulo existe para compatibilidade com imports legados.
-Para nova config centralizada: from vault_search.config import get_config
+NOTE: This module exists for compatibility with legacy imports.
+For the centralized configuration: from vault_search.config import get_config
 """
 
 from typing import TypedDict
@@ -12,7 +12,7 @@ from vault_search.config.settings import VectorIndexConfig
 
 
 class VectorIndexRuntimeConfig(TypedDict):
-    """Parâmetros validados usados para criar o índice ANN."""
+    """Validated parameters used to create the ANN index."""
 
     index_type: str
     num_partitions: int
@@ -22,12 +22,12 @@ class VectorIndexRuntimeConfig(TypedDict):
 
 _config = get_config()
 
-# Candidatos mínimos na busca vetorial (antes do reranking)
+# Minimum candidates for vector search before reranking
 SEARCH_CANDIDATES = _config.search.candidates
 SEARCH_CANDIDATES_MAX = _config.search.candidates_max
 SEARCH_CANDIDATES_MULTIPLIER = _config.search.candidates_multiplier
-# Limite de candidatos enviados ao cross-encoder.
-# Mantém latência previsível nas buscas comuns (top_k=10).
+# Limit for candidates sent to the cross-encoder.
+# Keeps latency predictable for common searches with top_k=10.
 RERANK_CANDIDATES_MAX = 10
 RERANK_CANDIDATES_MULTIPLIER = 2
 SEARCH_TOP_K = _config.search.top_k
@@ -37,7 +37,7 @@ LIST_NOTES_DEFAULT_LIMIT = _config.search.list_notes_default_limit
 LIST_NOTES_MAX_LIMIT = _config.search.list_notes_max_limit
 SCORE_PRECISION = _config.search.score_precision
 
-# Colunas retornadas nas buscas (sem vetor para economizar memória)
+# Columns returned by searches, excluding the vector to conserve memory
 SEARCH_COLUMNS = [
     "note_path",
     "note_title",
@@ -50,11 +50,11 @@ SEARCH_COLUMNS = [
 ]
 FTS_SEARCH_COLUMNS = [column for column in SEARCH_COLUMNS if column != "_distance"] + ["_score"]
 
-# Constante de Reciprocal Rank Fusion. O valor 60 é o default consolidado na
-# literatura de RRF e evita que uma única origem domine o pool de reranking.
+# Reciprocal Rank Fusion constant. The value 60 is the established default in
+# the RRF literature and prevents a single source from dominating the reranking pool.
 HYBRID_RRF_K = 60
 
-# === Indexing (delegado para config) ===
+# === Indexing, delegated to configuration ===
 REINDEX_BATCH_SIZE = _config.indexing.batch_size
 REINDEX_WORKERS = _config.indexing.workers
 MAX_CHUNKS_PER_NOTE = _config.indexing.max_chunks_per_note
@@ -78,7 +78,7 @@ PREWARM_MIN_AVAILABLE_RAM = _config.prewarm.min_available_ram
 PREWARM_BYTES_PER_CHUNK = _config.prewarm.bytes_per_chunk
 
 # === Vector Index ===
-# Aliases legados refletem a configuração disponível no primeiro import.
+# Legacy aliases reflect the configuration available during the first import.
 VECTOR_INDEX_MIN_CHUNKS = _config.vector_index.min_chunks
 VECTOR_INDEX_AUTO_CREATE = _config.vector_index.auto_create
 VECTOR_INDEX_TYPE = _config.vector_index.index_type
@@ -88,10 +88,10 @@ VECTOR_INDEX_DISTANCE_TYPE = _config.vector_index.distance_type
 
 def get_optimal_batch_size() -> int:
     """
-    Calcula batch size otimizado baseado na RAM disponível.
+    Calculate an optimized batch size from available RAM.
 
-    Retorna:
-        Batch size: 16, 32 ou 64 dependendo da RAM.
+    Returns:
+        A batch size of 16, 32, or 64 depending on available RAM.
     """
     try:
         import psutil
@@ -109,27 +109,27 @@ def get_optimal_batch_size() -> int:
 
 
 def get_vector_index_settings() -> VectorIndexConfig:
-    """Retorna a configuração ANN efetiva, incluindo overrides do YAML."""
+    """Return the effective ANN configuration, including YAML overrides."""
     return get_config().vector_index
 
 
 def get_vector_index_distance_type() -> str:
-    """Retorna a métrica ANN efetiva para manter indexação e query alinhadas."""
+    """Return the effective ANN metric so indexing and queries stay aligned."""
     return get_vector_index_settings().distance_type
 
 
 def get_vector_index_config(total_chunks: int) -> VectorIndexRuntimeConfig | None:
     """
-    Retorna configuração de índice vetorial apropriada para o tamanho do dataset.
+    Return vector-index settings appropriate for the dataset size.
 
-    Calcula num_partitions dinamicamente baseado no número de chunks.
-    Heurística oficial LanceDB: num_partitions = num_rows / 8192
+    Calculate ``num_partitions`` dynamically from the number of chunks.
+    Official LanceDB heuristic: ``num_partitions = num_rows / 8192``.
 
-    Parâmetros:
-        total_chunks: número total de chunks no índice
+    Parameters:
+        total_chunks: Total number of chunks in the index.
 
-    Retorna:
-        Dict com configuração do índice, ou None se não deve criar índice.
+    Returns:
+        Index configuration, or ``None`` when no index should be created.
     """
     settings = get_vector_index_settings()
 
@@ -139,8 +139,8 @@ def get_vector_index_config(total_chunks: int) -> VectorIndexRuntimeConfig | Non
     if total_chunks < settings.min_chunks:
         return None
 
-    # Calcular partições dinamicamente (heurística oficial LanceDB)
-    # Mínimo 1, máximo 256 para evitar overhead excessivo
+    # Calculate partitions dynamically using the official LanceDB heuristic.
+    # Keep the value between 1 and 256 to avoid excessive overhead.
     num_partitions = max(1, min(256, total_chunks // 8192))
 
     return {

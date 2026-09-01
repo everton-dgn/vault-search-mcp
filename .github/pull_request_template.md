@@ -1,33 +1,33 @@
-## Problema e efeito para o usuário
+## Problem and user impact
 
-<!-- Explique o problema concreto e quem é afetado. -->
+<!-- Explain the concrete problem and who it affects. -->
 
-## Contrato alterado
+## Contract changes
 
-<!-- Tools, resources, configuração, persistência ou comportamento operacional. -->
+<!-- Tools, resources, configuration, persistence, or operational behavior. -->
 
-## Implementação
+## Implementation
 
-<!-- Liste as decisões relevantes. Evite repetir o diff. -->
+<!-- List relevant decisions without repeating the diff. -->
 
-## Segurança, privacidade e reversão
+## Security, privacy, and rollback
 
-<!-- Dados tocados, fronteiras de confiança, risco e caminho de rollback. -->
+<!-- Data touched, trust boundaries, risk, and rollback path. -->
 
-## Validação
+## Validation
 
 ```text
-comando: resultado
+command: result
 ```
 
-## Não verificado
+## Not verified
 
-<!-- Hardware, modelos, plataforma ou suíte que não foram executados. -->
+<!-- Hardware, models, platforms, or suites that were not exercised. -->
 
 ## Checklist
 
-- [ ] Usei apenas fixtures sintéticas.
-- [ ] Atualizei docs e changelog quando o contrato mudou.
-- [ ] Rodei `scripts/check_publication.py`.
-- [ ] Não incluí configuração local, índice, log, segredo ou path pessoal.
-- [ ] Dependências novas têm justificativa e alternativa considerada.
+- [ ] I used only synthetic fixtures.
+- [ ] I updated documentation and the changelog when the contract changed.
+- [ ] I ran `scripts/check_publication.py`.
+- [ ] I included no local configuration, index, log, secret, or personal path.
+- [ ] New dependencies have a documented rationale and considered alternative.

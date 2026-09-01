@@ -1,5 +1,5 @@
 """
-Testes para o cache de metadados de notas.
+Tests for the note metadata cache.
 """
 
 from pathlib import Path
@@ -13,7 +13,7 @@ from vault_search.crud.cache import (
 
 
 class TestCacheKey:
-    """Testes para CacheKey."""
+    """Tests for CacheKey."""
 
     def test_from_path(self, tmp_path: Path):
         path = tmp_path / "cache-key.bin"
@@ -51,7 +51,7 @@ class TestCacheKey:
 
 
 class TestMetadataCache:
-    """Testes para MetadataCache."""
+    """Tests for MetadataCache."""
 
     def test_get_miss(self):
         cache = MetadataCache(max_size=10)
@@ -79,7 +79,7 @@ class TestMetadataCache:
         cache.set(key2, {"path": "/2"})
         cache.set(key3, {"path": "/3"})
 
-        # key1 deve ter sido evictado
+        # key1 must have been evicted.
         assert cache.get(key1) is None
         assert cache.get(key2) is not None
         assert cache.get(key3) is not None
@@ -94,10 +94,10 @@ class TestMetadataCache:
         cache.set(key1, {"path": "/1"})
         cache.set(key2, {"path": "/2"})
 
-        # Acessar key1 move para o fim (mais recente)
+        # Acessar key1 move for the end (more recent)
         cache.get(key1)
 
-        # Adicionar key3 deve evictar key2 (mais antigo)
+        # Adding key3 must evict the older key2 entry.
         cache.set(key3, {"path": "/3"})
 
         assert cache.get(key1) is not None
@@ -108,7 +108,7 @@ class TestMetadataCache:
         cache = MetadataCache(max_size=10)
 
         key1 = CacheKey(path="/test", mtime_ns=1000, size=100)
-        key2 = CacheKey(path="/test", mtime_ns=2000, size=100)  # mesmo path, diferente mtime
+        key2 = CacheKey(path="/test", mtime_ns=2000, size=100)  # same path, different mtime
         key3 = CacheKey(path="/other", mtime_ns=1000, size=100)
 
         cache.set(key1, {"path": "/test", "v": 1})
@@ -169,7 +169,7 @@ class TestMetadataCache:
 
 
 class TestCacheSingleton:
-    """Testes para funções singleton."""
+    """Tests for functions singleton."""
 
     def setup_method(self):
         reset_metadata_cache()
@@ -191,24 +191,24 @@ class TestCacheSingleton:
 
 
 class TestCacheAutoInvalidation:
-    """Testa invalidação automática por mudança de arquivo."""
+    """Test invalidation automatic by change of file."""
 
     def test_file_change_causes_miss(self, tmp_path: Path):
-        """Se o arquivo muda, a chave antiga não funciona."""
+        """If the file changes, a key old not works."""
         cache = MetadataCache(max_size=10)
         path = tmp_path / "changing-note.md"
         path.write_text("content v1")
 
-        # Cachear com estado inicial
+        # Cache with state initial
         key1 = CacheKey.from_path(path)
         cache.set(key1, {"version": 1})
 
-        # O tamanho diferente garante uma nova chave sem depender do relógio do sistema.
+        # A different size guarantees a new key without relying on the system clock.
         path.write_text("content v2 - longer")
 
-        # Nova chave é diferente (mtime e/ou size mudaram)
+        # The new key is different because the mtime or size changed.
         key2 = CacheKey.from_path(path)
 
         assert key1 != key2
-        assert cache.get(key1) == {"version": 1}  # chave antiga ainda existe
-        assert cache.get(key2) is None  # nova chave não existe
+        assert cache.get(key1) == {"version": 1}  # key old still exists
+        assert cache.get(key2) is None  # the new key does not exist

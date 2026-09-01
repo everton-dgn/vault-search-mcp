@@ -1,7 +1,7 @@
 """
-Funções de validação para operações CRUD.
+Validation functions for CRUD operations.
 
-Inclui helpers para validação combinada de path, tamanho e frontmatter.
+Combines path, size, extension, and frontmatter validation.
 """
 
 import logging
@@ -33,71 +33,71 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_internal_path(*parts: str) -> Path:
-    """Resolve um path controlado pela aplicação sem permitir symlink externo."""
+    """Resolve an application-owned path without allowing an external symlink."""
     vault_root = VAULT_PATH.expanduser().resolve(strict=False)
     candidate = vault_root.joinpath(*parts).resolve(strict=False)
     try:
         candidate.relative_to(vault_root)
     except ValueError as exc:
-        raise ValueError("Path interno inválido ou fora do vault.") from exc
+        raise ValueError("Internal path is invalid or outside the vault.") from exc
     return candidate
 
 
 def resolve_path(relative_path: str) -> Path:
     """
-    Resolve path relativo para absoluto.
+    Resolve a vault-relative path to an absolute path.
 
     Raises:
-        ValueError: se path é inválido ou muito longo.
+        ValueError: if the path is invalid or too long.
     """
     if not relative_path or not relative_path.strip():
-        raise ValueError("Path não pode ser vazio.")
+        raise ValueError("Path cannot be empty.")
 
     relative_path = relative_path.strip()
 
     if len(relative_path) > MAX_PATH_LENGTH:
         raise ValueError(
-            f"Path muito longo ({len(relative_path)} chars). Máximo: {MAX_PATH_LENGTH} chars."
+            f"Path is too long ({len(relative_path)} characters). Maximum: {MAX_PATH_LENGTH}."
         )
 
     if not validate_relative_path(relative_path):
-        raise ValueError("Path inválido ou fora do vault.")
+        raise ValueError("Path is invalid or outside the vault.")
 
     try:
         return resolve_internal_path(relative_path)
     except ValueError as exc:
-        raise ValueError("Path inválido ou fora do vault.") from exc
+        raise ValueError("Path is invalid or outside the vault.") from exc
 
 
 def validate_content_size(content: str) -> None:
     """
-    Valida que o conteúdo não excede o tamanho máximo.
+    Ensure content does not exceed the configured size limit.
 
     Raises:
-        ValueError: se conteúdo for muito grande.
+        ValueError: if the content is too large.
     """
     size = len(content.encode("utf-8"))
     if size > MAX_CONTENT_SIZE:
         size_mb = size / 1_048_576
         max_mb = MAX_CONTENT_SIZE / 1_048_576
-        raise ValueError(f"Conteúdo muito grande ({size_mb:.1f}MB). Máximo: {max_mb:.0f}MB.")
+        raise ValueError(f"Content is too large ({size_mb:.1f} MB). Maximum: {max_mb:.0f} MB.")
 
 
 def validate_frontmatter_size(frontmatter: dict[str, Any]) -> None:
     """
-    Valida que o frontmatter não tem chaves demais (proteção contra YAML bombs).
+    Bound the number of frontmatter keys as YAML-bomb defense in depth.
 
     Raises:
-        ValueError: se frontmatter tiver muitas chaves.
+        ValueError: if frontmatter has too many keys.
     """
     if frontmatter and len(frontmatter) > MAX_FRONTMATTER_KEYS:
         raise ValueError(
-            f"Frontmatter com muitas chaves ({len(frontmatter)}). Máximo: {MAX_FRONTMATTER_KEYS}."
+            f"Frontmatter has too many keys ({len(frontmatter)}). Maximum: {MAX_FRONTMATTER_KEYS}."
         )
 
 
 def get_folder(file_path: Path) -> str:
-    """Extrai folder relativo do path."""
+    """Extract the vault-relative folder from a path."""
     vault_root = VAULT_PATH.expanduser().resolve(strict=False)
     folder = str(file_path.parent.resolve(strict=False).relative_to(vault_root))
     return "" if folder == "." else folder
@@ -105,72 +105,72 @@ def get_folder(file_path: Path) -> str:
 
 def validate_extension(relative_path: str, allow_create: bool = False) -> None:
     """
-    Valida que a extensão é suportada para CRUD.
+    Ensure the extension is supported for CRUD operations.
 
-    Parâmetros:
-        relative_path: caminho do arquivo
-        allow_create: se True, permite apenas .md e .canvas (não .pdf)
+    Parameters:
+        relative_path: file path
+        allow_create: allow only writable .md and .canvas files
     """
     ext = Path(relative_path).suffix.lower()
 
     if allow_create:
-        # PDFs são read-only (não criamos/editamos)
+        # PDFs are read-only.
         writable_extensions = {".md", ".canvas"}
         if ext not in writable_extensions:
             raise ValueError(
-                f"Extensão '{ext}' não suportada para escrita. "
-                f"Use: {', '.join(sorted(writable_extensions))}"
+                f"Extension '{ext}' is not writable. Use: {', '.join(sorted(writable_extensions))}"
             )
     else:
         if ext not in INDEXABLE_EXTENSIONS:
             raise ValueError(
-                f"Extensão '{ext}' não suportada. Use: {', '.join(sorted(INDEXABLE_EXTENSIONS))}"
+                f"Extension '{ext}' is not supported. "
+                f"Use: {', '.join(sorted(INDEXABLE_EXTENSIONS))}"
             )
 
 
 def validate_readable_text(relative_path: str) -> None:
     """
-    Valida que a extensão é texto plano legível (com frontmatter).
+    Ensure the extension contains readable text with frontmatter support.
 
-    PDFs são binários, Canvas é JSON - nenhum suporta read_text() + frontmatter.
+    PDFs are binary and Canvas files are JSON, so neither supports this path.
     """
     ext = Path(relative_path).suffix.lower()
     if ext not in READABLE_TEXT_EXTENSIONS:
         raise ValueError(
-            f"Extensão '{ext}' não suportada para leitura de texto. "
+            f"Extension '{ext}' does not support plain-text reads. "
             f"Use: {', '.join(sorted(READABLE_TEXT_EXTENSIONS))}. "
-            f"Para buscar em PDFs/Canvas, use search_vault."
+            "Use search_vault to search PDFs and Canvas files."
         )
 
 
 def validate_markdown_only(relative_path: str) -> None:
     """
-    Valida que a extensão é .md (operações que manipulam frontmatter/markdown).
+    Require .md for operations that manipulate Markdown frontmatter.
 
-    Canvas é JSON - frontmatter YAML corrompe o formato.
+    Canvas is JSON; adding YAML frontmatter would corrupt the format.
     """
     ext = Path(relative_path).suffix.lower()
     if ext != ".md":
         raise ValueError(
-            f"Extensão '{ext}' não suportada para esta operação. "
-            f"Apenas .md é suportado (Canvas é JSON, não markdown)."
+            f"Extension '{ext}' is not supported for this operation. "
+            "Only .md is supported because Canvas is JSON, not Markdown."
         )
 
 
 def validate_not_ignored_folder(relative_path: str) -> None:
     """
-    Valida que o path não está em uma pasta ignorada.
+    Ensure the path is outside every ignored folder.
 
-    Impede operações em .trash, .obsidian, etc.
+    This blocks operations in .trash, .obsidian, and other private folders.
     """
     path_parts = Path(relative_path).parts
     for ignored in IGNORED_FOLDERS:
         if ignored in path_parts:
-            raise ValueError(f"Operação não permitida em pasta ignorada: {ignored}")
+            raise ValueError(f"Operation is not allowed in ignored folder: {ignored}")
 
 
 def serialize_frontmatter(frontmatter: dict[str, Any]) -> str:
-    """Serializa frontmatter para YAML."""
+    """Serialize frontmatter as YAML."""
     if not frontmatter:
         return ""
     yaml_str = yaml.dump(
@@ -183,7 +183,7 @@ def serialize_frontmatter(frontmatter: dict[str, Any]) -> str:
 
 
 # =============================================================================
-# Helpers de I/O Seguro
+# Safe I/O helpers
 # =============================================================================
 
 
@@ -192,12 +192,10 @@ def safe_read_text(
     relative_path: str,
 ) -> tuple[str | None, OperationResult | None]:
     """
-    Lê arquivo com tratamento padronizado de erros.
+    Read a file with standardized error handling.
 
-    Retorna:
-        Tupla (content, error_result) - um deles é sempre None.
-        - Se sucesso: (content, None)
-        - Se erro: (None, OperationResult com success=False)
+    Returns:
+        Tuple of content and error result, exactly one of which is None.
     """
     try:
         resolved_path = file_path.resolve(strict=True)
@@ -207,13 +205,13 @@ def safe_read_text(
         return content, None
     except OSError as e:
         logger.error("note_read_failed error_type=%s", type(e).__name__)
-        return None, error_result(relative_path, "Erro ao ler arquivo")
+        return None, error_result(relative_path, "Failed to read file")
     except ValueError:
         logger.error("note_read_rejected reason=outside_vault")
-        return None, error_result(relative_path, "Path inválido ou fora do vault")
+        return None, error_result(relative_path, "Path is invalid or outside the vault")
     except UnicodeDecodeError as e:
         logger.error("note_read_failed error_type=%s", type(e).__name__)
-        return None, error_result(relative_path, "Erro de encoding: arquivo não é UTF-8 válido")
+        return None, error_result(relative_path, "Encoding error: file is not valid UTF-8")
 
 
 def safe_write_text(
@@ -225,13 +223,13 @@ def safe_write_text(
     check_revision: bool = False,
 ) -> OperationResult | None:
     """
-    Escreve arquivo com tratamento padronizado de erros.
+    Write a file atomically with standardized error handling.
 
-    Quando ``check_revision`` está ativo, compara inode, mtime em nanossegundos
-    e tamanho com ``expected_revision`` imediatamente antes do replace.
+    When ``check_revision`` is active, compare inode, nanosecond mtime, and size
+    with ``expected_revision`` immediately before replacement.
 
-    Retorna:
-        None se sucesso, OperationResult com erro se falhar.
+    Returns:
+        None on success, otherwise an OperationResult containing the error.
     """
     temp_path: Path | None = None
     try:
@@ -265,7 +263,7 @@ def safe_write_text(
             logger.warning("note_write_conflict")
             return error_result(
                 relative_path,
-                "Conflito de escrita: a nota foi alterada durante a operação. Tente novamente.",
+                "Write conflict: the note changed during the operation. Try again.",
             )
 
         os.replace(temp_path, file_path)
@@ -283,10 +281,10 @@ def safe_write_text(
         return None
     except OSError as e:
         logger.error("note_write_failed error_type=%s", type(e).__name__)
-        return error_result(relative_path, "Erro ao escrever arquivo")
+        return error_result(relative_path, "Failed to write file")
     except ValueError:
         logger.error("note_write_rejected reason=outside_vault")
-        return error_result(relative_path, "Path inválido ou fora do vault")
+        return error_result(relative_path, "Path is invalid or outside the vault")
     finally:
         if temp_path is not None and temp_path.exists():
             try:
@@ -305,19 +303,19 @@ def validate_for_write(
     markdown_only: bool = True,
 ) -> Path:
     """
-    Executa todas as validações necessárias para operação de escrita.
+    Run every validation required for a write operation.
 
-    Parâmetros:
-        relative_path: caminho relativo no vault
-        content: conteúdo a validar (opcional)
-        frontmatter: frontmatter a validar (opcional)
-        markdown_only: se True, aceita apenas .md
+    Parameters:
+        relative_path: path relative to the vault
+        content: optional content to validate
+        frontmatter: optional frontmatter to validate
+        markdown_only: accept only .md when true
 
-    Retorna:
-        Path absoluto resolvido.
+    Returns:
+        Resolved absolute path.
 
     Raises:
-        ValueError: se qualquer validação falhar.
+        ValueError: if any validation fails.
     """
     if markdown_only:
         validate_markdown_only(relative_path)
@@ -332,16 +330,16 @@ def validate_for_write(
 
 
 # =============================================================================
-# Schema Validation
+# Schema validation
 # =============================================================================
 
 
 def get_frontmatter_validator():
     """
-    Retorna instância do FrontmatterValidator configurada.
+    Return a configured FrontmatterValidator.
 
-    Lazy import para evitar circular dependencies.
-    Converte dicts do config YAML para FieldSchema em runtime.
+    Imports lazily to avoid dependency cycles and converts YAML dictionaries
+    to FieldSchema instances at runtime.
     """
     from vault_search.config import get_config
     from vault_search.frontmatter import FrontmatterValidator
@@ -350,7 +348,7 @@ def get_frontmatter_validator():
     config = get_config()
     fm_config = config.frontmatter
 
-    # Converte dicts do YAML para FieldSchema
+    # Convert YAML dictionaries to FieldSchema instances.
     schema_dict = {
         field_name: FieldSchema(**field_dict)
         for field_name, field_dict in fm_config.schema_fields.items()
@@ -375,20 +373,16 @@ def validate_frontmatter_schema(
     list[dict[str, Any]],
 ]:
     """
-    Valida frontmatter contra schema configurado.
+    Validate frontmatter against the configured schema.
 
-    Parâmetros:
-        frontmatter: dados do frontmatter
+    Parameters:
+        frontmatter: frontmatter data
 
-    Retorna:
-        Tupla (validated_data, errors, warnings, suggestions).
-        - validated_data: frontmatter após coerção e auto-geração
-        - errors: lista de erros que bloqueiam operação
-        - warnings: lista de avisos (coerções aplicadas)
-        - suggestions: lista de sugestões (campos opcionais)
+    Returns:
+        Tuple of validated data, errors, warnings, and suggestions.
 
     Raises:
-        ValueError: se validação falhar.
+        ValueError: if validation fails.
     """
     result = validate_frontmatter_schema_result(frontmatter)
 
@@ -407,16 +401,16 @@ def validate_frontmatter_schema_result(
     frontmatter: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """
-    Valida frontmatter e retorna resultado bruto (sem lançar exceção).
+    Validate frontmatter and return the raw result without raising.
 
-    Útil para fluxos que precisam tratar tipos específicos de erro
-    (ex: deferir campos required no create_note).
+    This supports flows that need to handle specific error types, such as
+    deferring required fields during create_note.
     """
     validator = get_frontmatter_validator()
     return validator.validate(frontmatter)
 
 
 def _format_frontmatter_errors(errors: list[dict[str, Any]]) -> str:
-    """Formata lista de erros de validação em mensagem amigável."""
+    """Format validation errors as a stable client-facing message."""
     error_msgs = [f"{e['field']}: {e['message']}" for e in errors]
-    return f"Validação de frontmatter falhou: {'; '.join(error_msgs)}"
+    return f"Frontmatter validation failed: {'; '.join(error_msgs)}"

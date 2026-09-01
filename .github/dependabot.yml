@@ -12,10 +12,10 @@ updates:
           - "patch"
     ignore:
       - dependency-name: "lancedb"
-        # 0.30+ altera APIs usadas por indexação, busca e prewarm.
+        # 0.30+ changes APIs used by indexing, search, and prewarm.
         versions: [">=0.30.0"]
       - dependency-name: "sentence-transformers"
-        # Releases major exigem validar o carregamento e a inferência dos modelos.
+        # Major releases require model-loading and inference validation.
         update-types:
           - "version-update:semver-major"
 

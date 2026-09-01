@@ -1,4 +1,4 @@
-"""Regressões de concorrência nas escritas CRUD."""
+"""Concurrency regressions in CRUD writes."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def test_concurrent_create_has_one_success_and_one_existing(
 
     assert not any(thread.is_alive() for thread in threads)
     assert sorted(result["success"] for result in results) == [False, True]
-    assert sum("já existe" in result["message"] for result in results) == 1
+    assert sum("already exists" in result["message"] for result in results) == 1
     assert (tmp_path / "same.md").read_text(encoding="utf-8").endswith(("first", "second"))
 
 
@@ -196,7 +196,7 @@ def test_external_change_causes_safe_conflict(
     result = write.append_note("note.md", "agent edit")
 
     assert result["success"] is False
-    assert "Conflito de escrita" in result["message"]
+    assert "Write conflict" in result["message"]
     assert note.read_text(encoding="utf-8") == "external edit"
     assert validation.file_revision(note) is not None
 
@@ -486,9 +486,9 @@ def test_lock_directory_symlink_cannot_escape_vault(
     )
     _configure_vault(monkeypatch, vault)
 
-    with pytest.raises(ValueError, match="fora do vault"):
+    with pytest.raises(ValueError, match="outside the vault"):
         with advisory_path_lock(vault / "note.md"):
-            pytest.fail("lock externo não pode ser adquirido")
+            pytest.fail("lock external cannot be acquired")
 
     assert list(outside.iterdir()) == []
 
@@ -512,7 +512,7 @@ def test_trash_nested_symlink_cannot_escape_vault(
     _configure_vault(monkeypatch, vault)
     monkeypatch.setattr("vault_search.crud.delete.VAULT_PATH", vault)
 
-    with pytest.raises(ValueError, match="fora do vault"):
+    with pytest.raises(ValueError, match="outside the vault"):
         delete_note("folder/note.md")
 
     assert note.read_text(encoding="utf-8") == "private content"

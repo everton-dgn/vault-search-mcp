@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Desregistra o daemon no macOS e move os plists para a lixeira.
+# Unregister the daemon on macOS and move its plists to the trash.
 
 set -euo pipefail
 
@@ -9,7 +9,7 @@ readonly PLIST_DIR="$HOME/Library/LaunchAgents"
 
 TRASH_COMMAND="$(command -v trash || command -v trash-put || true)"
 if [[ -z "$TRASH_COMMAND" ]]; then
-    printf '%s\n' "Erro: trash ou trash-put é obrigatório para remoção recuperável." >&2
+    printf '%s\n' "Error: trash or trash-put is required for recoverable removal." >&2
     exit 1
 fi
 
@@ -23,5 +23,5 @@ for plist in \
     "$TRASH_COMMAND" "$plist"
 done
 
-printf '%s\n' "Daemon desregistrado. Os plists existentes foram movidos para a lixeira."
-printf '%s\n' "O vault, o índice e os logs não foram alterados."
+printf '%s\n' "Daemon unregistered. Existing plists were moved to the trash."
+printf '%s\n' "The vault, index, and logs were not changed."

@@ -1,7 +1,7 @@
 """
-Testes para o módulo de highlight.
+Tests for the highlighting module.
 
-Testa extração de termos, validação de marcadores e aplicação de highlight.
+Test extraction of terms, validation of markers and application of highlight.
 """
 
 from vault_search.core.highlight import (
@@ -14,42 +14,46 @@ from vault_search.core.highlight import (
 
 
 class TestExtractHighlightTerms:
-    """Testes para extract_highlight_terms()."""
+    """Tests for extract_highlight_terms()."""
 
     def test_empty_query(self):
-        """Query vazia retorna lista vazia."""
+        """An empty query returns an empty list."""
         assert extract_highlight_terms("") == []
         assert extract_highlight_terms(None) == []
 
     def test_single_term(self):
-        """Termo único é extraído."""
+        """A single term is extracted."""
         assert extract_highlight_terms("python") == ["python"]
 
     def test_multiple_terms(self):
-        """Múltiplos termos são extraídos."""
+        """Multiple terms are extracted."""
         terms = extract_highlight_terms("python machine learning")
         assert "python" in terms
         assert "machine" in terms
         assert "learning" in terms
 
     def test_filters_stopwords_english(self):
-        """Stopwords em inglês são filtradas."""
+        """English stop words are filtered."""
         terms = extract_highlight_terms("the python and machine")
         assert "python" in terms
         assert "machine" in terms
         assert "the" not in terms
         assert "and" not in terms
 
-    def test_filters_stopwords_portuguese(self):
-        """Stopwords em português são filtradas."""
-        terms = extract_highlight_terms("como fazer com python")
+    def test_filters_additional_english_stopwords(self):
+        """Additional English stopwords are filtered."""
+        terms = extract_highlight_terms("that build with python")
         assert "python" in terms
-        assert "fazer" in terms
-        assert "como" not in terms
-        assert "com" not in terms
+        assert "build" in terms
+        assert "that" not in terms
+        assert "with" not in terms
+
+    def test_filters_portuguese_stopwords(self):
+        """Portuguese stop words remain supported for multilingual vaults."""
+        assert extract_highlight_terms("como fazer com python") == ["fazer", "python"]
 
     def test_filters_short_terms(self):
-        """Termos curtos (< MIN_TERM_LENGTH) são filtrados."""
+        """Terms shorter than MIN_TERM_LENGTH are filtered."""
         terms = extract_highlight_terms("a is to python ai")
         assert "python" in terms
         assert "a" not in terms
@@ -58,7 +62,7 @@ class TestExtractHighlightTerms:
         assert "ai" not in terms  # 2 chars < 3
 
     def test_case_preservation(self):
-        """Case é preservado nos termos extraídos."""
+        """Extracted terms preserve their original case."""
         terms = extract_highlight_terms("Python MACHINE Learning")
         assert "Python" in terms
         assert "MACHINE" in terms
@@ -66,40 +70,40 @@ class TestExtractHighlightTerms:
 
 
 class TestValidateMarkers:
-    """Testes para validate_markers()."""
+    """Tests for validate_markers()."""
 
     def test_valid_markers(self):
-        """Marcadores válidos são aceitos."""
+        """Valid markers are accepted."""
         start, end = validate_markers("**", "**")
         assert start == "**"
         assert end == "**"
 
     def test_valid_html_markers(self):
-        """Marcadores HTML são aceitos."""
+        """Markers HTML are accepted."""
         start, end = validate_markers("<mark>", "</mark>")
         assert start == "<mark>"
         assert end == "</mark>"
 
     def test_invalid_start_marker(self):
-        """Marcador de início inválido é substituído por padrão."""
+        """Marker of start invalid is replaced by default."""
         start, end = validate_markers("INVALID", "**")
         assert start == "**"
         assert end == "**"
 
     def test_invalid_end_marker(self):
-        """Marcador de fim inválido é substituído por padrão."""
+        """Marker of end invalid is replaced by default."""
         start, end = validate_markers("**", "INVALID")
         assert start == "**"
         assert end == "**"
 
     def test_both_invalid(self):
-        """Ambos inválidos são substituídos por padrão."""
+        """Two invalid markers are replaced by the defaults."""
         start, end = validate_markers("<script>", "</script>")
         assert start == "**"
         assert end == "**"
 
     def test_all_allowed_markers(self):
-        """Todos os marcadores da whitelist são aceitos."""
+        """All the markers of the whitelist are accepted."""
         for marker in ALLOWED_HIGHLIGHT_MARKERS:
             start, end = validate_markers(marker, marker)
             assert start == marker
@@ -107,102 +111,102 @@ class TestValidateMarkers:
 
 
 class TestHighlightText:
-    """Testes para highlight_text()."""
+    """Tests for highlight_text()."""
 
     def test_empty_text(self):
-        """Texto vazio retorna texto vazio."""
+        """Empty text remains empty."""
         result = highlight_text("", "python")
         assert result == ""
 
     def test_empty_query(self):
-        """Query vazia retorna texto original."""
+        """An empty query returns the original text."""
         text = "Hello world"
         result = highlight_text(text, "")
         assert result == text
 
-    def test_no_match(self):
-        """Sem matches retorna texto original."""
+    def test_in_match(self):
+        """Without matches returns text original."""
         text = "Hello world"
         result = highlight_text(text, "python")
         assert result == text
 
     def test_single_match(self):
-        """Match único é destacado."""
+        """A single match is highlighted."""
         result = highlight_text("Learn python today", "python")
         assert result == "Learn **python** today"
 
     def test_multiple_matches(self):
-        """Múltiplos matches são destacados."""
+        """Multiple matches are highlighted."""
         result = highlight_text("Python is great. Use python!", "python")
         assert result == "**Python** is great. Use **python**!"
 
     def test_case_insensitive(self):
-        """Match é case-insensitive."""
+        """Match is case-insensitive."""
         result = highlight_text("PYTHON Python python", "python")
         assert "**PYTHON**" in result
         assert "**Python**" in result
         assert "**python**" in result
 
     def test_multiple_terms(self):
-        """Múltiplos termos são destacados."""
+        """Multiple terms are highlighted."""
         result = highlight_text("Python and machine learning", "python learning")
         assert "**Python**" in result
         assert "**learning**" in result
 
     def test_custom_markers(self):
-        """Marcadores customizados funcionam."""
+        """Custom markers work."""
         result = highlight_text("Learn python", "python", "<mark>", "</mark>")
         assert result == "Learn <mark>python</mark>"
 
     def test_stopwords_not_highlighted(self):
-        """Stopwords da query não são destacadas."""
+        """Stopwords of the query are not highlighted."""
         result = highlight_text("the python and the snake", "the python")
-        # "the" não deve ser destacado
+        # "the" must not be highlighted.
         assert "**the**" not in result
         assert "**python**" in result
 
     def test_special_regex_chars_escaped(self):
-        """Caracteres especiais de regex são escapados."""
+        """Regular-expression metacharacters are escaped."""
         result = highlight_text("Use file.py for test", "file.py")
         assert "**file.py**" in result
 
     def test_preserves_original_case(self):
-        """Texto original preserva case."""
+        """Text original preserves case."""
         result = highlight_text("PYTHON is Great", "python great")
         assert "**PYTHON**" in result
         assert "**Great**" in result
 
 
 class TestApplyHighlight:
-    """Testes para apply_highlight()."""
+    """Tests for apply_highlight()."""
 
     def test_highlight_disabled(self):
-        """Se highlight=False, retorna resultados inalterados."""
+        """If highlight=False, returns results unchanged."""
         results = [{"text": "python code"}]
         output = apply_highlight(results, "python", highlight=False)
         assert output == results
         assert output[0]["text"] == "python code"
 
     def test_highlight_enabled(self):
-        """Se highlight=True, aplica highlight."""
+        """highlight=True applies highlighting."""
         results = [{"text": "python code"}]
         output = apply_highlight(results, "python", highlight=True)
         assert output[0]["text"] == "**python** code"
 
     def test_multiple_results(self):
-        """Múltiplos resultados são processados."""
+        """Multiple results are processed."""
         results = [
             {"text": "Learn python"},
             {"text": "Python basics"},
-            {"text": "No match here"},
+            {"text": "In the match here"},
         ]
         output = apply_highlight(results, "python", highlight=True)
         assert output[0]["text"] == "Learn **python**"
         assert output[1]["text"] == "**Python** basics"
-        assert output[2]["text"] == "No match here"
+        assert output[2]["text"] == "In the match here"
 
     def test_does_not_mutate_input(self):
-        """Não muta a lista de entrada."""
+        """Not mutates a list of input."""
         results = [{"text": "python code", "score": 0.9}]
         output = apply_highlight(results, "python", highlight=True)
         assert results[0]["text"] == "python code"
@@ -210,19 +214,19 @@ class TestApplyHighlight:
         assert output[0]["score"] == 0.9
 
     def test_empty_results(self):
-        """Lista vazia retorna lista vazia."""
+        """An empty list returns an empty list."""
         output = apply_highlight([], "python", highlight=True)
         assert output == []
 
     def test_missing_text_field(self):
-        """Resultado sem campo 'text' não causa erro."""
+        """A result without a text field does not raise an error."""
         results = [{"score": 0.9}]
         output = apply_highlight(results, "python", highlight=True)
         assert output[0]["text"] == ""
         assert output[0]["score"] == 0.9
 
     def test_custom_markers_in_apply(self):
-        """Marcadores customizados funcionam em apply_highlight."""
+        """Custom markers work in apply_highlight."""
         results = [{"text": "python code"}]
         output = apply_highlight(
             results, "python", highlight=True, start_marker="==", end_marker="=="
@@ -231,49 +235,49 @@ class TestApplyHighlight:
 
 
 class TestEdgeCases:
-    """Testes de edge cases."""
+    """Tests for edge cases."""
 
     def test_unicode_text(self):
-        """Texto com unicode funciona."""
-        result = highlight_text("Python é incrível", "Python incrível")
-        assert "**Python**" in result
-        assert "**incrível**" in result
+        """Unicode text is highlighted correctly."""
+        result = highlight_text("Python handles café and naïve text", "café naïve")
+        assert "**café**" in result
+        assert "**naïve**" in result
 
     def test_newlines_preserved(self):
-        """Quebras de linha são preservadas."""
+        """Line breaks are preserved."""
         result = highlight_text("Python\nis\ngreat", "python great")
         assert "**Python**" in result
         assert "**great**" in result
         assert "\n" in result
 
     def test_term_at_boundary(self):
-        """Termo no início/fim do texto."""
+        """Term in the start/end of the text."""
         assert highlight_text("python", "python") == "**python**"
         assert highlight_text("python is", "python") == "**python** is"
         assert highlight_text("is python", "python") == "is **python**"
 
     def test_adjacent_terms(self):
-        """Termos adjacentes são destacados separadamente."""
+        """Adjacent terms are highlighted separately."""
         result = highlight_text("python machine", "python machine")
         assert "**python**" in result
         assert "**machine**" in result
 
     def test_term_as_substring(self):
-        """Termo como substring de palavra maior é destacado."""
-        # "code" é substring de "codebase"
+        """A term that is a substring of a larger word is highlighted."""
+        # "code" is substring of "codebase"
         result = highlight_text("codebase contains code", "code")
-        # Ambas ocorrências de "code" devem ser destacadas
+        # Ambas occurrences of "code" must be highlighted
         assert "**code**" in result
 
     def test_very_long_text(self):
-        """Texto muito longo funciona."""
+        """Text very long works."""
         text = "python " * 1000
         result = highlight_text(text, "python")
         assert result.count("**python**") == 1000
 
     def test_many_terms_query(self):
-        """Query com muitos termos funciona."""
-        # Usar nomes únicos que não sejam prefixos uns dos outros
+        """A query containing many terms is highlighted correctly."""
+        # Use names singles that not are prefixes some of the other
         terms = ["alpha", "beta", "gamma", "delta", "epsilon"]
         query = " ".join(terms)
         text = "alpha and beta with gamma"

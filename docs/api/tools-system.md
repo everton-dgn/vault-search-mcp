@@ -1,8 +1,8 @@
-# Tools de sistema
+# System tools
 
-As três tools deste grupo expõem estado do processo atual. Elas ajudam a
-diagnosticar uma instalação e a produzir medições locais. Os valores não são
-comparáveis entre máquinas sem registrar o protocolo de teste.
+These three tools expose current process state. They help diagnose an
+installation and produce local measurements. Values are not comparable across
+machines unless the benchmark environment is recorded.
 
 ## `system_stats`
 
@@ -10,29 +10,22 @@ comparáveis entre máquinas sem registrar o protocolo de teste.
 system_stats(reset: bool = False) -> dict
 ```
 
-O retorno reúne:
-
-| Chave | Conteúdo |
+| Key | Content |
 |---|---|
-| `performance.operations` | Contagem e distribuição de latência já coletada pelo processo |
-| `cache.metadata_cache` | Tamanho, capacidade, acertos e erros do cache de metadados |
-| `cache.embedding_cache` | Estado do cache de embeddings de consulta |
-| `catalog.notes_catalog` | Contagens do catálogo ou estado não inicializado |
-| `index` | Chunks, notas únicas e última modificação |
-| `prewarm.status` | Resultado da tentativa de prewarm deste processo |
+| `performance.operations` | Recorded operation counts and latency distribution |
+| `cache.metadata_cache` | Metadata cache size, capacity, hits, and misses |
+| `cache.embedding_cache` | Query-embedding cache state |
+| `catalog.notes_catalog` | Catalog counts or uninitialized state |
+| `index` | Chunk count, unique notes, and last modification |
+| `prewarm.status` | This process's prewarm result |
 
-Com `reset=True`, a tool monta o resultado e limpa as métricas de operações em
-seguida. Caches, catálogo e índice não são apagados.
-
-Exemplo estrutural, sem números de referência:
+With `reset=True`, the tool assembles the response and then clears operation
+metrics. It does not erase caches, catalog rows, or index data.
 
 ```python
 {
     "performance": {"operations": {}},
-    "cache": {
-        "metadata_cache": {},
-        "embedding_cache": {},
-    },
+    "cache": {"metadata_cache": {}, "embedding_cache": {}},
     "catalog": {"notes_catalog": {}},
     "index": {
         "total_chunks": 0,
@@ -43,13 +36,15 @@ Exemplo estrutural, sem números de referência:
 }
 ```
 
+The example documents structure, not a measured baseline.
+
 ## `health_check`
 
 ```python
 health_check() -> dict
 ```
 
-Confere índice, catálogo, modelos e alertas acumulados. O retorno inclui:
+Checks index, catalog, models, required daemon state, and accumulated alerts.
 
 ```python
 {
@@ -67,33 +62,28 @@ Confere índice, catálogo, modelos e alertas acumulados. O retorno inclui:
 }
 ```
 
-O exemplo mostra apenas o formato. Ele não representa uma execução medida.
-
-| Status | Condição operacional |
+| Status | Condition |
 |---|---|
-| `healthy` | Índice disponível, sem alerta atual |
-| `degraded` | Índice ainda sem chunks, com catálogo disponível |
-| `warning` | Há alerta de latência ou cache |
-| `unhealthy` | Índice e catálogo indisponíveis, ou daemon obrigatório ausente |
+| `healthy` | Index available and no current alert |
+| `degraded` | Index has no chunks while the catalog is available |
+| `warning` | A latency or cache alert exists |
+| `unhealthy` | Index and catalog unavailable, or a required daemon is missing |
 
-O coletor abre alerta quando o p95 registrado passa de 500 ms ou quando a taxa
-de acerto observada de um cache fica abaixo de 0,70. São limites operacionais
-fixos do código atual, não metas universais de desempenho.
+The current code opens an alert when recorded p95 exceeds 500 ms or an observed
+cache hit rate drops below 0.70. These are fixed operational thresholds, not
+universal performance targets.
 
-Modelos descarregados não tornam a saúde inválida por si só. O processo pode
-carregá-los sob demanda ou usar o daemon.
+Unloaded models do not make health invalid by themselves. They can load on
+demand or run through the daemon.
 
 ## `benchmark_search`
 
 ```python
-benchmark_search(
-    query: str = "test",
-    iterations: int = 10,
-) -> dict | str
+benchmark_search(query: str = "test", iterations: int = 10) -> dict | str
 ```
 
-Executa `search` com `top_k=10` no processo atual. `iterations` é normalizado
-para o intervalo de 1 a 100. O resultado de uma execução válida contém:
+Runs `search` with `top_k=10` in the current process. `iterations` is clamped
+from 1 through 100.
 
 ```python
 {
@@ -107,10 +97,10 @@ para o intervalo de 1 a 100. O resultado de uma execução válida contém:
 }
 ```
 
-Os zeros documentam tipos e chaves, sem afirmar latência. Se algumas amostras
-falham, entram `errors` e `sample_error_type`. Se todas falham, a tool omite as
-estatísticas e devolve diagnóstico do ambiente.
+The zero values document types only. Failed samples add `errors` and
+`sample_error_type`. When every sample fails, statistics are omitted and the
+tool returns environment diagnostics.
 
-Esse microbenchmark não mede recall, qualidade do reranking, concorrência nem
-consumo de memória. Para publicar um resultado, siga o
-[protocolo de benchmark](../performance/benchmarking.md).
+This microbenchmark does not measure recall, reranking quality, concurrency, or
+memory use. Follow the [benchmark protocol](../performance/benchmarking.md)
+before publishing results.

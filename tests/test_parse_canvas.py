@@ -1,7 +1,7 @@
 """
-Testes unitários para parse_canvas.py — parser de Canvas.
+Unit tests for parse_canvas.py — parser of Canvas.
 
-Testes rápidos que NÃO precisam de modelos ML nem LanceDB.
+Fast tests that do not require ML models or LanceDB.
 """
 
 import json
@@ -11,14 +11,14 @@ from vault_search.parsers.canvas import parse_canvas
 
 
 def _write_canvas(vault: Path, name: str, data: dict) -> Path:
-    """Helper: escreve um arquivo .canvas no vault."""
+    """Helper: writes a file .canvas in the vault."""
     path = vault / name
     path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 
 class TestParseCanvasTextNodes:
-    def test_text_node_simples(self, tmp_vault):
+    def test_simple_text_node(self, tmp_vault):
         data = {
             "nodes": [
                 {
@@ -41,13 +41,13 @@ class TestParseCanvasTextNodes:
         assert chunks[0]["note_title"] == "test"
         assert chunks[0]["tags"] == ""
 
-    def test_multiplos_text_nodes(self, tmp_vault):
+    def test_multiple_text_nodes(self, tmp_vault):
         data = {
             "nodes": [
                 {
                     "id": "n1",
                     "type": "text",
-                    "text": "Primeiro",
+                    "text": "First",
                     "x": 0,
                     "y": 0,
                     "width": 200,
@@ -56,7 +56,7 @@ class TestParseCanvasTextNodes:
                 {
                     "id": "n2",
                     "type": "text",
-                    "text": "Segundo",
+                    "text": "Second",
                     "x": 300,
                     "y": 0,
                     "width": 200,
@@ -69,9 +69,9 @@ class TestParseCanvasTextNodes:
         chunks = parse_canvas(path, tmp_vault)
         assert len(chunks) == 2
         texts = {c["text"] for c in chunks}
-        assert texts == {"Primeiro", "Segundo"}
+        assert texts == {"First", "Second"}
 
-    def test_text_node_vazio_ignorado(self, tmp_vault):
+    def test_empty_text_node_is_ignored(self, tmp_vault):
         data = {
             "nodes": [
                 {
@@ -99,13 +99,13 @@ class TestParseCanvasTextNodes:
         chunks = parse_canvas(path, tmp_vault)
         assert len(chunks) == 0
 
-    def test_text_node_com_markdown(self, tmp_vault):
+    def test_text_node_with_markdown(self, tmp_vault):
         data = {
             "nodes": [
                 {
                     "id": "n1",
                     "type": "text",
-                    "text": "# Título\n\nTexto com **bold** e *italic*.",
+                    "text": "# Title\n\nText with **bold** and *italic*.",
                     "x": 0,
                     "y": 0,
                     "width": 200,
@@ -119,9 +119,9 @@ class TestParseCanvasTextNodes:
         assert len(chunks) == 1
         assert "**bold**" in chunks[0]["text"]
 
-    def test_text_node_longo_chunked(self, tmp_vault):
-        """Texto > CHUNK_SIZE deve ser dividido em múltiplos chunks."""
-        long_text = "Parágrafo de teste. " * 200  # ~4000 chars
+    def test_long_text_node_is_chunked(self, tmp_vault):
+        """Text larger than CHUNK_SIZE must be split into multiple chunks."""
+        long_text = "Paragraph of test. " * 200  # ~4000 chars
         data = {
             "nodes": [
                 {
@@ -148,7 +148,7 @@ class TestParseCanvasTextNodes:
                 {
                     "id": "n1",
                     "type": "text",
-                    "text": "Programação em português: áéíóú ãõ ç",
+                    "text": "Unicode sample: áéíóú ãõ ç",
                     "x": 0,
                     "y": 0,
                     "width": 200,
@@ -170,7 +170,7 @@ class TestParseCanvasGroupNodes:
                 {
                     "id": "g1",
                     "type": "group",
-                    "label": "Meu Grupo",
+                    "label": "My Group",
                     "x": 0,
                     "y": 0,
                     "width": 400,
@@ -182,10 +182,10 @@ class TestParseCanvasGroupNodes:
         path = _write_canvas(tmp_vault, "group.canvas", data)
         chunks = parse_canvas(path, tmp_vault)
         assert len(chunks) == 1
-        assert chunks[0]["text"] == "Meu Grupo"
-        assert chunks[0]["headers"] == "Group: Meu Grupo"
+        assert chunks[0]["text"] == "My Group"
+        assert chunks[0]["headers"] == "Group: My Group"
 
-    def test_group_sem_label_ignorado(self, tmp_vault):
+    def test_group_without_label_is_ignored(self, tmp_vault):
         data = {
             "nodes": [{"id": "g1", "type": "group", "x": 0, "y": 0, "width": 400, "height": 400}],
             "edges": [],
@@ -196,7 +196,7 @@ class TestParseCanvasGroupNodes:
 
 
 class TestParseCanvasEdges:
-    def test_edge_com_label(self, tmp_vault):
+    def test_edge_with_label(self, tmp_vault):
         data = {
             "nodes": [
                 {
@@ -218,17 +218,17 @@ class TestParseCanvasEdges:
                     "height": 100,
                 },
             ],
-            "edges": [{"id": "e1", "fromNode": "n1", "toNode": "n2", "label": "depende de"}],
+            "edges": [{"id": "e1", "fromNode": "n1", "toNode": "n2", "label": "depends on"}],
         }
         path = _write_canvas(tmp_vault, "edges.canvas", data)
         chunks = parse_canvas(path, tmp_vault)
         edge_chunks = [c for c in chunks if "Edge:" in c["headers"]]
         assert len(edge_chunks) == 1
-        assert edge_chunks[0]["text"] == "depende de"
+        assert edge_chunks[0]["text"] == "depends on"
         assert "n1" in edge_chunks[0]["headers"]
         assert "n2" in edge_chunks[0]["headers"]
 
-    def test_edge_sem_label_ignorado(self, tmp_vault):
+    def test_edge_without_label_is_ignored(self, tmp_vault):
         data = {
             "nodes": [],
             "edges": [{"id": "e1", "fromNode": "n1", "toNode": "n2"}],
@@ -239,13 +239,13 @@ class TestParseCanvasEdges:
 
 
 class TestParseCanvasIgnoredNodes:
-    def test_file_node_ignorado(self, tmp_vault):
+    def test_file_node_is_ignored(self, tmp_vault):
         data = {
             "nodes": [
                 {
                     "id": "f1",
                     "type": "file",
-                    "file": "notas/algo.md",
+                    "file": "notes/sample.md",
                     "x": 0,
                     "y": 0,
                     "width": 200,
@@ -258,7 +258,7 @@ class TestParseCanvasIgnoredNodes:
         chunks = parse_canvas(path, tmp_vault)
         assert len(chunks) == 0
 
-    def test_link_node_ignorado(self, tmp_vault):
+    def test_link_node_is_ignored(self, tmp_vault):
         data = {
             "nodes": [
                 {
@@ -279,31 +279,31 @@ class TestParseCanvasIgnoredNodes:
 
 
 class TestParseCanvasEdgeCases:
-    def test_json_invalido(self, tmp_vault):
+    def test_json_invalid(self, tmp_vault):
         path = tmp_vault / "bad.canvas"
         path.write_text("{invalid json", encoding="utf-8")
         chunks = parse_canvas(path, tmp_vault)
         assert chunks == []
 
-    def test_canvas_vazio(self, tmp_vault):
+    def test_canvas_empty(self, tmp_vault):
         data = {"nodes": [], "edges": []}
         path = _write_canvas(tmp_vault, "empty.canvas", data)
         chunks = parse_canvas(path, tmp_vault)
         assert chunks == []
 
-    def test_canvas_sem_nodes_key(self, tmp_vault):
+    def test_canvas_without_nodes_key(self, tmp_vault):
         data = {"other": "data"}
         path = _write_canvas(tmp_vault, "nokeys.canvas", data)
         chunks = parse_canvas(path, tmp_vault)
         assert chunks == []
 
-    def test_node_sem_type(self, tmp_vault):
+    def test_node_without_type(self, tmp_vault):
         data = {"nodes": [{"id": "n1", "text": "orphan"}], "edges": []}
         path = _write_canvas(tmp_vault, "notype.canvas", data)
         chunks = parse_canvas(path, tmp_vault)
         assert chunks == []
 
-    def test_subpasta(self, tmp_vault):
+    def test_subfolder(self, tmp_vault):
         sub = tmp_vault / "diagrams"
         sub.mkdir()
         data = {
@@ -311,7 +311,7 @@ class TestParseCanvasEdgeCases:
                 {
                     "id": "n1",
                     "type": "text",
-                    "text": "Em subpasta",
+                    "text": "In subfolder",
                     "x": 0,
                     "y": 0,
                     "width": 200,
@@ -326,8 +326,8 @@ class TestParseCanvasEdgeCases:
         assert chunks[0]["folder"] == "diagrams"
         assert chunks[0]["note_path"] == "diagrams/diagram.canvas"
 
-    def test_node_nao_dict_ignorado(self, tmp_vault):
-        """Nodes que não são dict devem ser ignorados."""
+    def test_non_dict_node_is_ignored(self, tmp_vault):
+        """Nodes that are not dict must be ignored."""
         data = {
             "nodes": [
                 "string instead of dict",
@@ -336,7 +336,7 @@ class TestParseCanvasEdgeCases:
                 {
                     "id": "n1",
                     "type": "text",
-                    "text": "Válido",
+                    "text": "Valid",
                     "x": 0,
                     "y": 0,
                     "width": 200,
@@ -348,25 +348,25 @@ class TestParseCanvasEdgeCases:
         path = _write_canvas(tmp_vault, "mixed.canvas", data)
         chunks = parse_canvas(path, tmp_vault)
         assert len(chunks) == 1
-        assert chunks[0]["text"] == "Válido"
+        assert chunks[0]["text"] == "Valid"
 
-    def test_edge_nao_dict_ignorado(self, tmp_vault):
-        """Edges que não são dict devem ser ignorados."""
+    def test_non_dict_edge_is_ignored(self, tmp_vault):
+        """Edges that are not dict must be ignored."""
         data = {
             "nodes": [],
             "edges": [
                 "string edge",
                 None,
-                {"id": "e1", "fromNode": "n1", "toNode": "n2", "label": "válido"},
+                {"id": "e1", "fromNode": "n1", "toNode": "n2", "label": "valid"},
             ],
         }
         path = _write_canvas(tmp_vault, "bad_edges.canvas", data)
         chunks = parse_canvas(path, tmp_vault)
         assert len(chunks) == 1
-        assert chunks[0]["text"] == "válido"
+        assert chunks[0]["text"] == "valid"
 
-    def test_arquivo_inexistente(self, tmp_vault):
-        """Arquivo que não existe deve retornar lista vazia."""
-        path = tmp_vault / "nao_existe.canvas"
+    def test_file_nonexistent(self, tmp_vault):
+        """A missing file returns an empty list."""
+        path = tmp_vault / "does_not_exist.canvas"
         chunks = parse_canvas(path, tmp_vault)
         assert chunks == []

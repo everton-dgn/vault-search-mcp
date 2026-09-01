@@ -1,38 +1,38 @@
-# Código de conduta
+# Code of conduct
 
-## Compromisso
+## Commitment
 
-Participantes devem manter um ambiente seguro, respeitoso e útil, independente
-de experiência, identidade, origem, condição física, religião ou posição
-técnica.
+Participants must maintain a safe, respectful, and useful environment regardless
+of experience, identity, origin, physical condition, religion, or technical
+position.
 
-## Comportamentos esperados
+## Expected behavior
 
-- Criticar ideias e código com evidência, sem atacar pessoas.
-- Respeitar limites, privacidade e pedidos de interrupção.
-- Aceitar correção de boa-fé e reparar impacto quando necessário.
-- Compartilhar contexto suficiente para que decisões possam ser revisadas.
-- Proteger dados pessoais e conteúdo privado encontrados durante colaboração.
+- Critique ideas and code with evidence, without attacking people.
+- Respect boundaries, privacy, and requests to stop an interaction.
+- Accept good-faith correction and repair harm when needed.
+- Share enough context for decisions to be reviewed.
+- Protect personal data and private content found during collaboration.
 
-## Comportamentos inaceitáveis
+## Unacceptable behavior
 
-- Assédio, ameaça, intimidação ou discriminação.
-- Exposição de informação privada sem permissão explícita.
-- Conteúdo sexualizado ou atenção sexual indesejada.
-- Sabotagem deliberada, spam ou interrupção persistente de discussões.
-- Retaliação contra quem relata um problema de conduta.
+- Harassment, threats, intimidation, or discrimination.
+- Disclosure of private information without explicit permission.
+- Sexualized content or unwanted sexual attention.
+- Deliberate sabotage, spam, or persistent disruption.
+- Retaliation against anyone who reports a conduct concern.
 
-## Aplicação
+## Enforcement
 
-Relate incidentes por um canal privado aos mantenedores da plataforma que
-hospeda o projeto. Não inclua detalhes pessoais em issues públicas. Os
-mantenedores podem editar ou remover conteúdo, restringir participação e tomar
-outras medidas proporcionais ao impacto e à reincidência.
+Report incidents privately to the maintainers of the platform hosting the
+project. Do not include personal details in public issues. Maintainers may edit
+or remove content, restrict participation, and take other measures proportional
+to impact and repeated behavior.
 
-Quem recebe um relato deve limitar o acesso às informações, evitar conflitos de
-interesse e comunicar os próximos passos à pessoa afetada.
+Anyone receiving a report must limit access to its information, avoid conflicts
+of interest, and communicate next steps to the affected person.
 
-## Abrangência
+## Scope
 
-Estas regras valem nos espaços do projeto e em interações públicas que
-representem o projeto.
+These rules apply in project spaces and in public interactions that represent
+the project.

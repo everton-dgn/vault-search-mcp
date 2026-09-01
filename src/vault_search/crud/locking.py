@@ -1,4 +1,4 @@
-"""Lock advisory e revisões de arquivo para escritas CRUD concorrentes."""
+"""Advisory locks and file revisions for concurrent CRUD writes."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from vault_search.crud.types import OperationResult, error_result
 
 try:
     import fcntl
-except ImportError:  # pragma: no cover - fcntl não existe no Windows
+except ImportError:  # pragma: no cover - fcntl is unavailable on Windows
     fcntl = None  # type: ignore[assignment]
 
 
@@ -29,7 +29,7 @@ WRITE_LOCK_POLL_SECONDS = 0.05
 
 
 def _load_default_timeout() -> float:
-    """Lê override do ambiente com fallback fechado e limitado."""
+    """Read the bounded environment override with a safe fallback."""
     raw_value = os.environ.get("VAULT_SEARCH_WRITE_LOCK_TIMEOUT_SECONDS")
     if raw_value is None:
         return 5.0
@@ -46,7 +46,7 @@ WRITE_LOCK_TIMEOUT_SECONDS = _load_default_timeout()
 
 
 class WriteLockTimeoutError(TimeoutError):
-    """Indica que outro escritor reteve o lock além do prazo seguro."""
+    """Raised when another writer holds the lock past the safe deadline."""
 
     error_code = "write_lock_timeout"
 
@@ -54,7 +54,7 @@ class WriteLockTimeoutError(TimeoutError):
 def return_write_lock_timeout[**P](
     operation: Callable[Concatenate[str, P], OperationResult],
 ) -> Callable[Concatenate[str, P], OperationResult]:
-    """Converte expiração interna em resultado CRUD estável e seguro."""
+    """Convert an internal timeout into a stable CRUD result."""
 
     @wraps(operation)
     def wrapped(relative_path: str, *args: P.args, **kwargs: P.kwargs) -> OperationResult:
@@ -63,7 +63,7 @@ def return_write_lock_timeout[**P](
         except WriteLockTimeoutError:
             return error_result(
                 relative_path,
-                "Tempo limite ao aguardar outra escrita. Tente novamente.",
+                "Timed out waiting for another write. Try again.",
                 error_code=WriteLockTimeoutError.error_code,
             )
 
@@ -72,7 +72,7 @@ def return_write_lock_timeout[**P](
 
 @dataclass(frozen=True, slots=True)
 class FileRevision:
-    """Identidade e versão observável de um arquivo."""
+    """Observable identity and revision of a file."""
 
     inode: int
     mtime_ns: int
@@ -84,7 +84,7 @@ _thread_locks: weakref.WeakValueDictionary[str, threading.RLock] = weakref.WeakV
 
 
 def file_revision(file_path: Path) -> FileRevision | None:
-    """Captura a revisão usada para detectar alterações entre leitura e replace."""
+    """Capture the revision used to detect changes before replacement."""
     try:
         metadata = file_path.stat()
     except FileNotFoundError:
@@ -97,7 +97,7 @@ def file_revision(file_path: Path) -> FileRevision | None:
 
 
 def _thread_lock(key: str) -> threading.RLock:
-    """Mantém exclusão mútua também em plataformas sem flock por thread."""
+    """Provide process-local mutual exclusion when flock is unavailable."""
     with _registry_guard:
         lock = _thread_locks.get(key)
         if lock is None:
@@ -107,7 +107,7 @@ def _thread_lock(key: str) -> threading.RLock:
 
 
 def _lock_path(file_path: Path) -> Path:
-    """Deriva nome opaco de lock dentro de diretório interno validado."""
+    """Derive an opaque lock name inside a validated internal directory."""
     from vault_search.crud.validation import resolve_internal_path
 
     canonical_path = file_path.resolve(strict=False)
@@ -115,7 +115,7 @@ def _lock_path(file_path: Path) -> Path:
     try:
         canonical_path.relative_to(vault_root)
     except ValueError as exc:
-        raise ValueError("Path de lock inválido ou fora do vault.") from exc
+        raise ValueError("Lock path is invalid or outside the vault.") from exc
     digest = hashlib.sha256(os.fsencode(canonical_path)).hexdigest()
     lock_dir = resolve_internal_path(".vault-search-locks")
     lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -124,22 +124,22 @@ def _lock_path(file_path: Path) -> Path:
 
 
 def _validated_timeout(timeout_seconds: float | None) -> float:
-    """Normaliza timeout explícito sem permitir espera ilimitada ou NaN."""
+    """Normalize an explicit timeout without allowing NaN or unbounded waits."""
     timeout = WRITE_LOCK_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
     if not math.isfinite(timeout) or timeout < 0 or timeout > 300:
-        raise ValueError("Timeout do lock deve estar entre 0 e 300 segundos.")
+        raise ValueError("Lock timeout must be between 0 and 300 seconds.")
     return timeout
 
 
 def _acquire_thread_lock(lock: threading.RLock, deadline: float) -> None:
-    """Adquire o lock local respeitando o mesmo prazo do flock."""
+    """Acquire the process-local lock under the shared deadline."""
     remaining = max(0.0, deadline - time.monotonic())
     if not lock.acquire(timeout=remaining):
-        raise WriteLockTimeoutError("Tempo limite ao aguardar lock de escrita.")
+        raise WriteLockTimeoutError("Timed out waiting for the write lock.")
 
 
 def _acquire_flock(lock_fd: int, deadline: float) -> None:
-    """Tenta LOCK_NB com pausa curta e deadline monotônico."""
+    """Retry LOCK_NB with short pauses until the monotonic deadline."""
     assert fcntl is not None
     while True:
         try:
@@ -150,12 +150,12 @@ def _acquire_flock(lock_fd: int, deadline: float) -> None:
                 raise
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise WriteLockTimeoutError("Tempo limite ao aguardar lock de escrita.") from None
+                raise WriteLockTimeoutError("Timed out waiting for the write lock.") from None
             time.sleep(min(WRITE_LOCK_POLL_SECONDS, remaining))
 
 
 def _open_lock_file(file_path: Path, initial_lock_path: Path) -> int:
-    """Abre o lock com uma única recuperação se o diretório mudar no meio."""
+    """Open the lock file with one recovery if its directory changes concurrently."""
     close_on_exec = getattr(os, "O_CLOEXEC", 0)
     no_follow = getattr(os, "O_NOFOLLOW", 0)
     directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
@@ -182,7 +182,7 @@ def _open_lock_file(file_path: Path, initial_lock_path: Path) -> int:
             if directory_fd is not None:
                 os.close(directory_fd)
 
-    raise AssertionError("tentativas de abertura do lock esgotadas")  # pragma: no cover
+    raise AssertionError("lock open attempts exhausted")  # pragma: no cover
 
 
 @contextmanager
@@ -192,10 +192,10 @@ def advisory_path_lock(
     timeout_seconds: float | None = None,
 ) -> Iterator[None]:
     """
-    Serializa operações pelo path canônico.
+    Serialize operations by canonical path.
 
-    Em Unix, ``flock`` coordena processos. Em plataformas sem ``fcntl``, o
-    fallback cobre somente threads do processo atual.
+    On Unix, ``flock`` coordinates processes. Without ``fcntl``, the fallback
+    covers only threads in the current process.
     """
     timeout = _validated_timeout(timeout_seconds)
     deadline = time.monotonic() + timeout
@@ -229,7 +229,7 @@ def advisory_path_locks(
     *file_paths: Path,
     timeout_seconds: float | None = None,
 ) -> Iterator[None]:
-    """Adquire vários paths em ordem estável usando um prazo compartilhado."""
+    """Acquire multiple paths in stable order under one shared deadline."""
     timeout = _validated_timeout(timeout_seconds)
     deadline = time.monotonic() + timeout
     unique_paths = {

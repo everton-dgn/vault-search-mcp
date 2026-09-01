@@ -1,5 +1,5 @@
 """
-Testes para leitura otimizada de frontmatter.
+Tests for optimized frontmatter reading.
 """
 
 from pathlib import Path
@@ -8,9 +8,9 @@ from vault_search.parsers.frontmatter import read_frontmatter_only
 
 
 class TestReadFrontmatterOnly:
-    """Testes para read_frontmatter_only."""
+    """Tests for read_frontmatter_only."""
 
-    def test_arquivo_com_frontmatter(self, tmp_path: Path):
+    def test_file_with_frontmatter(self, tmp_path: Path):
         content = """---
 title: Test Note
 tags: [python, testing]
@@ -27,10 +27,10 @@ Some text here.
         assert metadata["title"] == "Test Note"
         assert metadata["tags"] == ["python", "testing"]
         assert bytes_read > 0
-        # Para arquivos pequenos, pode ler tudo em um chunk
+        # Small files can be read in a single chunk.
         assert bytes_read <= len(content.encode("utf-8"))
 
-    def test_arquivo_sem_frontmatter(self, tmp_path: Path):
+    def test_file_without_frontmatter(self, tmp_path: Path):
         content = """# Just a heading
 
 Normal markdown content.
@@ -43,7 +43,7 @@ Normal markdown content.
         assert metadata == {}
         assert bytes_read > 0
 
-    def test_arquivo_com_bom(self, tmp_path: Path):
+    def test_file_with_bom(self, tmp_path: Path):
         content = "\ufeff---\ntitle: BOM Test\n---\nBody"
         path = tmp_path / "with-bom.md"
         path.write_text(content, encoding="utf-8")
@@ -52,7 +52,7 @@ Normal markdown content.
 
         assert metadata["title"] == "BOM Test"
 
-    def test_arquivo_vazio(self, tmp_path: Path):
+    def test_file_empty(self, tmp_path: Path):
         path = tmp_path / "empty.md"
         path.write_text("")
 
@@ -61,8 +61,8 @@ Normal markdown content.
         assert metadata == {}
         assert bytes_read == 0
 
-    def test_frontmatter_sem_fechamento(self, tmp_path: Path):
-        """Frontmatter aberto sem --- de fechamento."""
+    def test_frontmatter_without_closing(self, tmp_path: Path):
+        """Open frontmatter without a closing delimiter."""
         content = """---
 title: Incomplete
 tags: [test]
@@ -74,9 +74,9 @@ Body without closing delimiter.
 
         metadata, _ = read_frontmatter_only(path)
 
-        assert metadata == {}  # Não é frontmatter válido
+        assert metadata == {}  # Is not frontmatter valid
 
-    def test_frontmatter_yaml_invalido(self, tmp_path: Path):
+    def test_frontmatter_yaml_invalid(self, tmp_path: Path):
         content = """---
 title: [Invalid YAML
 missing: bracket
@@ -89,10 +89,10 @@ Body
 
         metadata, _ = read_frontmatter_only(path)
 
-        assert metadata == {}  # YAML inválido
+        assert metadata == {}  # YAML invalid
 
-    def test_frontmatter_nao_dict(self, tmp_path: Path):
-        """YAML válido mas não é dict."""
+    def test_frontmatter_not_dict(self, tmp_path: Path):
+        """YAML valid but is not dict."""
         content = """---
 - item1
 - item2
@@ -105,10 +105,10 @@ Body
 
         metadata, _ = read_frontmatter_only(path)
 
-        assert metadata == {}  # Lista não é válido
+        assert metadata == {}  # List is not valid
 
-    def test_dash_no_meio_do_arquivo(self, tmp_path: Path):
-        """--- no meio do corpo não deve confundir."""
+    def test_dash_in_middle_of_file(self, tmp_path: Path):
+        """--- in the middle of the body must not confuse."""
         content = """---
 title: Test
 ---
@@ -124,9 +124,9 @@ More text after dashes
 
         assert metadata["title"] == "Test"
 
-    def test_frontmatter_grande_multiplos_chunks(self, tmp_path: Path):
-        """Frontmatter maior que um chunk."""
-        # Criar frontmatter com muitas linhas
+    def test_frontmatter_large_multiple_chunks(self, tmp_path: Path):
+        """Frontmatter larger that a chunk."""
+        # Create frontmatter with many lines.
         lines = ["---"]
         for i in range(100):
             lines.append(f"key{i}: value{i}")
@@ -143,15 +143,15 @@ More text after dashes
         assert "key99" in metadata
         assert metadata["key50"] == "value50"
 
-    def test_arquivo_inexistente(self, tmp_path: Path):
+    def test_file_nonexistent(self, tmp_path: Path):
         path = tmp_path / "missing.md"
         metadata, bytes_read = read_frontmatter_only(path)
 
         assert metadata == {}
         assert bytes_read == 0
 
-    def test_whitespace_antes_do_frontmatter(self, tmp_path: Path):
-        """Whitespace antes de --- invalida frontmatter."""
+    def test_whitespace_before_of_frontmatter(self, tmp_path: Path):
+        """Whitespace before of --- invalidates frontmatter."""
         content = """   ---
 title: Test
 ---
@@ -163,13 +163,13 @@ Body
 
         metadata, _ = read_frontmatter_only(path)
 
-        # Espaços antes do primeiro --- invalidam
+        # Spaces before the first delimiter make the frontmatter invalid.
         assert metadata == {}
 
-    def test_unicode_no_frontmatter(self, tmp_path: Path):
+    def test_unicode_in_frontmatter(self, tmp_path: Path):
         content = """---
-title: Título com Acentos
-tags: [português, 日本語, émojis 🎉]
+title: Title with Accents
+tags: [Portuguese, 日本語, emojis 🎉]
 ---
 
 Body with unicode: café ☕
@@ -179,17 +179,17 @@ Body with unicode: café ☕
 
         metadata, _ = read_frontmatter_only(path)
 
-        assert metadata["title"] == "Título com Acentos"
-        assert "português" in metadata["tags"]
+        assert metadata["title"] == "Title with Accents"
+        assert "Portuguese" in metadata["tags"]
 
 
 class TestReadFrontmatterPerformance:
-    """Testes de que a leitura é realmente parcial."""
+    """Tests for that a reading is actually partial."""
 
-    def test_nao_le_corpo_grande(self, tmp_path: Path):
-        """Não deve ler todo o corpo se for grande."""
-        # Frontmatter pequeno + corpo muito grande
-        large_body = "x" * (100 * 1024)  # 100KB de corpo
+    def test_does_not_read_large_body(self, tmp_path: Path):
+        """Must not read the entire body when it is large."""
+        # Frontmatter small + body very large
+        large_body = "x" * (100 * 1024)  # 100KB of body
         content = f"""---
 title: Small Frontmatter
 ---
@@ -202,6 +202,6 @@ title: Small Frontmatter
         metadata, bytes_read = read_frontmatter_only(path)
 
         assert metadata["title"] == "Small Frontmatter"
-        # Deve ter lido muito menos que o arquivo total
+        # Must have read very less that the file total
         total_size = len(content.encode("utf-8"))
-        assert bytes_read < total_size / 2  # Menos da metade
+        assert bytes_read < total_size / 2  # Less than half of the file.

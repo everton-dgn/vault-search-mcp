@@ -1,7 +1,7 @@
 """
-Testes para edge cases críticos de CRUD.
+Tests for edge cases critical of CRUD.
 
-Cobre gaps de cobertura identificados em code review.
+Covers test gaps identified during code review.
 """
 
 import pytest
@@ -10,11 +10,11 @@ import pytest
 
 
 class TestReadEdgeCases:
-    """Testes para edge cases em operações de leitura."""
+    """Tests for edge cases in operations of reading."""
 
     def test_read_note_frontmatter_title_as_int(self, tmp_path, monkeypatch):
-        """read_note converte title int para string."""
-        # Patch no módulo que USA a variável, não onde ela é definida
+        """read_note converts title int for string."""
+        # Patch in the module that USES a variable, not where it is defined
         monkeypatch.setattr("vault_search.crud.read.VAULT_PATH", tmp_path)
         monkeypatch.setattr("vault_search.crud.validation.VAULT_PATH", tmp_path)
 
@@ -25,10 +25,10 @@ class TestReadEdgeCases:
 
         result = read_note("test.md")
 
-        assert result["title"] == "123"  # int convertido
+        assert result["title"] == "123"  # int converted
 
     def test_read_note_frontmatter_title_as_bool(self, tmp_path, monkeypatch):
-        """read_note converte title bool para string."""
+        """read_note converts title bool for string."""
         monkeypatch.setattr("vault_search.crud.read.VAULT_PATH", tmp_path)
         monkeypatch.setattr("vault_search.crud.validation.VAULT_PATH", tmp_path)
 
@@ -39,11 +39,11 @@ class TestReadEdgeCases:
 
         result = read_note("test.md")
 
-        # bool True vira string "True" ou similar
+        # Boolean True becomes a string representation.
         assert isinstance(result["title"], str)
 
     def test_read_note_frontmatter_title_as_list(self, tmp_path, monkeypatch):
-        """read_note converte title lista para string."""
+        """read_note converts title list for string."""
         monkeypatch.setattr("vault_search.crud.read.VAULT_PATH", tmp_path)
         monkeypatch.setattr("vault_search.crud.validation.VAULT_PATH", tmp_path)
 
@@ -54,7 +54,7 @@ class TestReadEdgeCases:
 
         result = read_note("test.md")
 
-        # Lista deve virar string (primeiro elemento ou repr)
+        # A list must become a string using its first element or repr.
         assert isinstance(result["title"], str)
 
 
@@ -62,57 +62,49 @@ class TestReadEdgeCases:
 
 
 class TestWriteEdgeCases:
-    """Testes para edge cases em operações de escrita."""
+    """Tests for edge cases in operations of writing."""
 
     def test_create_note_rejects_invalid_frontmatter_type(self, tmp_path, monkeypatch):
-        """create_note rejeita frontmatter que não é dict."""
+        """create_note rejects frontmatter that is not a dictionary."""
         from vault_search.config import paths
 
         monkeypatch.setattr(paths, "VAULT_PATH", tmp_path)
 
         from vault_search.crud.write import create_note
 
-        # frontmatter como string - código atual pode aceitar (yaml.dump de string)
-        # ou levantar exceção, dependendo da implementação
-        # Verificar comportamento documentado ou ajustar código
-        try:
-            result = create_note("test1.md", "body", frontmatter="not a dict")
-            # Se não levantou exceção, verificar se o resultado é válido
-            # Nota: o código atual pode não validar o tipo de frontmatter
-            assert "success" in result or isinstance(result, dict)
-        except TypeError, ValueError, AttributeError:
-            pass  # Exceção é comportamento aceitável
+        with pytest.raises(ValueError):
+            create_note("test1.md", "body", frontmatter="not a dict")
 
     def test_update_frontmatter_rejects_invalid_metadata(self, tmp_path, monkeypatch):
-        """update_frontmatter rejeita metadata que não é dict."""
+        """update_frontmatter rejects metadata that is not dict."""
         from vault_search.config import paths
 
         monkeypatch.setattr(paths, "VAULT_PATH", tmp_path)
 
-        # Criar nota primeiro
+        # Create note first
         note = tmp_path / "test.md"
         note.write_text("---\ntitle: Test\n---\nBody")
 
         from vault_search.crud.write import update_frontmatter
 
-        # metadata como string deve levantar ValueError
-        with pytest.raises(ValueError, match="dicionário"):
+        # String metadata must raise ValueError.
+        with pytest.raises(ValueError, match="dictionary"):
             update_frontmatter("test.md", "not a dict")
 
     def test_append_note_basic(self, tmp_path, monkeypatch):
-        """append_note adiciona conteúdo corretamente."""
-        # Precisa monkeypatch no módulo validation onde VAULT_PATH é usado
+        """append_note adds content correctly."""
+        # Needs monkeypatch in the module validation where VAULT_PATH is used
         from vault_search.crud import validation
 
         monkeypatch.setattr(validation, "VAULT_PATH", tmp_path)
 
-        # Criar nota
+        # Create note
         note = tmp_path / "test.md"
         note.write_text("Initial content")
 
         from vault_search.crud.write import append_note
 
-        # Adicionar conteúdo
+        # Add content.
         result = append_note("test.md", "New content")
 
         assert result.get("success") is True
@@ -123,22 +115,22 @@ class TestWriteEdgeCases:
 
 
 class TestDeleteEdgeCases:
-    """Testes para edge cases em operações de delete."""
+    """Tests for edge cases in operations of delete."""
 
     def test_move_note_rejects_invalid_extension(self, tmp_path, monkeypatch):
-        """move_note rejeita extensão inválida no destino."""
+        """move_note rejects an invalid destination extension."""
         from vault_search.config import paths
 
         monkeypatch.setattr(paths, "VAULT_PATH", tmp_path)
 
-        # Criar arquivo
+        # Create file
         note = tmp_path / "file.md"
         note.write_text("content")
 
         from vault_search.crud.delete import move_note
 
-        # Tentar mover para extensão não suportada
-        with pytest.raises(ValueError, match="não suportada"):
+        # Attempt to move to an unsupported extension.
+        with pytest.raises(ValueError, match="not supported"):
             move_note("file.md", "file.jpg")
 
 
@@ -146,15 +138,15 @@ class TestDeleteEdgeCases:
 
 
 class TestListEdgeCases:
-    """Testes para edge cases em operações de listagem."""
+    """Tests for edge cases in list operations."""
 
     def test_list_notes_handles_ignored_folders(self, tmp_path, monkeypatch):
-        """list_notes trata corretamente pastas ignoradas."""
+        """list_notes handles ignored folders correctly."""
         monkeypatch.setattr("vault_search.crud.read.VAULT_PATH", tmp_path)
         monkeypatch.setattr("vault_search.crud.validation.VAULT_PATH", tmp_path)
         monkeypatch.setattr("vault_search.crud.read.USE_CATALOG", False)
 
-        # Criar estrutura com pasta ignorada
+        # Create a structure with an ignored folder.
         trash = tmp_path / ".trash"
         trash.mkdir()
         (trash / "deleted.md").write_text("deleted content")
@@ -165,7 +157,7 @@ class TestListEdgeCases:
 
         from vault_search.crud.read import list_notes
 
-        # Listar todas as notas não deve incluir .trash
+        # Listing all notes must exclude .trash.
         result = list_notes()
         paths_found = [n.get("path", "") for n in result.get("notes", [])]
 

@@ -1,78 +1,99 @@
 # Changelog
 
-Este arquivo registra mudanças que afetam usuários e contribuidores. O formato
-segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto
-usa [Versionamento Semântico](https://semver.org/lang/pt-BR/).
+This file records changes that affect users and contributors. It follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/).
 
-O histórico anterior à preparação pública não está disponível nesta cópia do
-repositório. Por isso, nenhuma data ou release passada foi reconstruída por
-suposição.
+History from before public-release preparation is intentionally absent from
+this repository. No earlier release date or version has been reconstructed by
+assumption.
 
 ## [Unreleased]
 
-### Adicionado
+### Added
 
-- Metadados de pacote e backend de build padronizado com Hatchling.
-- CI para análise estática, testes sem modelos, build e auditoria de publicação.
-- Gate de ShellCheck para instaladores e desinstaladores do daemon.
-- Gate de cobertura mínima de 65% e typecheck do pacote Python completo.
-- Política de segurança, guia de contribuição, suporte e código de conduta.
-- Configuração canônica em `config.example.yaml`.
-- Protocolo de benchmark que separa resultado medido de meta.
-- Identidade visual própria para a página inicial do repositório.
-- Comando `vault-search-config` para validar o YAML sem imprimir valores ou paths.
+- Dynamic package versions derived from strict `vX.Y.Z` Git tags.
+- Automated, tag-based GitHub releases with checksums and provenance evidence.
+- CI for static analysis, non-model tests, package builds, and publication
+  auditing.
+- ShellCheck coverage for daemon installers and uninstallers.
+- A 65% minimum coverage gate and package-wide type checking.
+- Security policy, contribution guide, support guide, and code of conduct.
+- Canonical configuration in `config.example.yaml`.
+- A benchmark protocol that separates measured results from targets.
+- A dedicated visual identity for the repository landing page.
+- `vault-search-config`, which validates YAML without printing resolved values
+  or local paths.
 
-### Alterado
+### Changed
 
-- README e documentação reorganizados em torno dos contratos reais do código.
-- Comandos de remoção do daemon passam a exigir movimentação para a lixeira.
-- Contagem documentada alinhada ao registro atual de 43 tools e 6 resources.
-- Health do daemon passa a distinguir `ready` dos estados indisponíveis com
-  HTTP 503; o endpoint HTTP de shutdown foi retirado.
-- `vault://notes` expõe limite, tamanho do snapshot e `has_more`.
-- Grafo usa densidade convencional e pontos de articulação exatos por Tarjan.
-- Fila de enriquecimento limita jobs, paths, histórico e resultados; shutdown
-  deixa de aceitar entradas e tenta drenar o trabalho pendente.
-- Mutações CRUD compartilham lock por path, timeout limitado e detecção de
-  revisão antes de substituir ou mover uma nota.
-- Cliente do daemon limita respostas a 64 MiB antes de decodificar JSON.
-- FTS usa tokenização neutra por padrão; stemming por idioma passa a ser opt-in.
-- Modelos de enriquecimento externo deixam de carregar nomes de provider como
-  default e passam a ser obrigatórios somente quando o recurso é habilitado.
-- Gate de publicação passa a verificar a árvore Git, nomes, conteúdo textual e
-  tipos de membro em wheel/sdist.
-- Embeddings densos BGE-M3 passam a usar `SentenceTransformer`; o lock padrão
-  seleciona PyTorch CPU e deixa variantes CUDA como escolha explícita.
+- The runtime, examples, tests, configuration, and documentation now use
+  English as the project language.
+- README and documentation now follow executable contracts in the code.
+- Daemon removal scripts move artifacts to the operating-system trash.
+- Documentation reflects the current registry of 43 tools and 6 resources.
+- Daemon health distinguishes `ready` from unavailable states with HTTP 503;
+  the HTTP shutdown endpoint has been removed.
+- `vault://notes` exposes snapshot size, limit, and `has_more`.
+- Graph density follows the conventional definition and articulation points use
+  Tarjan's algorithm.
+- The enrichment queue bounds jobs, paths, history, and result snapshots;
+  shutdown stops accepting work and attempts to drain pending jobs.
+- CRUD mutations share path locks, bounded timeouts, and revision checks before
+  replacing or moving notes.
+- Daemon responses are capped at 64 MiB before JSON decoding.
+- FTS uses language-neutral tokenization by default; language-specific stemming
+  is opt-in.
+- External enrichment has no provider-specific model defaults. Model identifiers
+  become required only when the feature is enabled.
+- The publication gate checks the Git tree plus member names, text content, and
+  file types inside wheel and sdist archives.
+- BGE-M3 dense embeddings use `SentenceTransformer`. The default lock selects
+  CPU PyTorch and keeps CUDA variants an explicit operator choice.
 
-### Corrigido
+### Fixed
 
-- Configuração rejeita limites contraditórios de busca, paginação e navegação
-  antes de iniciar o runtime.
-- Default de `folder_tree` passa a respeitar `navigation.folder_tree_max_depth`.
-- `.git` entra nos diretórios ignorados mesmo quando nenhum YAML é carregado.
-- `IVF_PQ` rejeita `num_sub_vectors` incompatível com a dimensão do embedding
-  antes de iniciar uma indexação.
-- Lock multiprocesso recupera uma única troca transitória do diretório interno
-  sem abrir mão da validação contra symlinks.
+- Publication auditing excludes the ephemeral GitHub pull-request merge
+  identity while continuing to inspect both persistent parent histories.
+- Release tags are published only after independent builds, reproducibility
+  checks, and artifact validation succeed. Attestations are bound to the exact
+  commit approved by CI, and privileged publication checks out a fully qualified
+  tag ref.
+- Daemon startup now exits with a failure when its port is occupied, and
+  installers verify both readiness and the managed process ID before reporting
+  success. Terminal warmup failures now exit for supervisor retry, installed
+  services preserve an explicit configuration allowlist, IPv6 loopback uses the
+  correct socket family, and clients bypass proxies and reject redirects.
+- Language-neutral FTS now explicitly disables the backend's English stemming
+  and stop-word defaults.
+- Portuguese stopwords and boolean aliases remain supported as input while the
+  public interface and documentation use English.
+- Configuration rejects contradictory search, pagination, and navigation limits
+  before runtime startup.
+- `folder_tree` defaults to `navigation.folder_tree_max_depth`.
+- `.git` remains ignored when no YAML file is loaded.
+- `IVF_PQ` rejects a `num_sub_vectors` value incompatible with the embedding
+  dimension before indexing starts.
+- Multiprocess locking tolerates one transient internal-directory replacement
+  without weakening symlink validation.
 
-### Removido
+### Removed
 
-- Exemplo legado de configuração incompatível com o schema Pydantic atual.
-- Gerador órfão de embeddings de ataque, sem corpus ou constantes no runtime.
-- Campos de segurança reservados que nunca aplicaram quota, timeout ou
-  truncamento no runtime.
+- A legacy configuration example that no longer matched the Pydantic schema.
+- An unused attack-embedding generator with no runtime corpus or constants.
+- Reserved security fields that never enforced a quota, timeout, or truncation.
 
-### Segurança
+### Security
 
-- Arquivos de configuração local, índices, logs e dados do vault passam a ser
-  ignorados explicitamente pelo Git.
-- Workflow de CI usa permissões mínimas e actions fixadas por commit.
-- Schema, cliente e servidor do daemon rejeitam hosts fora de loopback.
-- Locks multiprocesso em sistemas com `fcntl` usam arquivos opacos dentro do
-  vault; plataformas sem `fcntl` mantêm coordenação entre threads do processo.
-- Destinos aninhados da lixeira rejeitam symlinks que escapem do vault.
-- O bootstrap sanitiza também mensagens textuais de `SystemExit`.
-- A configuração é validada antes do carregamento do runtime MCP e do daemon.
-- Dependências de runtime foram atualizadas para versões corrigidas, incluindo
-  FastMCP 3 e Transformers 5; a troca removeu os transitivos sem correção
-  publicada `diskcache` e `lupa` do ambiente padrão.
+- Local configuration, indexes, logs, and vault data are explicitly ignored by
+  Git.
+- CI uses minimal permissions and actions pinned to commits.
+- Configuration, daemon client, and daemon server reject non-loopback hosts.
+- Multiprocess locks use opaque files inside the vault on systems with `fcntl`;
+  other platforms retain in-process thread coordination.
+- Nested trash destinations reject symlinks that escape the vault.
+- Startup sanitizes textual `SystemExit` messages.
+- Configuration is validated before the MCP runtime or daemon loads.
+- Runtime dependencies have been moved to maintained versions, including
+  FastMCP 3 and Transformers 5; the default environment no longer includes the
+  unpatched transitive packages `diskcache` and `lupa`.

@@ -1,6 +1,4 @@
-"""
-Enriquecimento de frontmatter obrigatório via CLI de LLM.
-"""
+"""Generate required frontmatter fields through a local LLM CLI."""
 
 import json
 import logging
@@ -16,15 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 class FrontmatterEnrichmentError(RuntimeError):
-    """Erro durante enriquecimento de frontmatter."""
+    """Raised when frontmatter enrichment fails."""
 
 
 class FrontmatterEnrichmentConfigError(FrontmatterEnrichmentError):
-    """Erro de configuração do enriquecimento de frontmatter."""
+    """Raised when frontmatter enrichment is configured unsafely or incompletely."""
 
 
 def get_required_schema_fields(schema: dict[str, FieldSchema]) -> dict[str, FieldSchema]:
-    """Retorna apenas campos com `on_missing=require`."""
+    """Return fields configured with `on_missing=require`."""
     return {
         field_name: field_schema
         for field_name, field_schema in schema.items()
@@ -33,7 +31,7 @@ def get_required_schema_fields(schema: dict[str, FieldSchema]) -> dict[str, Fiel
 
 
 def _is_field_empty(value: Any) -> bool:
-    """Verifica se valor de frontmatter é considerado vazio (None, string vazia, lista/dict vazio)."""
+    """Return whether a frontmatter value is empty."""
     if value is None:
         return True
     if isinstance(value, str) and value.strip() == "":
@@ -50,9 +48,9 @@ def generate_required_fields_with_ai(
     required_schema_fields: dict[str, FieldSchema],
 ) -> dict[str, Any]:
     """
-    Gera campos obrigatórios faltantes usando IA.
+    Generate missing required fields with the configured LLM provider.
 
-    Retorna apenas campos obrigatórios ausentes presentes no schema.
+    Return only missing fields that are required by the schema.
     """
     missing_required = [
         field_name
@@ -65,14 +63,14 @@ def generate_required_fields_with_ai(
     config = get_config().frontmatter.ai
     if not config.enabled:
         raise FrontmatterEnrichmentConfigError(
-            "Enriquecimento de frontmatter está desabilitado em frontmatter.ai.enabled"
+            "Frontmatter enrichment is disabled by frontmatter.ai.enabled"
         )
     if not config.command or len(config.command) == 0:
-        raise FrontmatterEnrichmentConfigError("frontmatter.ai.command não pode ser vazio")
+        raise FrontmatterEnrichmentConfigError("frontmatter.ai.command cannot be empty")
     if not config.primary_model:
-        raise FrontmatterEnrichmentConfigError("frontmatter.ai.primary_model não pode ser vazio")
+        raise FrontmatterEnrichmentConfigError("frontmatter.ai.primary_model cannot be empty")
 
-    # O conteúdo da nota deve viajar apenas por stdin, nunca pelo argv do processo.
+    # Note content must travel through stdin, never process argv.
     _validate_command_security(config.command)
 
     prompt = _build_prompt(
@@ -97,7 +95,7 @@ def generate_required_fields_with_ai(
                 timeout_seconds=config.timeout_seconds,
                 max_attempts=config.max_attempts,
             )
-            # Merge seguro: retorna apenas campos faltantes.
+            # Keep the provider response inside the missing-field allowlist.
             return {
                 field_name: generated[field_name]
                 for field_name in missing_required
@@ -114,7 +112,7 @@ def generate_required_fields_with_ai(
 
     failure_count = len(error_types)
     raise FrontmatterEnrichmentError(
-        f"Falha ao gerar frontmatter obrigatório via IA ({failure_count} tentativa(s))"
+        f"Failed to generate required frontmatter ({failure_count} provider attempt(s))"
     )
 
 
@@ -125,7 +123,7 @@ def _generate_with_model(
     timeout_seconds: float,
     max_attempts: int,
 ) -> dict[str, Any]:
-    """Executa CLI com retry curto e parseia saída JSON."""
+    """Run the CLI with bounded retries and parse its JSON output."""
     last_error: Exception | None = None
 
     for attempt in range(1, max_attempts + 1):
@@ -142,7 +140,7 @@ def _generate_with_model(
             )
             parsed = _extract_json_object(output)
             if not isinstance(parsed, dict):
-                raise FrontmatterEnrichmentError("Saída JSON não é objeto")
+                raise FrontmatterEnrichmentError("JSON output is not an object")
             return parsed
         except FrontmatterEnrichmentConfigError:
             raise
@@ -153,23 +151,23 @@ def _generate_with_model(
                 time.sleep(sleep_seconds)
 
     error_type = type(last_error).__name__ if last_error else "UnknownError"
-    raise FrontmatterEnrichmentError(f"Falha no provider de enriquecimento ({error_type})")
+    raise FrontmatterEnrichmentError(f"Enrichment provider failed ({error_type})")
 
 
 def _validate_command_security(command_template: list[str]) -> None:
     """
-    Valida segurança do template de comando.
+    Validate the command template's security contract.
 
-    Bloqueia `{prompt}` em qualquer argumento. O argv é visível para outros
-    processos locais e pode acabar em diagnósticos do sistema operacional.
+    Reject `{prompt}` in every argument. Process argv can be visible to other
+    local processes and operating-system diagnostics.
     """
     if not command_template:
         return
 
     if any("{prompt}" in str(part) for part in command_template):
         raise FrontmatterEnrichmentConfigError(
-            "Placeholder {prompt} não é permitido no comando. "
-            "O prompt deve ser enviado exclusivamente por stdin."
+            "The {prompt} placeholder is not allowed in the command. "
+            "Send the prompt exclusively through stdin."
         )
 
 
@@ -178,7 +176,7 @@ def _resolve_command(
     model: str,
     prompt: str,
 ) -> tuple[list[str], str]:
-    """Resolve `{model}` e mantém o prompt exclusivamente no stdin."""
+    """Resolve `{model}` while keeping the prompt exclusively on stdin."""
     resolved: list[str] = []
 
     for part in command_template:
@@ -194,7 +192,7 @@ def _run_cli_command(
     stdin_data: str | None,
     timeout_seconds: float,
 ) -> str:
-    """Executa comando CLI e retorna stdout."""
+    """Run a CLI command and return stdout."""
     try:
         completed = subprocess.run(
             command,
@@ -205,31 +203,31 @@ def _run_cli_command(
             check=False,
         )
     except FileNotFoundError as exc:
-        raise FrontmatterEnrichmentConfigError("Comando de enriquecimento não encontrado") from exc
+        raise FrontmatterEnrichmentConfigError("Enrichment command was not found") from exc
     except subprocess.TimeoutExpired as exc:
         raise FrontmatterEnrichmentError(
-            f"Timeout no enriquecimento após {timeout_seconds:g}s"
+            f"Enrichment timed out after {timeout_seconds:g}s"
         ) from exc
 
     stdout = (completed.stdout or "").strip()
     if completed.returncode != 0:
         raise FrontmatterEnrichmentError(
-            f"Provider de enriquecimento encerrou com código {completed.returncode}"
+            f"Enrichment provider exited with code {completed.returncode}"
         )
 
     if not stdout:
-        raise FrontmatterEnrichmentError("CLI retornou saída vazia")
+        raise FrontmatterEnrichmentError("CLI returned empty output")
 
     return stdout
 
 
 def _extract_json_object(raw_output: str) -> dict[str, Any]:
-    """Extrai primeiro objeto JSON válido da saída textual."""
+    """Extract the first valid JSON object from textual output."""
     text = raw_output.strip()
     if not text:
-        raise FrontmatterEnrichmentError("Saída vazia")
+        raise FrontmatterEnrichmentError("Output is empty")
 
-    # Caso comum: saída JSON pura
+    # Common case: plain JSON output.
     try:
         parsed = json.loads(text)
         if isinstance(parsed, dict):
@@ -237,7 +235,7 @@ def _extract_json_object(raw_output: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         pass
 
-    # Caso comum: bloco markdown ```json ... ```
+    # Common case: a fenced Markdown JSON block.
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
     if fenced:
         try:
@@ -247,7 +245,7 @@ def _extract_json_object(raw_output: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             pass
 
-    # Fallback otimizado: tentar primeiro { até último } (O(1) ao invés de O(n²))
+    # Fast fallback: parse from the first opening brace to the last closing brace.
     first_brace = text.find("{")
     last_brace = text.rfind("}")
     if first_brace != -1 and last_brace > first_brace:
@@ -259,7 +257,7 @@ def _extract_json_object(raw_output: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             pass
 
-    # Último recurso: iterar posições de { (raro, só se JSON estiver fragmentado)
+    # Last resort: iterate opening braces when output contains fragmented JSON.
     decoder = json.JSONDecoder()
     for idx in range(first_brace + 1 if first_brace != -1 else 0, len(text)):
         if text[idx] != "{":
@@ -271,7 +269,7 @@ def _extract_json_object(raw_output: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             continue
 
-    raise FrontmatterEnrichmentError("Não foi possível extrair JSON válido da saída")
+    raise FrontmatterEnrichmentError("Could not extract a valid JSON object from output")
 
 
 def _build_prompt(
@@ -281,18 +279,18 @@ def _build_prompt(
     required_schema_fields: dict[str, FieldSchema],
     missing_required: list[str],
 ) -> str:
-    """Monta prompt para preenchimento de campos obrigatórios faltantes."""
+    """Build the prompt for missing required fields."""
     schema_view = {
         field_name: _field_schema_to_dict(required_schema_fields[field_name])
         for field_name in missing_required
     }
 
     instructions = (
-        "Você é um assistente que completa frontmatter YAML.\n"
-        "Retorne SOMENTE um objeto JSON válido.\n"
-        "Inclua apenas os campos obrigatórios faltantes listados em missing_required.\n"
-        "Não invente campos fora do schema.\n"
-        "Respeite tipos, enum, limites e formato do schema.\n"
+        "Complete the missing YAML frontmatter fields.\n"
+        "Return ONLY a valid JSON object.\n"
+        "Include only the required missing fields listed in missing_required.\n"
+        "Do not add fields outside the schema.\n"
+        "Follow every schema type, enum, constraint, and format.\n"
     )
     context = {
         "note_path": note_path,
@@ -302,11 +300,11 @@ def _build_prompt(
         "note_body": note_body,
     }
 
-    return instructions + "\nContexto:\n" + json.dumps(context, ensure_ascii=False, indent=2)
+    return instructions + "\nContext:\n" + json.dumps(context, ensure_ascii=False, indent=2)
 
 
 def _field_schema_to_dict(field_schema: FieldSchema) -> dict[str, Any]:
-    """Converte FieldSchema para representação compacta no prompt."""
+    """Convert FieldSchema to its compact prompt representation."""
     data: dict[str, Any] = {"type": field_schema.type}
     if field_schema.values is not None:
         data["values"] = field_schema.values

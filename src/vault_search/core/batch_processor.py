@@ -1,5 +1,5 @@
 """
-Processamento em batch de chunks com embeddings.
+Batch processing for chunks and embeddings.
 """
 
 import logging
@@ -22,10 +22,10 @@ def _store_batch_in_db(
     batch: list[ChunkWithVector],
 ) -> Table:
     """
-    Grava batch de chunks no LanceDB com retry automático.
+    Write a chunk batch to LanceDB with automatic retry.
 
-    Operações de I/O podem falhar por disk busy, locking, etc.
-    O decorator retry_db faz até 3 tentativas com backoff.
+    I/O operations may fail because of a busy disk or lock contention.
+    The ``retry_db`` decorator makes up to three attempts with backoff.
     """
     if table is None:
         return db.create_table(LANCEDB_TABLE, data=batch)
@@ -41,19 +41,19 @@ def embed_and_store_batch(
     models: ModelManager,
 ) -> Table:
     """
-    Gera embeddings e grava um batch de chunks no LanceDB.
+    Generate embeddings and write a chunk batch to LanceDB.
 
-    Parâmetros:
-        db: conexão LanceDB
-        table: tabela existente ou None para criar
-        batch: lista de chunks sem vetor
-        models: instância do ModelManager
+    Parameters:
+        db: LanceDB connection.
+        table: Existing table, or ``None`` to create one.
+        batch: Chunks without vectors.
+        models: ``ModelManager`` instance.
 
-    Retorna:
-        Tabela LanceDB (nova ou existente).
+    Returns:
+        The new or existing LanceDB table.
     """
     texts = [c["text"] for c in batch]
-    logger.info(f"Gerando embeddings para {len(texts)} chunks...")
+    logger.info("Generating embeddings for %d chunks", len(texts))
     vectors = models.embed_corpus(texts)
 
     records: list[ChunkWithVector] = [

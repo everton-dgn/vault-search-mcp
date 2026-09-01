@@ -1,11 +1,10 @@
 """
-Parser de arquivos PDF para o vault-search-mcp.
+PDF parser for vault-search-mcp.
 
-Usa pymupdf para extrair texto de PDFs. Suporta OCR via Tesseract
-para páginas sem texto nativo (scans, imagens), mantendo a ordem
-de leitura correta mesmo em PDFs mistos (texto + imagens).
+Use PyMuPDF to extract text and Tesseract OCR for scanned or image-only
+pages while preserving reading order in mixed PDFs.
 
-Requisitos para OCR:
+OCR requirements:
     brew install tesseract tesseract-lang
 """
 
@@ -21,29 +20,28 @@ from vault_search.utils.metadata import FileMetadata, extract_file_metadata
 
 logger = logging.getLogger(__name__)
 
-# Flag para verificar disponibilidade do Tesseract (checado uma vez)
+# Cache Tesseract availability after the first check.
 _ocr_available: bool | None = None
 
 
 def _check_ocr_available() -> bool:
-    """Verifica se Tesseract está disponível para OCR."""
+    """Check whether Tesseract OCR is available."""
     global _ocr_available
     if _ocr_available is not None:
         return _ocr_available
 
     try:
-        # pymupdf verifica Tesseract ao tentar OCR
-        # Criamos uma página vazia para testar
+        # PyMuPDF checks Tesseract when OCR is attempted. Use an empty page as a probe.
         test_doc = pymupdf.open()
         test_page = test_doc.new_page(width=100, height=100)
         test_page.get_textpage_ocr(language="eng", dpi=72)
         test_doc.close()
         _ocr_available = True
-        logger.info("Tesseract OCR disponível")
+        logger.info("Tesseract OCR available")
     except Exception as e:
         _ocr_available = False
         logger.warning(
-            "Tesseract OCR indisponível (error_type=%s)",
+            "Tesseract OCR unavailable (error_type=%s)",
             type(e).__name__,
         )
 
@@ -52,33 +50,32 @@ def _check_ocr_available() -> bool:
 
 def _extract_page_text(page: pymupdf.Page, page_num: int) -> str:
     """
-    Extrai texto de uma página, usando OCR se necessário.
+    Extract page text, using OCR when necessary.
 
-    Estratégia:
-    1. Tenta extrair texto nativo (rápido)
-    2. Se vazio e OCR habilitado, faz OCR na página inteira
-    3. OCR mantém layout e ordem de leitura
+    Strategy:
+    1. Try fast native text extraction.
+    2. Run full-page OCR when native text is empty and OCR is enabled.
+    3. Preserve layout and reading order.
 
-    Parâmetros:
-        page: página do pymupdf
-        page_num: número da página (para logging)
+    Parameters:
+        page: PyMuPDF page.
+        page_num: Zero-based page number used for logging.
 
-    Retorna:
-        Texto extraído (pode ser vazio se não houver texto nem OCR).
+    Returns:
+        Extracted text, possibly empty when no text or OCR is available.
     """
-    # Primeiro, tentar texto nativo (instantâneo)
+    # Try native text extraction first.
     text = page.get_text("text").strip()
 
     if text:
         return text
 
-    # Sem texto nativo — tentar OCR se habilitado
+    # Try OCR when native text is empty and OCR is enabled.
     if not PDF_OCR_ENABLED or not _check_ocr_available():
         return ""
 
     try:
-        # get_textpage_ocr faz OCR mantendo layout e ordem de leitura
-        # full=True: OCR em toda a página (necessário para scans)
+        # ``full=True`` runs OCR across the full page while preserving layout.
         tp = page.get_textpage_ocr(
             language=PDF_OCR_LANGUAGES,
             dpi=PDF_OCR_DPI,
@@ -86,11 +83,11 @@ def _extract_page_text(page: pymupdf.Page, page_num: int) -> str:
         )
         text = page.get_text("text", textpage=tp).strip()
         if text:
-            logger.debug(f"OCR extraiu texto da página {page_num + 1}")
+            logger.debug("OCR extracted text from page %d", page_num + 1)
         return text
     except Exception as e:
         logger.warning(
-            "OCR falhou (page=%s, error_type=%s)",
+            "ocr_failed page=%s error_type=%s",
             page_num + 1,
             type(e).__name__,
         )
@@ -104,23 +101,23 @@ def parse_pdf(
     raise_on_error: bool = False,
 ) -> list[ChunkRecord]:
     """
-    Processa um arquivo PDF e retorna lista de chunks com metadados.
+    Process a PDF into chunks with metadata.
 
-    Parâmetros:
-        pdf_path: caminho absoluto do PDF
-        vault_path: caminho raiz do vault
+    Parameters:
+        pdf_path: Absolute PDF path.
+        vault_path: Vault root path.
 
-    Retorna:
-        Lista de ChunkRecord prontos para inserção no LanceDB.
+    Returns:
+        ``ChunkRecord`` entries ready for LanceDB.
     """
-    # Extrair metadados antes de abrir o PDF (valida existência)
+    # Read metadata before opening the PDF to validate its existence.
     try:
         meta = extract_file_metadata(pdf_path, vault_path)
     except (OSError, ValueError) as e:
         if raise_on_error:
             raise
         logger.warning(
-            "Falha ao acessar PDF (error_type=%s)",
+            "Failed to access PDF (error_type=%s)",
             type(e).__name__,
         )
         return []
@@ -132,19 +129,19 @@ def parse_pdf(
         if raise_on_error:
             raise
         logger.warning(
-            "Falha ao abrir PDF (error_type=%s)",
+            "Failed to open PDF (error_type=%s)",
             type(e).__name__,
         )
         return []
 
     try:
-        # Título: metadata do PDF ou stem do arquivo
+        # Prefer PDF metadata title, then the file stem.
         pdf_title = doc.metadata.get("title", "").strip() if doc.metadata else ""
         title = pdf_title or meta["title"]
 
         chunks: list[ChunkRecord] = []
 
-        # Criar meta com título do PDF (pode sobrescrever stem)
+        # Replace the file stem with the PDF title when available.
         pdf_meta: FileMetadata = {**meta, "title": title}
 
         for page_num in range(len(doc)):
@@ -161,7 +158,7 @@ def parse_pdf(
         if raise_on_error:
             raise
         logger.warning(
-            "Falha ao extrair PDF (error_type=%s)",
+            "Failed to extract PDF (error_type=%s)",
             type(e).__name__,
         )
         return []

@@ -1,4 +1,4 @@
-"""Validações de rede compartilhadas pelos componentes locais."""
+"""Network validation shared by local components."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import ipaddress
 
 
 def is_loopback_host(host: str) -> bool:
-    """Aceita apenas nomes e endereços que representam o host local."""
+    """Accept only names and addresses that represent the local host."""
     normalized = host.strip().lower()
     if normalized == "localhost":
         return True
@@ -20,7 +20,7 @@ def is_loopback_host(host: str) -> bool:
 
 
 def format_url_host(host: str) -> str:
-    """Formata endereços IPv6 com os colchetes exigidos por URLs HTTP."""
+    """Format IPv6 addresses with the brackets required by HTTP URLs."""
     normalized = host.strip()
     try:
         address = ipaddress.ip_address(normalized)
