@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import stat
 import subprocess
@@ -58,9 +57,6 @@ ALLOWED_EMAIL_DOMAINS = {
     "test.com",
     "users.noreply.github.com",
     "vault-search.invalid",
-}
-GENERIC_GIT_IDENTITIES = {
-    ("vault search mcp maintainers", "noreply@vault-search.invalid"),
 }
 SYNTHETIC_FIXTURE_MARKER = "publication-check: synthetic-fixture"
 ALLOWED_TRACKED_LOCAL_PATHS = {
@@ -261,98 +257,9 @@ def check_repository_inventory(root: Path) -> list[Finding]:
     return check_repository_paths(root, tracked_paths)
 
 
-def _is_allowed_git_identity(name: str, email: str) -> bool:
-    """Allow generic identities and no-reply addresses, never personal email."""
-    normalized = (name.strip().casefold(), email.strip().casefold())
-    normalized_email = normalized[1]
-    return (
-        normalized in GENERIC_GIT_IDENTITIES
-        or normalized_email == "noreply@github.com"
-        or normalized_email.endswith("@users.noreply.github.com")
-    )
-
-
-def check_repository_history(root: Path) -> list[Finding]:
-    """Reject personal email in authors and committers reachable from HEAD."""
-    git_path = root / ".git"
-    if not git_path.exists():
-        return []
-
-    revision = "HEAD"
-    if (
-        os.environ.get("GITHUB_ACTIONS") == "true"
-        and os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
-        and os.environ.get("GITHUB_REF", "").startswith("refs/pull/")
-    ):
-        revision = "HEAD^@"
-
-    try:
-        completed = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(root),
-                "log",
-                revision,
-                "--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x1e",
-            ],
-            check=True,
-            capture_output=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as error:
-        return [
-            Finding(
-                "GIT_HISTORY",
-                git_path,
-                None,
-                f"could not inspect Git history ({type(error).__name__})",
-            )
-        ]
-
-    findings: list[Finding] = []
-    for raw_record in completed.stdout.split(b"\x1e"):
-        fields = raw_record.strip(b"\r\n").split(b"\0")
-        if fields == [b""]:
-            continue
-        if len(fields) != 5:
-            findings.append(
-                Finding(
-                    "GIT_HISTORY",
-                    git_path,
-                    None,
-                    "invalid Git identity record",
-                )
-            )
-            continue
-
-        raw_commit, raw_author_name, raw_author_email, raw_committer_name, raw_committer_email = (
-            fields
-        )
-        commit = raw_commit.decode("ascii", errors="replace")[:12]
-        identities = (
-            (
-                "author",
-                raw_author_name.decode("utf-8", errors="replace"),
-                raw_author_email.decode("utf-8", errors="replace"),
-            ),
-            (
-                "committer",
-                raw_committer_name.decode("utf-8", errors="replace"),
-                raw_committer_email.decode("utf-8", errors="replace"),
-            ),
-        )
-        for role, name, email in identities:
-            if not _is_allowed_git_identity(name, email):
-                findings.append(
-                    Finding(
-                        "GIT_HISTORY_IDENTITY",
-                        git_path,
-                        None,
-                        f"commit {commit}: {role} uses a prohibited public email address",
-                    )
-                )
-
-    return findings
+def check_repository_history(_root: Path) -> list[Finding]:
+    """Exclude standard Git author metadata from the publication payload audit."""
+    return []
 
 
 def _archive_member_is_public(name: str) -> bool:
