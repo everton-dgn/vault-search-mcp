@@ -8,8 +8,7 @@ import uuid
 from typing import Any
 
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
-from mcp import McpError
-from mcp.types import ErrorData
+from mcp import MCPError
 
 from vault_search.utils.privacy import redact_text
 
@@ -24,7 +23,7 @@ class SafeErrorMiddleware(Middleware):
     @staticmethod
     def _error_contract(error: Exception) -> tuple[int, str]:
         source = error.__cause__ or error
-        if isinstance(error, McpError):
+        if isinstance(error, MCPError):
             code = error.error.code
             if code == -32602:
                 return code, "Invalid params"
@@ -60,9 +59,7 @@ class SafeErrorMiddleware(Middleware):
                 reference,
             )
             code, message = self._error_contract(error)
-            raise McpError(
-                ErrorData(code=code, message=f"{message}; reference={reference}")
-            ) from None
+            raise MCPError(code=code, message=f"{message}; reference={reference}") from None
 
 
 class SafeTimingMiddleware(Middleware):

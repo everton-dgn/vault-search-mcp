@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastmcp.server.middleware import MiddlewareContext
-from mcp import McpError
+from mcp import MCPError
 
 from vault_search.server.middleware import SafeErrorMiddleware, SafeTimingMiddleware
 
@@ -140,7 +140,7 @@ def test_safe_error_middleware_never_serializes_exception_text():
     async def fail(_context):
         raise OSError(private_text)
 
-    with pytest.raises(McpError) as captured:
+    with pytest.raises(MCPError) as captured:
         asyncio.run(middleware.on_message(context, fail))
 
     assert private_text not in str(captured.value)
